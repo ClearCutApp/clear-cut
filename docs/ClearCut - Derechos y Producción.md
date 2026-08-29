@@ -1,123 +1,99 @@
-                 ClearCut
-Agente de IP y Rights Management para Productores Independientes
-Más allá de un buen guion
+# ClearCut
 
+**IP and Rights Management Agent for Independent Producers**
 
-Producir implica un enorme esfuerzo, pero un productor
-independiente puede avanzar meses con su obra y
-descubrir demasiado tarde que:
-    No tiene cedidos los derechos de una canción.
+*More than just a good script*
 
-    Aparece una marca o material de terceros.
+Producing involves enormous effort, but an independent producer can spend months working on their project only to discover too late that:
 
-    Falta el "release" de un actor o locación.
+- The rights to a song haven't been cleared.
+- A brand or third-party material appears in the work.
+- An actor's or location's release is missing.
+- The chain of title is incomplete.
 
-    La "chain of title" está incompleta.
-"        Para un estudio grande existen
-    departamentos de clearance enteros. Para
-    una productora pequeña, muchas veces el
-       problema se descubre cuando ya es
-          demasiado caro solucionarlo.
-                                               "
-     La Solución: ClearCut
-No reemplaza a un abogado. Hace visible lo que el productor no sabe
- que debería estar mirando, convirtiendo los riesgos en un workflow
-                            accionable.
-El Cambio de Paradigma
+> For a large studio, entire clearance departments exist. For a small production company, the problem is often discovered only when it's already too expensive to fix.
 
+## The Solution: ClearCut
 
- El enfoque tradicional                           La ventaja ClearCut
- "Ask an AI about copyright"                      "Upload your film. Know what could stop its
+It doesn't replace a lawyer. It makes visible what the producer doesn't know they should be looking at, turning risks into an actionable workflow.
 
- Las herramientas actuales ofrecen                release."
+## The Paradigm Shift
 
- asesoramiento general. El productor hace         El productor carga sus guiones, planes y
+**The traditional approach**
 
- preguntas hipotéticas y recibe respuestas        recursos. La IA audita el proyecto real y le dice
+"Ask an AI about copyright"
 
- genéricas o disclaimers legales abstractos que   exactamente qué falta, dónde están los riesgos
+Current tools offer general advice. The producer asks hypothetical questions and receives generic answers or abstract legal disclaimers that don't solve their specific problem.
 
- no resuelven su problema específico.             y cómo preparar la película para distribución.
-Cómo Funciona (Ciclo Continuo)
+**The ClearCut advantage**
 
+"Upload your film. Know what could stop its release."
 
+The producer uploads their scripts, plans, and assets. The AI audits the actual project and tells them exactly what's missing, where the risks are, and how to prepare the film for distribution.
 
- 1. Upload & Detect                       2. Explain & Act                           3. Verify & Track
- El productor carga el guion, sinopsis,   Identifica riesgos (ej. marca visible) y   Mantiene un seguimiento de los
- assets y contratos. ClearCut escanea     explica por qué amerita atención.          derechos obtenidos. Organiza
- el material continuamente para           Genera los pasos exactos o emails          contratos fragmentados y construye
- detectar elementos relevantes de         para resolver el problema.                 la infraestructura legal de la
- propiedad intelectual.                                                              producción.
-AI Script & Asset Scan
-Gemini analiza el material y encuentra elementos
-críticos. No emite un fallo jurídico definitivo, sino que
-levanta alertas preventivas.
+## How It Works (Continuous Cycle)
 
-  "ESCENA 14: El personaje entra a un bar.
-  Suena Wonderwall."
-  NEW RISK DETECTED: MUSIC RIGHTS · HIGH PRIORITY
+1. **Upload & Detect**
+   The producer uploads the script, synopsis, assets, and contracts. ClearCut continuously scans the material to detect relevant intellectual property elements.
 
+2. **Explain & Act**
+   It identifies risks (e.g., a visible brand) and explains why they warrant attention. It generates the exact steps or emails needed to resolve the issue.
 
+3. **Verify & Track**
+   It keeps track of rights obtained. It organizes scattered contracts and builds the production's legal infrastructure.
 
+## AI Script & Asset Scan
 
-  "The character wears an FC Barcelona jersey."
+Gemini analyzes the material and finds critical elements. It doesn't issue a definitive legal ruling, but raises preventive alerts.
 
-  TRADEMARK / BRAND · REVIEW
-Smart Clearance Checklist
+> "SCENE 14: The character enters a bar. Wonderwall is playing."
+>
+> **NEW RISK DETECTED: MUSIC RIGHTS · HIGH PRIORITY**
 
-Una lista dinámica que nace del proyecto real, no una plantilla genérica.
+> "The character wears an FC Barcelona jersey."
+>
+> **TRADEMARK / BRAND · REVIEW**
 
+## Smart Clearance Checklist
 
-Categoría de Derecho                                     Estado Actual      Nivel de Prioridad
+A dynamic list generated from the actual project, not a generic template.
 
-Screenplay Rights & Writer Agreement                       Verificado       Baja
+| Rights Category | Current Status | Priority Level |
+|---|---|---|
+| Screenplay Rights & Writer Agreement | Verified | Low |
+| Actor Releases (Main Cast) | Verified | Low |
+| Location Release (Scenes 12-15) | Pending | Medium |
+| Music Synchronization & Master Rights | Missing | High |
+| Chain of Title Index | 72% Complete | — |
 
+## Active Resolution: "How do I fix this?"
 
-Actor Releases (Main Cast)                                 Verificado       Baja
+1. **Context**
+   ClearCut explains the risk in simple terms (e.g., why you need synchronization rights for a song) and details what documentation to look for.
 
+2. **Identification**
+   It tells you what type of rights holder or entity you should identify or contact (publisher, record label, venue owner).
 
-Location Release (Escenas 12-15)                           Pendiente        Media
+3. **Immediate Action**
+   The agent prepares the email, form, or initial documentation and finds the appropriate channel so the producer can start the process with one click.
 
+## IP Passport: Gamification and Due Diligence
 
-Music Synchronization & Master Rights                      Faltante         Alta
+**The industry standard**
 
+Turns the tedious legal process into an achievement system (badges) with an IP Health Index (e.g., 78/100).
 
-Chain of Title Index                                     72% Completo
-Resolución Activa: "How do I fix this?"
+**Shareable:** Generates a secure URL that summarizes the production's rights status.
 
+**Business accelerator:** Allows distributors, festivals, or platforms to perform quick due diligence.
 
+## Key Benefits
 
- 1. Contexto                              2. Identificación                           3. Acción Inmediata
- ClearCut explica el riesgo en términos   Te indica qué tipo de titular o entidad     El agente prepara el mail, formulario o
- sencillos (ej. por qué necesitas         deberías identificar o contactar            documentación inicial y encuentra el
- derechos de sincronización para una      (editora, sello discográfico, propietario   canal correspondiente para que el
- canción) y detalla qué documentación     del recinto).                               productor inicie el trámite con un clic.
- buscar.
-IP Passport: Gamificación y Due Diligence
+- **Early detection:** Identifies legal issues while they are still cheap and easy to fix (pre-production or during filming).
+- **Risk mitigation:** Reduces the chances of discovering catastrophic rights issues once the film is already finished.
+- **Centralization:** Organizes a fragmented ecosystem — script, contracts in Drive, emails with permissions and licenses — all in one place.
+- **Scalability:** ClearCut's long-term vision is to become the rights infrastructure layer of modern audiovisual production.
 
+## Thank You
 
-                           El estándar para la industria
-                           Convierte el aburrido proceso legal en un sistema de
-                           logros (badges) con un IP Health Index (ej. 78/100).
-
-                               Compartible: Genera una URL segura que resume el
-                               estado de derechos de la producción.
-
-                               Acelerador de negocios: Permite a distribuidores,
-                               festivales o plataformas hacer due diligence rápido.
-Beneficios Clave
-
-     Detección temprana: Identifica problemas legales mientras todavía son baratos y fáciles de
-     arreglar (pre o durante el rodaje).
-
-     Mitigación de riesgo: Reduce las chances de descubrir problemas catastróficos de derechos
-     cuando la película ya está terminada.
-
-     Centralización: Ordena un ecosistema fragmentado: guion, contratos en Drive, mails con permisos y
-     licencias, todo en un solo lugar.
-
-     Escalabilidad: ClearCut se proyecta a largo plazo como la capa de infraestructura de derechos
-     ("rights infrastructure") de la producción audiovisual moderna.
-Muchas gracias
- ClearCut: Tu producción, asegurada.
-
+**ClearCut: Your production, secured.**

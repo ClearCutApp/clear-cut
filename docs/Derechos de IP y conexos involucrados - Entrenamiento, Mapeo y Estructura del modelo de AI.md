@@ -1,460 +1,355 @@
-# **Arquitectura de Inteligencia Artificial para la Gestión de IP y Procedibilidad Local/Global**
+# **Artificial Intelligence Architecture for IP Management and Local/Global Actionability**
 
-Para que el modelo de IA procese el guión o material adjunto y actúe
-como un gestor de regularización, se estructura en **dos grandes motores
-de trabajo**:
+For the AI model to process the script or attached material and act as
+a regularization manager, it is structured into **two major work
+engines**:
 
-1.  **Motor de Inferencia Legal:** Detecta e identifica los derechos
-    involucrados.
+1.  **Legal Inference Engine:** Detects and identifies the rights
+    involved.
 
-2.  **Motor de Procedibilidad Territorial (Orquestador por País):**
-    Consulta la base de datos de jurisprudencia y normativa de la sede
-    principal de la producción (y países de coproducción) para indicar
-    el flujo exacto de regularización.
+2.  **Territorial Actionability Engine (Country Orchestrator):**
+    Queries the case-law and regulatory database of the production's
+    main base (and co-production countries) to indicate the exact
+    regularization workflow.
 
-**Motor de Inferencia Legal**
+**Legal Inference Engine**
 
-Para entrenar el modelo de IA que realice la detección y el mapeo
-integral de derechos, no podemos limitarnos a los activos tradicionales
-de Propiedad Intelectual (como marcas o derechos de autor sobre textos).
-En una producción audiovisual convergen la **Propiedad Intelectual
-(Copyright y Propiedad Industrial)**, los **Derechos Conexos**, los
-**Derechos de la Personalidad e Imagen**, los **Derechos Reales y de
-Contratación de Locaciones**, y la **Responsabilidad Civil / Riesgos de
-Difamación**.
+To train the AI model to perform comprehensive rights detection and
+mapping, we cannot limit ourselves to traditional Intellectual
+Property assets (such as trademarks or copyright over texts). In an
+audiovisual production, **Intellectual Property (Copyright and
+Industrial Property)**, **Related Rights**, **Personality and Image
+Rights**, **Real Property Rights and Location Contracting**, and
+**Civil Liability / Defamation Risks** all converge.
 
-El modelo de IA debe actuar como un \"Abogado de Entretención Digital\"
-supervisando 6 Grandes Categorías de Derechos.
+The AI model must act as a "Digital Entertainment Lawyer" overseeing
+6 major categories of rights.
 
-### **Categorización de Derechos a Detectar y Lógica de Mapeo por la IA**
+### **Categorization of Rights to Detect and AI Mapping Logic**
 
-#### **1. Propiedad Industrial (Marcas, Patentes y Diseños)**
+#### **1. Industrial Property (Trademarks, Patents, and Designs)**
 
-- **Elementos a Detectar en la Guion / Materiales:**
+- **Elements to Detect in the Script / Materials:**
 
-  - Nombres de marcas reales (ej: *\"Saca un celular Apple/iPhone\"*,
-    *\"Toma una Coca-Cola\"*).
+  - Real brand names (e.g., *"He pulls out an Apple/iPhone"*,
+    *"He drinks a Coca-Cola"*).
 
-  - Logos perceptibles en descripciones visuales o diseño de arte.
+  - Logos visible in visual descriptions or art design.
 
-  - Diseños industriales protegidos (ej: la silueta característica de un
-    coche, una silla de diseñador icónica, indumentaria de marcas
-    reconocidas).
+  - Protected industrial designs (e.g., a car's characteristic
+    silhouette, an iconic designer chair, clothing from recognized
+    brands).
 
-- **Mecanismo de Mapeo de la IA:**
+- **AI Mapping Mechanism:**
 
-  - **Categoría de Riesgo:** Marca de Tercero.
+  - **Risk Category:** Third-Party Trademark.
 
-  - **Requerimiento Legal:** *Brand Clearance* / Licencia de Uso de
-    Marca (Product Placement vs. Fair Use comercial).
+  - **Legal Requirement:** *Brand Clearance* / Trademark Use License
+    (Product Placement vs. commercial Fair Use).
 
-  - **Acción sugerida:** Redactar solicitud de autorización al
-    departamento de marketing/legal de la marca o sugerir reemplazo por
-    marca ficticia (*greeking*).
+  - **Suggested Action:** Draft an authorization request to the
+    brand's marketing/legal department or suggest replacing it with a
+    fictitious brand (*greeking*).
 
-#### **2. Propiedad Intelectual - Obras Previas y Musicales (Copyright / Derecho de Autor)**
+#### **2. Intellectual Property – Pre-Existing and Musical Works (Copyright)**
 
-- **Elementos a Detectar:**
+- **Elements to Detect:**
 
-  - **Música existente:** Mención de canciones, fragmentos de letras,
-    reproducciones en radios o radios de auto (ej: *\"Suena \'Thriller\'
-    de Michael Jackson de fondo\"*).
+  - **Existing music:** Mentions of songs, lyric fragments, playback
+    on radios or car radios (e.g., *"'Thriller' by Michael Jackson
+    plays in the background"*).
 
-  - **Música original:** Escenas donde el guion indica *\"El personaje
-    toca una melodía original en el piano\"* o *\"Banda sonora compuesta
-    para la escena\"*.
+  - **Original music:** Scenes where the script indicates *"The
+    character plays an original melody on the piano"* or *"Score
+    composed for the scene"*.
 
-  - **Obras de arte y literatura:** Cuadros colgados en locaciones,
-    esculturas, grafitis con autoría, lectura de fragmentos de libros
-    protegidos, poesía.
+  - **Works of art and literature:** Paintings hanging in locations,
+    sculptures, signed graffiti, readings from protected books,
+    poetry.
 
-  - **Audiovisual dentro de audiovisual:** Televisores encendidos
-    pasando otras películas, videojuegos siendo jugados en pantalla,
-    clips de noticias.
+  - **Audiovisual within audiovisual:** TVs turned on showing other
+    movies, video games being played on screen, news clips.
 
-- **Mecanismo de Mapeo de la IA:**
+- **AI Mapping Mechanism:**
 
-  - **Si es de Terceros:** Separar derechos de composición (Master /
-    Publishing) -\> Requerir *Sync License* (Licencia de Sincronización)
-    y Licencia de Fonograma.
+  - **If Third-Party:** Separate composition rights (Master /
+    Publishing) → Require a *Sync License* and a Phonogram License.
 
-  - **Si es Original:** Requerir Contrato de Obra por Encargo (*Work for
-    Hire*) con el compositor + Registro de Depósito de la Obra Musical a
-    favor de la productora.
+  - **If Original:** Require a *Work for Hire* Agreement with the
+    composer + Deposit Registration of the Musical Work in favor of
+    the production company.
 
-#### **3. Derechos de la Personalidad, Imagen y Privacidad (Personal Rights)**
+#### **3. Personality, Image, and Privacy Rights (Personal Rights)**
 
-- **Elementos a Detectar:**
+- **Elements to Detect:**
 
-  - **Talento en Pantalla (Actores / Extras):** Cualquier personaje con
-    diálogo, acción secundaria o figurantes en escenas masivas.
+  - **On-Screen Talent (Actors / Extras):** Any character with
+    dialogue, secondary action, or background extras in crowd scenes.
 
-  - **Personas Reales / Biografías:** Menciones a políticos,
-    celebridades, personas vivas o fallecidas recientemente.
+  - **Real People / Biographies:** Mentions of politicians,
+    celebrities, living people, or people who died recently.
 
-  - **Voz y Rasgos:** Indicaciones de doblaje, imitación de voz o
-    captura de movimiento (*Motion Capture*).
+  - **Voice and Likeness:** References to dubbing, voice
+    impersonation, or motion capture.
 
-- **Mecanismo de Mapeo de la IA:**
+- **AI Mapping Mechanism:**
 
-  - **Para Actores/Extras:** *Talent Release Agreement* (Cesión de
-    Derechos de Imagen, Voz y Performance).
+  - **For Actors/Extras:** *Talent Release Agreement* (assignment of
+    image, voice, and performance rights).
 
-  - **Para Personas Reales:** *Life Rights Agreement* (Contrato de
-    Derechos de Vida) o Evaluación de Riesgo de Invasión a la Privacidad
-    / Difamación (*Defamation/Libel Check*).
+  - **For Real People:** *Life Rights Agreement* or a Privacy
+    Invasion / Defamation Risk Assessment (*Defamation/Libel Check*).
 
-#### **4. Obras Visuales Integradas y Elementos de Producción (Arte, Vestuario y Gráficos)**
+#### **4. Integrated Visual Works and Production Elements (Art, Wardrobe, and Graphics)**
 
-- **Elementos a Detectar:**
+- **Elements to Detect:**
 
-  - Diseños de vestuario únicos (ej: trajes de superhéroes o monstruos),
-    diseño de personajes (*Character Design* en animación o
-    videojuegos).
+  - Unique wardrobe designs (e.g., superhero or monster costumes),
+    character design (*Character Design* in animation or video
+    games).
 
-  - Props / Utilería de alta elaboración con diseño propio.
+  - Highly elaborate props with original design.
 
-  - Interceptación de software, interfaces gráficas ficticias (UI/UX
-    creada para la película) o fuentes tipográficas (*Fonts*) utilizadas
-    en los títulos.
+  - Software captured on screen, fictitious graphic interfaces (UI/UX
+    created for the film), or typefaces (*Fonts*) used in the titles.
 
-- **Mecanismo de Mapeo de la IA:**
+- **AI Mapping Mechanism:**
 
-  - **Diseños Internos:** Contrato de Cesión Total de Patrimoniales
-    (*Assignment of Rights*) del diseñador/artista a la productora.
+  - **Internal Designs:** Full Assignment of Rights agreement
+    (*Assignment of Rights*) from the designer/artist to the
+    production company.
 
-  - **Tipografías y Software:** Verificar Licencia Comercial de Uso
-    Cinematográfico/Digital de la tipografía o software usado.
+  - **Typefaces and Software:** Verify the Commercial Film/Digital
+    Use License for the typeface or software used.
 
-#### **5. Locaciones, Bienes Muebles/Inmuebles y Permisos de Dominio Público**
+#### **5. Locations, Movable/Immovable Property, and Public Domain Permits**
 
-- **Elementos a Detectar:**
+- **Elements to Detect:**
 
-  - **Locaciones Privadas:** Casas, edificios emblemáticos con
-    arquitectura protegida, locales comerciales (ej: *\"Escena dentro de
-    un Starbucks\"*).
+  - **Private Locations:** Houses, landmark buildings with protected
+    architecture, commercial premises (e.g., *"Scene inside a
+    Starbucks"*).
 
-  - **Espacios Públicos:** Parques, calles, edificios gubernamentales,
-    monumentos restringidos (ej: la Torre Eiffel de noche tiene derechos
-    de iluminación protegidos).
+  - **Public Spaces:** Parks, streets, government buildings,
+    restricted monuments (e.g., the Eiffel Tower's nighttime lighting
+    is protected by rights).
 
-- **Mecanismo de Mapeo de la IA:**
+- **AI Mapping Mechanism:**
 
-  - **Privadas:** *Location Release Form* (Autorización de Locación)
-    firmada por el propietario o administrador.
+  - **Private:** *Location Release Form* signed by the owner or
+    administrator.
 
-  - **Públicas:** Permisos Filmográficos de la Comisión de Filmaciones
-    local (*Film Commission*) y pago de tasas municipales.
+  - **Public:** Filming permits from the local Film Commission and
+    payment of municipal fees.
 
-#### **6. Elementos Protegidos por Leyes Especiales y Símbolos Patrios**
+#### **6. Elements Protected by Special Laws and National Symbols**
 
-- **Elementos a Detectar:**
+- **Elements to Detect:**
 
-  - Banderas, escudos nacionales, uniformes de fuerzas de seguridad
-    (policía, ejército), billetes/monedas (regulaciones de
-    falsificación).
+  - Flags, national coats of arms, security force uniforms (police,
+    military), banknotes/coins (counterfeiting regulations).
 
-- **Mecanismo de Mapeo de la IA:**
+- **AI Mapping Mechanism:**
 
-  - Alerta de Uso Restringido por Normativa Estatal -\> Solicitar
-    autorización de Ministerios correspondientes según el país.
+  - Restricted Use Alert under State Regulation → Request
+    authorization from the relevant government ministries depending
+    on the country.
 
-### **Matriz Estructurada de Mapeo del Modelo de IA**
+### **Structured Mapping Matrix of the AI Model**
 
-Para entrenar a la IA, los datos extraídos del guion se procesarán en la
-siguiente **estructura de salida (JSON Interno)** antes de presentarse
-en la plataforma:
+To train the AI, the data extracted from the script will be processed
+into the following **output structure (internal JSON)** before being
+presented on the platform:
 
-  ------------- ------------- ---------------- ------------- ------------------ -------------
-  **ID          **Texto del   **Categoría de   **Riesgo      **Documento /      **Estado
-  Elemento**    Guion /       IP Detectada**   Potencial**   Contrato           (Tracker)**
-                Archivo**                                    Necesario**        
+| **ID** | **Script Text / File** | **Detected IP Category** | **Potential Risk** | **Document / Contract Needed** | **Status (Tracker)** |
+|---|---|---|---|---|---|
+| **EVT-001** | *"Scene 4: Juan takes out a bottle of Quilmes"* | Third-Party Trademark | Medium (unsponsored brand use) | Trademark Clearance Form or Replacement (*Greeking*) | 🔴 0% (Pending) |
+| **EVT-002** | *"Radio plays 'De Música Ligera'"* | Musical Copyright (Third-Party) | High (Sync Infringement) | Sync License + Master License | 🔴 0% (Pending) |
+| **EVT-003** | *"Actor 1 (Pedro) has dialogue in the bar"* | Image / Performance Right | Critical (cannot be exhibited without a contract) | *Talent Release Form* / Actors' Union Contract | 🟢 100% (Signed) |
+| **EVT-004** | *"Forest Monster design (Attached PNG)"* | Internal IP / Character Design | High (risk of claim from the illustrator) | Work for Hire Agreement with the Concept Artist | 🟡 50% (Sent) |
 
-  **EVT-001**   *\"Escena 4:  Marca de Tercero Medio (Uso de Formulario de      🔴 0%
-                Juan toma una                  marca sin     Clearance de Marca (Pendiente)
-                botella de                     sponsoreo)    o Reemplazo        
-                Quilmes\"*                                   (*Greeking*)       
+### **How Does the AI Detect This Technically?**
 
-  **EVT-002**   *\"Radio      Copyright        Alto          Licencia de        🔴 0%
-                transmite     Musical          (Infracción   Sincronización +   (Pendiente)
-                \'De Música   (Terceros)       de Sync)      Master             
-                Ligera\'\"*                                                     
+1.  **Natural Language Processing (NLP) for Text / Scripts:**
 
-  **EVT-003**   *\"Actor 1    Derecho de       Crítico (Sin  *Talent Release    🟢 100%
-                (Pedro)       Imagen /         contrato no   Form* / Contrato   (Firmado)
-                dialoga en el Interpretación   se puede      Sindicato de       
-                bar\"*                         exhibir)      Actores            
+    - Uses **Named Entity Recognition (NER)** trained on the
+      entertainment industry to automatically categorize proper
+      nouns (people, places, brands, songs).
 
-  **EVT-004**   *\"Diseño del IP Interna /     Alto (Riesgo  Contrato de Obra   🟡 50%
-                Monstruo del  Character Design de reclamo    por Encargo (*Work (Enviado)
-                Bosque                         del           for Hire*) con el  
-                (Adjunto                       ilustrador)   Concept Artist     
-                PNG)\"*                                                         
-  ------------- ------------- ---------------- ------------- ------------------ -------------
+    - **Action and Intent Analysis:** Detects verbs implying
+      performance or playback (e.g., *"listens to"*, *"wears"*,
+      *"reads"*, *"plays"*).
 
-### **¿Cómo detecta esto la IA técnicamente?**
-
-1.  **Natural Language Processing (NLP) para Textos / Guiones:**
-
-    - Utiliza **Named Entity Recognition (NER)** entrenado en la
-      industria del entretenimiento para categorizar automáticamente
-      sustantivos propios (personas, lugares, marcas, canciones).
-
-    - **Análisis de Acción e Intención:** Detecta verbos que implican
-      ejecución o reproducción (ej: *\"escucha\"*, *\"viste\"*,
-      *\"lee\"*, *\"reproduce\"*).
-
-2.  **Computer Vision (CV) para Archivos Adjuntos (Bocetos, Diseños,
+2.  **Computer Vision (CV) for Attached Files (Sketches, Designs,
     Audio):**
 
-    - **Buscador de similitud visual:** Compara imágenes subidas (ej.
-      diseño de un personaje) contra bases de datos globales de
-      registros de marcas e imágenes protegidas para prevenir plagios
-      inadvertidos.
+    - **Visual Similarity Search:** Compares uploaded images (e.g., a
+      character design) against global databases of trademark
+      registrations and protected images to prevent inadvertent
+      plagiarism.
 
-    - **Reconocimiento de Audio (Fingerprinting):** Compara clips de
-      audio adjuntos contra bases de datos como Shazam/Audible Magic
-      para determinar si la música es libre de derechos, de librería o
-      registrada.
+    - **Audio Recognition (Fingerprinting):** Compares attached audio
+      clips against databases such as Shazam/Audible Magic to
+      determine whether the music is rights-free, library music, or
+      registered.
 
-### **Resumen de la Estructura para la IA**
+### **Summary of the AI Structure**
 
-La IA tomará el guion o archivo adjunto, **descompondrá la escena en
-átomos de IP**, clasificará cada elemento en 1 de las 6 categorías y
-generará de forma automática el listado de requerimientos legales.
+The AI will take the script or attached file, **break the scene down
+into IP atoms**, classify each element into 1 of the 6 categories,
+and automatically generate the list of legal requirements.
 
-Una vez definido este mapa de IP a detectar, la segunda parte del
-**Punto 2** consiste en determinar **cómo procede la IA según el país de
-producción** (jurisdicciones, organismos de registro como DNDA, US
-Copyright Office, INPI, WIPO, leyes locales de actores y búsqueda de
-titulares de derechos).
+Once this IP detection map is defined, the second part of **Point 2**
+consists of determining **how the AI proceeds according to the
+production's country** (jurisdictions, registration bodies such as
+DNDA, the US Copyright Office, INPI, WIPO, local actor laws, and
+rights-holder lookup).
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-Para pasar formalmente a la **fase de entrenamiento del modelo de IA**,
-debemos traducir este marco de 6 categorías a un **Dataset de
-Entrenamientos y Arquitectura de Prompts/Modelos (NLP + Vision +
-Audio)**.
+To formally move into the **AI model training phase**, we need to
+translate this 6-category framework into a **Training Dataset and
+Prompt/Model Architecture (NLP + Vision + Audio)**.
 
-A continuación se detalla cómo se estructura el entrenamiento técnico y
-la taxonomía exacta con la que entrenaremos al modelo.
+Below is a detailed breakdown of how the technical training is
+structured and the exact taxonomy used to train the model.
 
-### **1. Taxonomía de Etiquetado para Fine-Tuning de la IA (NER / Categorización)**
+### **1. Labeling Taxonomy for AI Fine-Tuning (NER / Categorization)**
 
-Para que el modelo (basado en LLM/NLP) aprenda a etiquetar cada palabra
-o párrafo del guion, utilizaremos el estándar de **Named Entity
-Recognition (NER)** adaptado a Entertainment Law.
+For the model (based on LLM/NLP) to learn to label each word or
+paragraph of the script, we will use the **Named Entity Recognition
+(NER)** standard adapted to Entertainment Law.
 
-Plaintext
+```
+Extraction Tags:
 
-Etiquetas de Extracción:
+- [BRAND]: Trademarks, consumer products, companies, logos mentioned.
+- [MUSIC_EXISTING]: Existing songs, artists, bands, commercial radio stations.
+- [MUSIC_ORIGINAL]: Explicit mention of compositions created for the work.
+- [ART_LIT]: Works of art, books, sculptures, graffiti, poems.
+- [MEDIA_AV]: TV shows, movies, news clips, video games shown on screen.
+- [TALENT_CHARACTER]: Actors with lines, extras, stunt doubles.
+- [REAL_PERSON]: Public figures, real living/deceased people, biographies.
+- [PROPS_DESIGN]: Exclusive wardrobe, character designs, original props, typography.
+- [LOCATION_PRIV]: Commercial establishments, private houses, architect-designed buildings.
+- [LOCATION_PUB]: Parks, monuments, streets, government buildings.
+- [SPECIAL_SYMBOL]: Flags, coats of arms, official uniforms, banknotes/coins.
+```
 
-\- \[BRAND\]: Marcas comerciales, productos de consumo, empresas,
-logotipos citados.
+### **2. Training Dataset Format (Example JSON-L for Fine-Tuning)**
 
-\- \[MUSIC_EXISTING\]: Canciones existentes, artistas, bandas, radios
-comerciales.
+The model is trained on pairs of **Input (Script/Instruction) →
+Output (Structured IP JSON Matrix)**.
 
-\- \[MUSIC_ORIGINAL\]: Mención explícita de composiciones creadas para
-la obra.
+#### **Example Training Prompt:**
 
-\- \[ART_LIT\]: Obras de arte, libros, esculturas, grafitis, poemas.
+> **Input:** *"EXT. BUENOS AIRES STREET – NIGHT. LUCAS (30) walks
+> wearing Sony headphones, listening to 'Bioluminescence' by a local
+> artist. He enters a Starbucks while watching a Champions League
+> match streaming on his iPhone. At the table, the CONCEPT ARTIST
+> shows him the original alien design (Attached: alien_v1.png)."*
 
-\- \[MEDIA_AV\]: Programas de TV, películas, clips de noticias,
-videojuegos visualizados.
+#### **Expected Output JSON (Model Training):**
 
-\- \[TALENT_CHARACTER\]: Actores con parlantes, extras, dobles de
-riesgo.
-
-\- \[REAL_PERSON\]: Figuras públicas, personas reales vivas/fallecidas,
-biografías.
-
-\- \[PROPS_DESIGN\]: Vestuario exclusivo, diseños de personajes, props
-de autor, tipografía.
-
-\- \[LOCATION_PRIV\]: Establecimientos comerciales, casas privadas,
-edificios de autor.
-
-\- \[LOCATION_PUB\]: Parques, monumentos, calles, edificios
-gubernamentales.
-
-\- \[SPECIAL_SYMBOL\]: Banderas, escudos, uniformes oficiales,
-billetes/monedas.
-
-### **2. Formato del Dataset de Entrenamiento (Ejemplo JSON-L para Fine-Tuning)**
-
-El modelo se entrena con pares de **Entrada (Guion/Instrucción) -\>
-Salida (Matriz JSON de IP estructurada)**.
-
-#### **Ejemplo de Prompt de Entrenamiento:**
-
-> **Input:** *\"EXT. CALLE DE BUENOS AIRES - NOCHE. LUCAS (30) camina
-> con unos auriculares Sony puestos, escuchando \'Bioluminescence\' de
-> un artista local. Entra a un Starbucks mientras mira en su iPhone la
-> transmisión de un partido de la Champions League. En la mesa, el
-> CONCEPT ARTIST le muestra el diseño original del alienígena (Adjunto:
-> alien_v1.png).\"*
-
-#### **JSON de Salida esperado (Entrenamiento del Modelo):**
-
-JSON
-
+```json
 {
-
-\"project_analysis\": {
-
-\"detected_events\": \[
-
-{
-
-\"id\": \"EVT-001\",
-
-\"raw_text\": \"auriculares Sony / iPhone\",
-
-\"category\": \"1. PROPIEDAD INDUSTRIAL\",
-
-\"tag\": \"BRAND\",
-
-\"risk_level\": \"Medium\",
-
-\"legal_requirement\": \"Brand Clearance / Product Placement Approval\",
-
-\"action_required\": \"Solicitar autorización a Sony y Apple o aplicar
-greeking visual.\"
-
-},
-
-{
-
-\"id\": \"EVT-002\",
-
-\"raw_text\": \"\'Bioluminescence\' de un artista local\",
-
-\"category\": \"2. PROPIEDAD INTELECTUAL - MUSICA\",
-
-\"tag\": \"MUSIC_EXISTING\",
-
-\"risk_level\": \"High\",
-
-\"legal_requirement\": \"Sync License + Master License\",
-
-\"action_required\": \"Contactar al compositor/sello independiente para
-contrato de sincronización.\"
-
-},
-
-{
-
-\"id\": \"EVT-003\",
-
-\"raw_text\": \"Entra a un Starbucks\",
-
-\"category\": \"5. LOCACIONES\",
-
-\"tag\": \"LOCATION_PRIV\",
-
-\"risk_level\": \"High\",
-
-\"legal_requirement\": \"Location Release Form\",
-
-\"action_required\": \"Firmar permiso de rodaje con la firma o
-administrador del local comercial.\"
-
-},
-
-{
-
-\"id\": \"EVT-004\",
-
-\"raw_text\": \"transmisión de un partido de la Champions League\",
-
-\"category\": \"2. PROPIEDAD INTELECTUAL - AUDIOVISUAL\",
-
-\"tag\": \"MEDIA_AV\",
-
-\"risk_level\": \"Critical\",
-
-\"legal_requirement\": \"Broadcasting Clip Rights\",
-
-\"action_required\": \"Obtener licencias de la UEFA/cadena transmisora o
-reemplazar por video propio.\"
-
-},
-
-{
-
-\"id\": \"EVT-005\",
-
-\"raw_text\": \"diseño original del alienígena (Adjunto:
-alien_v1.png)\",
-
-\"category\": \"4. OBRAS VISUALES INTEGRADAS\",
-
-\"tag\": \"PROPS_DESIGN\",
-
-\"risk_level\": \"High\",
-
-\"legal_requirement\": \"Work for Hire / Concept Art Rights
-Assignment\",
-
-\"action_required\": \"Hacer firmar al ilustrador la Cesión Total de
-Derechos Patrimoniales.\"
-
+  "project_analysis": {
+    "detected_events": [
+      {
+        "id": "EVT-001",
+        "raw_text": "Sony headphones / iPhone",
+        "category": "1. INDUSTRIAL PROPERTY",
+        "tag": "BRAND",
+        "risk_level": "Medium",
+        "legal_requirement": "Brand Clearance / Product Placement Approval",
+        "action_required": "Request authorization from Sony and Apple or apply visual greeking."
+      },
+      {
+        "id": "EVT-002",
+        "raw_text": "'Bioluminescence' by a local artist",
+        "category": "2. INTELLECTUAL PROPERTY - MUSIC",
+        "tag": "MUSIC_EXISTING",
+        "risk_level": "High",
+        "legal_requirement": "Sync License + Master License",
+        "action_required": "Contact the composer/independent label for a synchronization agreement."
+      },
+      {
+        "id": "EVT-003",
+        "raw_text": "Enters a Starbucks",
+        "category": "5. LOCATIONS",
+        "tag": "LOCATION_PRIV",
+        "risk_level": "High",
+        "legal_requirement": "Location Release Form",
+        "action_required": "Sign a filming permit with the company or the commercial venue's administrator."
+      },
+      {
+        "id": "EVT-004",
+        "raw_text": "Champions League match streaming",
+        "category": "2. INTELLECTUAL PROPERTY - AUDIOVISUAL",
+        "tag": "MEDIA_AV",
+        "risk_level": "Critical",
+        "legal_requirement": "Broadcasting Clip Rights",
+        "action_required": "Obtain licenses from UEFA/the broadcasting network or replace with original footage."
+      },
+      {
+        "id": "EVT-005",
+        "raw_text": "original alien design (Attached: alien_v1.png)",
+        "category": "4. INTEGRATED VISUAL WORKS",
+        "tag": "PROPS_DESIGN",
+        "risk_level": "High",
+        "legal_requirement": "Work for Hire / Concept Art Rights Assignment",
+        "action_required": "Have the illustrator sign the Full Assignment of Economic Rights."
+      }
+    ]
+  }
 }
+```
 
-\]
+### **3. Multimodal Pipeline for Attached Files**
 
-}
+The model will not only read the script text but will also connect
+three specialized sub-models:
 
-}
+1.  **Primary LLM (Legal-Tech Core):**
 
-### **3. Pipeline Multimodal para Archivos Adjuntos**
+    - Converts plain text (PDF, Fountain, Final Draft) into events
+      classified according to the 6-rights taxonomy.
 
-El modelo no solo leerá el texto del guion, sino que conectará tres
-sub-modelos especializados:
+2.  **Computer Vision (CV Engine):**
 
-1.  **LLM Principal (Legal-Tech Core):**
+    - Processes image attachments (wardrobe, storyboards, location
+      photos) through a **Vector Index Search** against public patent
+      and design registries (WIPO, USPTO) to issue a brand/work
+      visual-similarity alert.
 
-    - Convierte texto plano (PDF, Fountain, Final Draft) en eventos
-      clasificados según la taxonomía de los 6 derechos.
+3.  **Audio Analysis Module (Fingerprinting):**
 
-2.  **Visión por Computadora (CV Engine):**
-
-    - Procesa adjuntos de imágenes (vestuario, storyboard, fotos de
-      locación) mediante un **Vector Index Search** contra registros
-      públicos de patentes y diseños (WIPO, USPTO) para emitir una
-      alerta de similitud visual de marca/obra.
-
-3.  **Módulo de Análisis de Audio (Fingerprinting):**
-
-    - Analiza maquetas o audios de prueba subidos para clasificar si
-      coincide con fonogramas en bases de datos comerciales (vía ID de
-      audio) o si es una obra limpia para cesión original.
+    - Analyzes uploaded demos or test audio to classify whether it
+      matches phonograms in commercial databases (via audio ID) or
+      whether it is a clean work for original assignment.
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-**Motor de Procedibilidad Territorial (Orquestador por País)**
+**Territorial Actionability Engine (Country Orchestrator)**
 
-## **1. Lógica Global: Cómo Procede la IA según el Derecho Detectado**
+## **1. Global Logic: How the AI Proceeds Based on the Detected Right**
 
-Cuando la IA extrae un evento del guion, aplica un algoritmo de árbol de
-decisión estructurado:
+When the AI extracts an event from the script, it applies a
+structured decision-tree algorithm:
 
-\[Entrada: Texto / Archivo\]
-
-│
-
-▼
-
-\[Clasificación del Evento\] ──► Categoría de IP (Música, Marca, Imagen,
-etc.)
+[Input: Text / File]
 
 │
 
 ▼
 
-\[Matriz de Titularidad\] ─────► ¿Es Propio / Obra por Encargo? OR ¿Es
-de Terceros?
+[Event Classification] ──► IP Category (Music, Brand, Image, etc.)
+
+│
+
+▼
+
+[Ownership Matrix] ─────► Is It Original / Work for Hire? OR Is It Third-Party?
 
 │
 
@@ -462,14 +357,13 @@ de Terceros?
 
 ▼ ▼
 
-\[Ruta A: Obra Propia\] \[Ruta B: Obra de Terceros\]
+[Route A: Original Work] [Route B: Third-Party Work]
 
-1\. Depósito de Obra 1. Identificar Titular / Representante
+1. Work Deposit 1. Identify Rights Holder / Representative
 
-2\. Contrato de Cesión 2. Redactar Outreach (Mail de solicitud)
+2. Assignment Agreement 2. Draft Outreach (Request Email)
 
-3\. Registro de Marca/Diseño 3. Gestionar Licencia (Sync, Brand
-Clearance, etc.)
+3. Trademark/Design Registration 3. Manage License (Sync, Brand Clearance, etc.)
 
 │ │
 
@@ -479,416 +373,404 @@ Clearance, etc.)
 
 ▼
 
-\[Salida en Compliance Tracker\]
+[Output to Compliance Tracker]
 
-(Porcentaje de avance + Semáforo)
+(Progress Percentage + Traffic-Light Status)
 
-## **2. Marco Territorial Extendido: Organismos, Leyes y Flujos de Procedibilidad (10 Países)** 
+## **2. Extended Territorial Framework: Bodies, Laws, and Actionability Workflows (10 Countries)**
 
-A continuación se detalla cómo la IA procesa cada una de las 10
-jurisdicción determinadas según el mapa institucional, las leyes
-locales, las Sociedades de Gestión Colectiva (SGC) y los flujos de
-contacto:
+Below is a detailed description of how the AI processes each of the
+10 defined jurisdictions according to the institutional map, local
+laws, Collective Management Societies (CMS), and outreach workflows:
 
 ### **1. ARGENTINA 🇦🇷**
 
-**Marco Normativo Clave**
+**Key Regulatory Framework**
 
-- **Ley N° 11.723** (Régimen Legal de la Propiedad Intelectual).
+- **Law No. 11,723** (Legal Framework for Intellectual Property).
 
-- **Ley N° 22.362** (Marcas y Designaciones).
+- **Law No. 22,362** (Trademarks and Designations).
 
-- **Código Civil y Comercial de la Nación (Art. 53):** Derecho a la
-  imagen y voz.
+- **National Civil and Commercial Code (Art. 53):** Right to image
+  and voice.
 
-**Organismos Oficiales de Registro y Depósito**
+**Official Registration and Deposit Bodies**
 
-- **DNDA (Dirección Nacional del Derecho de Autor):** Registro de
-  guiones inéditos/publicados, obras musicales y contratos de producción
-  audiovisual.
+- **DNDA (National Copyright Directorate):** Registration of
+  unpublished/published scripts, musical works, and audiovisual
+  production contracts.
 
-  - *Acceso:* Portal de Trámites a Distancia (TAD) /
-    info_dnda@jus.gov.ar.
+  - *Access:* Remote Procedures Portal (TAD) / info_dnda@jus.gov.ar.
 
-- **INPI (Instituto Nacional de la Propiedad Industrial):** Registro de
-  marcas de la película/serie, personajes o elementos de merchandising.
+- **INPI (National Institute of Industrial Property):** Registration
+  of trademarks for the film/series, characters, or merchandising
+  elements.
 
-  - *Acceso:* Portal Trámites INPI (con Clave Fiscal AFIP).
+  - *Access:* INPI Procedures Portal (using AFIP tax ID / Clave
+    Fiscal).
 
-**Sociedades de Gestión Colectiva (SGC) y Actores**
+**Collective Management Societies (CMS) and Actors**
 
-- **SADAIC (Música - Compositores/Editores):** Licencias de
-  sincronización y ejecución pública.
+- **SADAIC (Music – Composers/Publishers):** Synchronization and
+  public performance licenses.
 
-  - *Contacto:* sadaic.org.ar \| Dpto. de Sincronizaciones.
+  - *Contact:* sadaic.org.ar | Synchronization Department.
 
-- **AADI-CAPIF (Música - Intérpretes y Productores Fonográficos):**
-  Liquidación de derechos sobre fonogramas.
+- **AADI-CAPIF (Music – Performers and Phonogram Producers):**
+  Settlement of phonogram rights.
 
-  - *Gestión de ISRC:* CAPIF emite el código de identificación de
-    grabaciones (isrc@capif.org.ar).
+  - *ISRC Management:* CAPIF issues the recording identification code
+    (isrc@capif.org.ar).
 
-- **SAGAI (Sociedad Argentina de Gestión de Actores Intérpretes):**
-  Gestión de derechos de imagen/interpretación de actores.
+- **SAGAI (Argentine Society for the Management of Performing
+  Actors):** Management of actors' image/performance rights.
 
-  - *Contacto:* sagai.org.ar.
+  - *Contact:* sagai.org.ar.
 
-- **AAA (Asociación Argentina de Actores):** Homologación de contratos
-  de talento y releases de imagen.
+- **AAA (Argentine Actors Association):** Approval of talent
+  contracts and image releases.
 
-- **DAC (Directores Argentinos Cinematográficos):** Gestión de derechos
-  de autor de directores audiovisuales.
+- **DAC (Argentine Film Directors):** Management of audiovisual
+  directors' copyright.
 
-### **2. ESTADOS UNIDOS 🇺🇸**
+### **2. UNITED STATES 🇺🇸**
 
-**Marco Normativo Clave**
+**Key Regulatory Framework**
 
-- **U.S. Code Title 17 (Copyright Law):** Doctrina de *Fair Use*
-  (Section 107) y *Work Made for Hire* (Section 101).
+- **U.S. Code Title 17 (Copyright Law):** *Fair Use* doctrine
+  (Section 107) and *Work Made for Hire* (Section 101).
 
-- **Lanham Act (Trademark Law):** Registro y protección comercial de
-  marcas.
+- **Lanham Act (Trademark Law):** Registration and commercial
+  protection of trademarks.
 
-- **Right of Publicity (Leyes estatales, ej. California Civil Code §
-  3344):** Uso comercial de nombre, voz e imagen.
+- **Right of Publicity (State laws, e.g., California Civil Code §
+  3344):** Commercial use of name, voice, and likeness.
 
-**Organismos Oficiales de Registro y Depósito**
+**Official Registration and Deposit Bodies**
 
-- **U.S. Copyright Office (USCO):** Registro oficial de guiones,
-  composiciones y obras audiovisuales terminadas.
+- **U.S. Copyright Office (USCO):** Official registration of scripts,
+  compositions, and completed audiovisual works.
 
-  - *Acceso:* copyright.gov (Sistema eCO).
+  - *Access:* copyright.gov (eCO System).
 
-- **USPTO (United States Patent and Trademark Office):** Registro de
-  marcas, títulos y logotipos de franquicias.
+- **USPTO (United States Patent and Trademark Office):** Registration
+  of trademarks, titles, and franchise logos.
 
-  - *Acceso:* uspto.gov.
+  - *Access:* uspto.gov.
 
-**Sociedades de Gestión Colectiva (SGC) y Sindicatos (Guilds)**
+**Collective Management Societies (CMS) and Guilds**
 
-- **Música (Publishing & Performance):** ASCAP, BMI, SESAC. (Búsqueda
-  unificada en base de datos *Songview* para hallar editoriales).
+- **Music (Publishing & Performance):** ASCAP, BMI, SESAC. (Unified
+  search via the *Songview* database to locate publishers).
 
-- **Música (Master Licensing):** SoundExchange (derechos digitales de
-  fonogramas) y sellos *Majors* (Universal, Sony, Warner).
+- **Music (Master Licensing):** SoundExchange (digital phonogram
+  rights) and *Major* labels (Universal, Sony, Warner).
 
-- **SAG-AFTRA:** Sindicato de actores (Validación de *Talent Release
-  Forms* bajo convenios sindicales).
+- **SAG-AFTRA:** Actors' union (validation of *Talent Release Forms*
+  under union agreements).
 
-- **WGA / DGA (Writers/Directors Guild of America):** Regulación de la
-  cadena de titulación (*Chain of Title*) de guionistas y directores.
+- **WGA / DGA (Writers/Directors Guild of America):** Regulation of
+  the *Chain of Title* for writers and directors.
 
-### **3. ESPAÑA / UNIÓN EUROPEA 🇪🇸 🇪🇺**
+### **3. SPAIN / EUROPEAN UNION 🇪🇸 🇪🇺**
 
-**Marco Normativo Clave**
+**Key Regulatory Framework**
 
-- **Real Decreto Legislativo 1/1996:** Ley de Propiedad Intelectual de
-  España.
+- **Royal Legislative Decree 1/1996:** Spain's Intellectual Property
+  Law.
 
-- **Directiva (UE) 2019/790:** Mercado Único Digital y licencias de
-  contenido.
+- **Directive (EU) 2019/790:** Digital Single Market and content
+  licensing.
 
-- **Ley Orgánica 1/1982:** Protección civil del derecho al honor, la
-  intimidad y la propia imagen.
+- **Organic Law 1/1982:** Civil protection of the right to honor,
+  privacy, and one's own image.
 
-**Organismos Oficiales de Registro y Depósito**
+**Official Registration and Deposit Bodies**
 
-- **Registro de la Propiedad Intelectual (Ministerio de Cultura):**
-  Inscripción formal de guiones y producciones.
+- **Intellectual Property Registry (Ministry of Culture):** Formal
+  registration of scripts and productions.
 
-  - *Acceso:* Portal del Ministerio de Cultura de España.
+  - *Access:* Spain's Ministry of Culture Portal.
 
-- **OEPM / EUIPO:** Registro de marcas nacional (oepm.es) y comunitario
-  europeo (euipo.europa.eu).
+- **OEPM / EUIPO:** National trademark registration (oepm.es) and
+  EU-wide registration (euipo.europa.eu).
 
-**Sociedades de Gestión Colectiva (SGC) y Entidades**
+**Collective Management Societies (CMS) and Entities**
 
-- **SGAE:** Autorizaciones de sincronización musical y repertorio
-  audiovisual/dramático.
+- **SGAE:** Music synchronization authorizations and
+  audiovisual/dramatic repertoire.
 
-- **DAMA (Derechos de Autor de Medios Audiovisuales):** Gestión
-  especializada para guionistas y directores.
+- **DAMA (Audiovisual Media Copyright):** Specialized management for
+  screenwriters and directors.
 
-- **AIE:** Sociedad de Artistas Intérpretes o Ejecutantes de la música.
+- **AIE:** Society of Music Performing Artists.
 
-- **EGEDA:** Gestión de derechos de los productores audiovisuales (copia
-  privada y retransmisión).
+- **EGEDA:** Management of audiovisual producers' rights (private
+  copying and retransmission).
 
-- **AISGE:** Gestión de derechos de imagen e interpretación de actores y
-  dobladores.
+- **AISGE:** Management of image and performance rights for actors
+  and voice actors.
 
-### **4. MÉXICO 🇲🇽**
+### **4. MEXICO 🇲🇽**
 
-**Marco Normativo Clave**
+**Key Regulatory Framework**
 
-- **Ley Federal del Derecho de Autor (LFDA):** Protección de obras
-  cinematográficas y reservas de derechos.
+- **Federal Copyright Law (LFDA):** Protection of cinematographic
+  works and reservation of rights.
 
-- **Ley Federal de Protección a la Propiedad Industrial (LFPPI):** Marco
-  regulatorio de marcas y avisos comerciales.
+- **Federal Law for the Protection of Industrial Property (LFPPI):**
+  Regulatory framework for trademarks and commercial notices.
 
-**Organismos Oficiales de Registro y Depósito**
+**Official Registration and Deposit Bodies**
 
-- **INDAUTOR (Instituto Nacional del Derecho de Autor):** Registro de
-  obras literarias/guiones y *Reservas de Derechos al Uso Exclusivo*
-  (títulos y personajes).
+- **INDAUTOR (National Copyright Institute):** Registration of
+  literary works/scripts and *Reservations of Rights for Exclusive
+  Use* (titles and characters).
 
-  - *Acceso:* indautor.gob.mx.
+  - *Access:* indautor.gob.mx.
 
-- **IMPI (Instituto Mexicano de la Propiedad Industrial):** Registro de
-  marcas asociadas al proyecto.
+- **IMPI (Mexican Institute of Industrial Property):** Registration
+  of trademarks associated with the project.
 
-  - *Acceso:* gob.mx/impi.
+  - *Access:* gob.mx/impi.
 
-**Sociedades de Gestión Colectiva (SGC) y Sindicatos**
+**Collective Management Societies (CMS) and Unions**
 
-- **SACM (Sociedad de Autores y Compositores de México):** Licencias de
-  sincronización y ejecución musical.
+- **SACM (Mexican Society of Authors and Composers):**
+  Synchronization and music performance licenses.
 
-- **ANDI (Asociación Nacional de Intérpretes):** Derechos de imagen e
-  interpretación de actores en pantalla.
+- **ANDI (National Association of Performers):** Image and
+  performance rights for on-screen actors.
 
-- **SOMEREC:** Licencias sobre fonogramas (derecho de máster).
+- **SOMEREC:** Phonogram licenses (master rights).
 
-- **STPC / ANDA:** Sindicato de Trabajadores de la Producción
-  Cinematográfica y Asociación Nacional de Actores (homologación de
-  contratos).
+- **STPC / ANDA:** Film Production Workers' Union and National Actors
+  Association (contract approval).
 
-### **5. CANADÁ 🇨🇦**
+### **5. CANADA 🇨🇦**
 
-**Marco Normativo Clave**
+**Key Regulatory Framework**
 
-- **Copyright Act (R.S.C., 1985, c. C-42):** Regula derechos de autor y
-  derechos morales inalienables.
+- **Copyright Act (R.S.C., 1985, c. C-42):** Governs copyright and
+  inalienable moral rights.
 
-- **Trademarks Act (R.S.C., 1985, c. T-13):** Protección de marcas y
-  propiedad industrial.
+- **Trademarks Act (R.S.C., 1985, c. T-13):** Protection of
+  trademarks and industrial property.
 
-**Organismos Oficiales de Registro y Depósito**
+**Official Registration and Deposit Bodies**
 
-- **CIPO (Canadian Intellectual Property Office):** Depósito y registro
-  oficial de Copyright y Marcas.
+- **CIPO (Canadian Intellectual Property Office):** Official deposit
+  and registration of Copyright and Trademarks.
 
-  - *Acceso:* ic.gc.ca/cipo.
+  - *Access:* ic.gc.ca/cipo.
 
-**Sociedades de Gestión Colectiva (SGC) y Sindicatos**
+**Collective Management Societies (CMS) and Unions**
 
 - **SOCAN (Society of Composers, Authors and Music Publishers of
-  Canada):** Gestión de licencias musicales.
+  Canada):** Management of music licenses.
 
-- **ACTRA (Alliance of Canadian Cinema, Television and Radio Artists):**
-  Sindicato que regula el uso de imagen y tarifas de talentos.
+- **ACTRA (Alliance of Canadian Cinema, Television and Radio
+  Artists):** Union regulating the use of talent image and rates.
 
-- **CMPA (Canadian Media Producers Association):** Estandarización de
-  contratos de cadena de titulación para producciones locales e
-  internacionales.
+- **CMPA (Canadian Media Producers Association):** Standardization of
+  chain-of-title contracts for local and international productions.
 
-### **6. FRANCIA 🇫🇷**
+### **6. FRANCE 🇫🇷**
 
-**Marco Normativo Clave**
+**Key Regulatory Framework**
 
-- **Code de la Propriété Intellectuelle (CPI):** Énfasis estricto en los
-  Derechos Morales inalienables e imprescriptibles del creador.
+- **Code de la Propriété Intellectuelle (CPI):** Strict emphasis on
+  the creator's inalienable and imprescriptible Moral Rights.
 
-- **Loi n° 78-17 (Informatique et Libertés):** Protección de datos e
-  imagen personal.
+- **Loi n° 78-17 (Informatique et Libertés):** Protection of personal
+  data and image.
 
-**Organismos Oficiales de Registro y Depósito**
+**Official Registration and Deposit Bodies**
 
-- **CNC (Centre National du Cinéma et de l\'image animée):** Registre
-  Public de l\'Audiovisuel (RPA) para inscribir contratos de producción
-  y cadena de titulación.
+- **CNC (Centre National du Cinéma et de l'image animée):** Registre
+  Public de l'Audiovisuel (RPA) for recording production contracts and
+  chain of title.
 
-- **INPI (Institut National de la Propriété Industrielle):** Registro de
-  marcas y diseños industriales (inpi.fr).
+- **INPI (Institut National de la Propriété Industrielle):**
+  Registration of trademarks and industrial designs (inpi.fr).
 
-**Sociedades de Gestión Colectiva (SGC)**
+**Collective Management Societies (CMS)**
 
-- **SACEM (Société des Auteurs, Compositeurs et Éditeurs de Musique):**
-  Licencias de sincronización musical.
+- **SACEM (Société des Auteurs, Compositeurs et Éditeurs de
+  Musique):** Music synchronization licenses.
 
-- **SACD (Société des Auteurs et Compositeurs Dramatiques):** Gestión de
-  autoría en guiones, dirección y textos dramáticos.
+- **SACD (Société des Auteurs et Compositeurs Dramatiques):**
+  Management of authorship for scripts, direction, and dramatic
+  texts.
 
-- **ADAMI / SPEDIDAM:** Gestión de derechos conexos para actores,
-  performers y músicos ejecutantes.
+- **ADAMI / SPEDIDAM:** Management of related rights for actors,
+  performers, and performing musicians.
 
-- **PROCIREP:** Entidad de protección de los derechos de los productores
-  cinematográficos y audiovisuales.
+- **PROCIREP:** Entity protecting the rights of film and audiovisual
+  producers.
 
-### **7. REINO UNIDO 🇬🇧**
+### **7. UNITED KINGDOM 🇬🇧**
 
-**Marco Normativo Clave**
+**Key Regulatory Framework**
 
-- **Copyright, Designs and Patents Act 1988 (CDPA):** Marco legal de
-  derechos de autor, *Design Rights* y excepciones.
+- **Copyright, Designs and Patents Act 1988 (CDPA):** Legal framework
+  for copyright, *Design Rights*, and exceptions.
 
-- **Trade Marks Act 1994:** Ley de marcas comerciales.
+- **Trade Marks Act 1994:** Trademark law.
 
-**Organismos Oficiales de Registro y Depósito**
+**Official Registration and Deposit Bodies**
 
-- **UK IPO (Intellectual Property Office):** Registro formal de Marcas y
-  Diseños (gov.uk/ipo). *Nota: En el UK no existe un registro estatal de
-  Copyright; el derecho nace con la creación, exigiendo evidencia de
-  depósito privado.*
+- **UK IPO (Intellectual Property Office):** Formal registration of
+  Trademarks and Designs (gov.uk/ipo). *Note: The UK has no state
+  copyright registry; the right arises upon creation, requiring
+  evidence of private deposit.*
 
-**Sociedades de Gestión Colectiva (SGC) y Sindicatos**
+**Collective Management Societies (CMS) and Unions**
 
 - **PRS for Music / MCPS (Mechanical-Copyright Protection Society):**
-  Licencias mecánicas y de sincronización musical.
+  Mechanical and music synchronization licenses.
 
-- **PPL (Phonographic Performance Limited):** Licenciamiento de
-  grabaciones de audio (máster).
+- **PPL (Phonographic Performance Limited):** Licensing of audio
+  recordings (master).
 
-- **Equity UK:** Sindicato de actores para la firma de *Talent Release
-  Agreements* y acuerdos de imagen.
+- **Equity UK:** Actors' union for signing *Talent Release
+  Agreements* and image agreements.
 
 ### **8. INDIA 🇮🇳**
 
-**Marco Normativo Clave**
+**Key Regulatory Framework**
 
-- **The Copyright Act, 1957 (Enmiendas de 2012):** Regula los derechos
-  de compositores, guionistas y productores.
+- **The Copyright Act, 1957 (2012 Amendments):** Governs the rights
+  of composers, screenwriters, and producers.
 
-- **The Trade Marks Act, 1999:** Protección de nombres comerciales y
-  títulos.
+- **The Trade Marks Act, 1999:** Protection of trade names and
+  titles.
 
-**Organismos Oficiales de Registro y Depósito**
+**Official Registration and Deposit Bodies**
 
-- **Copyright Office India:** Registro nacional de guiones y obras
-  cinematográficas (copyright.gov.in).
+- **Copyright Office India:** National registration of scripts and
+  cinematographic works (copyright.gov.in).
 
-- **CGPDTM (IP India):** Registro de marcas y propiedad industrial
-  (ipindia.gov.in).
+- **CGPDTM (IP India):** Registration of trademarks and industrial
+  property (ipindia.gov.in).
 
-**Sociedades de Gestión Colectiva (SGC) y Asociaciones**
+**Collective Management Societies (CMS) and Associations**
 
-- **IPRS (Indian Performing Right Society):** Administración de derechos
-  musicales y composiciones.
+- **IPRS (Indian Performing Right Society):** Administration of music
+  rights and compositions.
 
-- **PPL India:** Licencias de productoras de fonogramas.
+- **PPL India:** Licenses for phonogram producers.
 
-- **CINTAA (Cine and TV Artistes\' Association):** Regulación de
-  contratos y releases de imagen de talentos e intérpretes.
+- **CINTAA (Cine and TV Artistes' Association):** Regulation of
+  contracts and image releases for talent and performers.
 
-### **9. BRASIL 🇧🇷**
+### **9. BRAZIL 🇧🇷**
 
-**Marco Normativo Clave**
+**Key Regulatory Framework**
 
-- **Lei de Direitos Autorais (Lei Nº 9.610/98):** Regula los derechos de
-  autor y conexos.
+- **Lei de Direitos Autorais (Law No. 9,610/98):** Governs copyright
+  and related rights.
 
-- **Lei de Propriedade Industrial (Lei Nº 9.279/96):** Marcas y
-  expresiones de propaganda.
+- **Lei de Propriedade Industrial (Law No. 9,279/96):** Trademarks
+  and advertising expressions.
 
-**Organismos Oficiales de Registro y Depósito**
+**Official Registration and Deposit Bodies**
 
-- **EDA (Escritório de Direitos Autorais - Biblioteca Nacional):**
-  Registro oficial de guiones e historias inéditas (bn.gov.br).
+- **EDA (Copyright Office – National Library):** Official
+  registration of unpublished scripts and stories (bn.gov.br).
 
-- **INPI Brasil:** Registro de marcas de proyectos audiovisuales
-  (gov.br/inpi).
+- **INPI Brazil:** Registration of trademarks for audiovisual
+  projects (gov.br/inpi).
 
-**Sociedades de Gestión Colectiva (SGC) y Sindicatos**
+**Collective Management Societies (CMS) and Unions**
 
-- **ECAD (Escritório Central de Arrecadação e Distribuição):** Ente
-  unificado de recaudación de derechos musicales.
+- **ECAD (Central Office for Collection and Distribution):** Unified
+  body for collecting music rights.
 
-- **ABRAMUS / UBC:** Sociedades de autores musicales vinculadas al ECAD
-  para licencias de sincronización.
+- **ABRAMUS / UBC:** Music authors' societies affiliated with ECAD
+  for synchronization licenses.
 
-- **SATED:** Sindicato de Artistas e Técnicos em Espectáculos de
-  Diversões (Releases de imagen y convenios de trabajo por estado).
+- **SATED:** Union of Entertainment Artists and Technicians (image
+  releases and state-level labor agreements).
 
-### **10. COREA DEL SUR 🇰🇷**
+### **10. SOUTH KOREA 🇰🇷**
 
-**Marco Normativo Clave**
+**Key Regulatory Framework**
 
-- **Copyright Act of Korea (Act No. 14083):** Regula la protección de
-  obras audiovisuales, musicales y *Webtoons*.
+- **Copyright Act of Korea (Act No. 14083):** Governs the protection
+  of audiovisual and musical works and *Webtoons*.
 
-- **Trademark Act:** Protección de signos distintivos y marcas.
+- **Trademark Act:** Protection of distinctive signs and trademarks.
 
-**Organismos Oficiales de Registro y Depósito**
+**Official Registration and Deposit Bodies**
 
-- **KCC (Korea Copyright Commission):** Registro oficial de guiones y
-  obras audiovisuales (copyright.or.kr).
+- **KCC (Korea Copyright Commission):** Official registration of
+  scripts and audiovisual works (copyright.or.kr).
 
-- **KIPO (Korean Intellectual Property Office):** Registro de marcas y
-  merchandising (kipo.go.kr).
+- **KIPO (Korean Intellectual Property Office):** Registration of
+  trademarks and merchandising (kipo.go.kr).
 
-**Sociedades de Gestión Colectiva (SGC) y Asociaciones**
+**Collective Management Societies (CMS) and Associations**
 
-- **KOMCA (Korea Music Copyright Association):** Licenciamiento de
-  composiciones musicales.
+- **KOMCA (Korea Music Copyright Association):** Licensing of musical
+  compositions.
 
-- **FKMP (Federation of Korean Music Performers):** Gestión de derechos
-  de ejecutantes e intérpretes.
+- **FKMP (Federation of Korean Music Performers):** Management of
+  performers' rights.
 
-- **KAA (Korean Actors Association):** Regulación de liberaciones de
-  derechos de imagen y voz en producciones independientes.
+- **KAA (Korean Actors Association):** Regulation of image and voice
+  rights releases in independent productions.
 
-Esta matriz estructurada es el motor que consultará la IA para generar
-el **Compliance Tracker**, adaptando automáticamente las recomendaciones
-y los borradores de contacto según el territorio seleccionado.
+This structured matrix is the engine the AI will query to generate
+the **Compliance Tracker**, automatically adapting recommendations and
+outreach drafts according to the selected territory.
 
-## **3. Lógica de Búsqueda de Titulares y Generación de *Outreach***
+## **3. Rights-Holder Lookup Logic and Outreach Generation**
 
-Cuando la IA detecta una obra protegida de un tercero (ej: una canción o
-una marca), ejecuta las siguientes tres fases:
+When the AI detects a protected third-party work (e.g., a song or a
+trademark), it executes the following three phases:
 
-### **Fase 1: Rastrear al Titular de Derechos (*Rights Holder Lookup*)**
+### **Phase 1: Trace the Rights Holder (*Rights Holder Lookup*)**
 
-- **Para Música:** La IA consulta las APIs públicas de las entidades
-  correspondientes (ASCAP/BMI Songview en EE.UU., SADAIC en Argentina,
-  ISWC Network) para identificar al *Music Publisher* (editorial) y la
-  *Record Label* (dueño del máster).
+- **For Music:** The AI queries the public APIs of the relevant
+  entities (ASCAP/BMI Songview in the US, SADAIC in Argentina, the
+  ISWC Network) to identify the *Music Publisher* and the *Record
+  Label* (master owner).
 
-- **Para Marcas:** La IA consulta bases de datos de marcas globales
-  (WIPO Global Brand Database, TMView) para ubicar la razón social
-  oficial y el apoderado legal registrado.
+- **For Trademarks:** The AI queries global trademark databases (WIPO
+  Global Brand Database, TMView) to locate the official company name
+  and the registered legal representative.
 
-### **Fase 2: Redacción Automática de Comunicaciones (*Outreach Templates*)**
+### **Phase 2: Automatic Drafting of Communications (*Outreach Templates*)**
 
-La IA genera automáticamente el borrador de correo personalizado según
-el caso.
+The AI automatically generates a personalized email draft based on
+the case.
 
-Plaintext
+```
+SUBJECT: Music Synchronization License Request – Audiovisual Production "[Project Name]"
 
-ASUNTO: Solicitud de Licencia de Sincronización Musical - Producción
-Audiovisual \"\[Nombre del Proyecto\]\"
+Dear [Publisher Name / Label / Legal Contact]:
 
-Estimados \[Nombre de la Editorial / Sellos / Contacto Legal\]:
+We are writing on behalf of [Production Company Name] regarding the audiovisual project titled "[Project Name]", directed by [Director Name].
 
-Por medio de la presente, nos contactamos en nombre de la productora
-\[Nombre de la Productora\] en relación con el proyecto audiovisual
-titulado \"\[Nombre del Proyecto\]\", dirigido por \[Nombre del
-Director\].
+We would like to request use authorization / a Synchronization License for the musical work described below:
 
-Deseamos solicitar la autorización de uso / Licencia de Sincronización
-para la obra musical descrita a continuación:
+- Title of the work: [Song Name]
+- Author/Composer: [Name]
+- Intended use: [Scene description – e.g., background music on the radio, 15-second duration]
+- Territory: [Worldwide / Regional]
+- Media: [Film, Streaming, TV, Festivals]
 
-\- Título de la obra: \[Nombre de la Canción\]
+We would appreciate it if you could indicate the formal procedure and the fees/quote for issuing the corresponding license.
 
-\- Autor/Compositor: \[Nombre\]
+Sincerely,
 
-\- Uso previsto: \[Descripción de la escena - ej: Música de fondo en
-radio, duración 15 segundos\]
+[Producer Name / Legal Department]
+```
 
-\- Territorio: \[Mundial / Regional\]
+### **Phase 3: Assignment to the Compliance Tracker (Dashboard)**
 
-\- Medios: \[Cine, Streaming, TV, Festivales\]
-
-Agradecemos nos indiquen el procedimiento formal y los
-aranceles/cotización para la emisión de la licencia correspondiente.
-
-Atentamente,
-
-\[Nombre del Productor / Área Legal\]
-
-### **Fase 3: Asignación al Compliance Tracker (Dashboard)**
-
-El evento se registra en la base de datos de la plataforma en estado
-**En Proceso (🟡)** hasta que el usuario adjunta el contrato o
-comprobante de pago firmado, momento en que la IA valida el documento y
-el tracker cambia a **Completado (🟢 100%)**.
+The event is recorded in the platform's database with status **In
+Progress (🟡)** until the user attaches the signed contract or proof
+of payment, at which point the AI validates the document and the
+tracker changes to **Completed (🟢 100%)**.

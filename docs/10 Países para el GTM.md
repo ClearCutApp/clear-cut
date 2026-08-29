@@ -1,328 +1,231 @@
-El punto de equilibrio ideal para la comercialización de este SaaS son
-los mercados donde **la tasa de producción por año es muy alta**, pero
-el volumen principal proviene de **casas productoras pequeñas/medianas
-(PyMEs), realizadores independientes y firmas de contenido digital o
-videojuegos**, quienes no cuentan con departamentos jurídicos
-permanentes de *Clearance* y E&O (*Errors and Omissions*).
+The ideal sweet spot for commercializing this SaaS is markets where
+**the annual production rate is very high**, but the bulk of the
+volume comes from **small/medium production houses (SMEs), independent
+filmmakers, and digital content or video game firms**, who don't have
+permanent legal *Clearance* and E&O (*Errors and Omissions*)
+departments.
 
-Los 10 países más atractivos comercialmente para vender esta plataforma
-están distribuidos según su perfil de producción y viabilidad de
-mercado.
+The 10 most commercially attractive countries for selling this
+platform are laid out according to their production profile and
+market viability.
 
-### **1. Estados Unidos (Sector Indie & Micro-budget) 🇺🇸**
+### **1. United States (Indie & Micro-budget Sector) 🇺🇸**
 
-- **Por qué es clave:** Es el mercado con mayor conciencia de protección
-  legal y requisito estricto de seguros E&O (*Errors and Omissions*).
-  Aunque Hollywood tiene grandes estudios, la escena independiente
-  (Sundance, SXSW, producciones micro-budget) representa miles de
-  películas, series web y videojuegos al año.
+- **Why it's key:** It's the market with the greatest awareness of
+  legal protection and the strictest E&O (*Errors and Omissions*)
+  insurance requirements. While Hollywood has major studios, the
+  independent scene (Sundance, SXSW, micro-budget productions)
+  accounts for thousands of films, web series, and video games every
+  year.
 
-- **Característica:** Alto poder adquisitivo, disposición inmediata a
-  pagar por software (SaaS) y una cultura legal obsesionada con evitar
-  demandas por derechos de autor o marcas.
+- **Characteristic:** High purchasing power, immediate willingness to
+  pay for software (SaaS), and a legal culture obsessed with avoiding
+  copyright or trademark lawsuits.
 
-### **2. Canadá 🇨🇦**
+### **2. Canada 🇨🇦**
 
-- **Por qué es clave:** Es uno de los hubs de producción audiovisual
-  independientes más grandes del mundo gracias a sus generosos
-  incentivos fiscales (*tax credits*).
+- **Why it's key:** It's one of the largest independent audiovisual
+  production hubs in the world, thanks to its generous tax incentives
+  (*tax credits*).
 
-- **Característica:** Concentra cientos de productoras pequeñas/medianas
-  de servicios de producción y coproducción internacional (en ciudades
-  como Vancouver, Toronto y Montreal). Valoran mucho la eficiencia
-  operativa y el cumplimiento de requisitos internacionales de
-  exportación de contenido.
+- **Characteristic:** Home to hundreds of small/medium production and
+  international co-production service companies (in cities like
+  Vancouver, Toronto, and Montreal). They place high value on
+  operational efficiency and compliance with international content
+  export requirements.
 
-### **3. España 🇪🇸**
+### **3. Spain 🇪🇸**
 
-- **Por qué es clave:** España se ha consolidado como el principal *hub*
-  audiovisual de Europa del Sur. Es el país de la Unión Europea con
-  mayor cantidad de películas producidas por año, sustentado por una red
-  masiva de pequeñas productoras independientes y financiamiento
-  mediante subvenciones europeas/estatales (que exigen rigurosidad en la
-  cadena de titulación de derechos).
+- **Why it's key:** Spain has established itself as the leading
+  audiovisual hub of Southern Europe. It's the European Union country
+  with the highest number of films produced per year, backed by a
+  massive network of small independent production companies and
+  financing through European/state grants (which demand rigor in the
+  chain of title for rights).
 
-- **Característica:** Gran mercado para la venta en español, excelente
-  puerta de entrada hacia toda la Unión Europea.
+- **Characteristic:** A large market for Spanish-language sales and an
+  excellent gateway into the entire European Union.
 
-### **4. México 🇲🇽**
+### **4. Mexico 🇲🇽**
 
-- **Por qué es clave:** Es la potencia de producción cinematográfica y
-  audiovisual de Hispanoamérica, ubicándose de forma consistente en el
-  Top 10 global de cantidad de largometrajes y series por año.
+- **Why it's key:** It's the film and audiovisual production
+  powerhouse of Latin America, consistently ranking in the global Top
+  10 for number of feature films and series produced per year.
 
-- **Característica:** La industria está compuesta mayoritariamente por
-  productoras independientes que buscan distribuir en plataformas de
-  *streaming* (Netflix, Prime Video, ViX), las cuales imponen auditorías
-  de IP muy estrictas para adquirir el contenido.
+- **Characteristic:** The industry is made up mostly of independent
+  production companies seeking distribution on streaming platforms
+  (Netflix, Prime Video, ViX), which impose very strict IP audits to
+  acquire content.
 
-### **5. Francia 🇫🇷**
+### **5. France 🇫🇷**
 
-- **Por qué es clave:** Es la cuna del cine de autor e independiente en
-  Europa. Cuenta con un ecosistema hiperactivo de pequeñas casas
-  productoras respaldadas por el CNC (Centre national du cinéma), donde
-  se producen cientos de proyectos al año con presupuestos ajustados.
+- **Why it's key:** It's the birthplace of auteur and independent
+  cinema in Europe. It has a hyperactive ecosystem of small production
+  houses backed by the CNC (Centre national du cinéma), producing
+  hundreds of tight-budget projects every year.
 
-- **Característica:** Alto volumen de proyectos independientes de cine,
-  cortometrajes y animación que necesitan certificar su IP de forma ágil
-  para acceder a subsidios y festivales (Cannes, Annecy).
+- **Characteristic:** A high volume of independent film, short film,
+  and animation projects that need to certify their IP quickly to
+  access subsidies and festivals (Cannes, Annecy).
 
-### **6. India (Cine Regional e Indie) 🇮🇳**
+### **6. India (Regional & Indie Cinema) 🇮🇳**
 
-- **Por qué es clave:** Es el productor mundial número 1 en volumen (más
-  de 2,500 películas al año). Si bien existen grandes sellos, la inmensa
-  mayoría de las producciones en industrias regionales (Tamil, Telugu,
-  Malayalam, Marathi) operan de forma independiente y descentralizada.
+- **Why it's key:** It's the world's #1 producer by volume (more than
+  2,500 films per year). While major studios exist, the vast majority
+  of productions in regional industries (Tamil, Telugu, Malayalam,
+  Marathi) operate independently and in a decentralized way.
 
-- **Característica:** El volumen masivo de proyectos y la necesidad
-  constante de gestionar derechos de música y talento hacen que una
-  herramienta automatizada de bajo costo por suscripción sea
-  hiperescalable.
+- **Characteristic:** The massive volume of projects and the constant
+  need to manage music and talent rights make a low-cost,
+  subscription-based automated tool highly scalable.
 
 ### **7. Argentina 🇦🇷**
 
-- **Por qué es clave:** Históricamente reconocida por su altísima
-  capacidad técnica y un volumen de producción independiente notable en
-  cine, cortometrajes y desarrollo de videojuegos (gaming indie).
+- **Why it's key:** Historically recognized for its very high
+  technical capability and a notable volume of independent production
+  in film, short films, and video game development (indie gaming).
 
-- **Característica:** Productores muy acostumbrados a la autogestión y a
-  \"hacer mucho con poco\". La plataforma les daría un estándar de
-  clearance profesional de nivel Hollywood sin tener que pagar los
-  honorarios de un bufete corporativo.
+- **Characteristic:** Producers who are very used to self-management
+  and "doing a lot with a little." The platform would give them a
+  Hollywood-grade clearance standard without having to pay a corporate
+  law firm's fees.
 
-### **8. Reino Unido (Sector Indie & Gaming) 🇬🇧**
+### **8. United Kingdom (Indie & Gaming Sector) 🇬🇧**
 
-- **Por qué es clave:** Posee una de las industrias creativas e
-  independientes más dinámicas del mundo, sumado a una industria de
-  videojuegos indie gigantesca.
+- **Why it's key:** It has one of the most dynamic creative and
+  independent industries in the world, along with a huge indie video
+  game industry.
 
-- **Característica:** Las pequeñas productoras trabajan bajo estrictos
-  marcos normativos de la BBC, Channel 4 o plataformas globales. La
-  automatización del *Clearance* les ahorra cientos de horas de gestión
-  legal antes de presentar un *pitch*.
+- **Characteristic:** Small production companies work under strict
+  BBC, Channel 4, or global platform regulatory frameworks. Clearance
+  automation saves them hundreds of hours of legal work before
+  pitching a project.
 
-### **9. Brasil 🇧🇷**
+### **9. Brazil 🇧🇷**
 
-- **Por qué es clave:** Es el gigante audiovisual de América Latina.
-  Produce un enorme volumen de contenidos independientes para TV, cine y
-  plataformas digitales, impulsado por cuotas de pantalla e incentivos
-  locales (ANCINE).
+- **Why it's key:** It's the audiovisual giant of Latin America. It
+  produces an enormous volume of independent content for TV, film, and
+  digital platforms, driven by screen quotas and local incentives
+  (ANCINE).
 
-- **Característica:** Gran masa de pequeñas productoras que requieren
-  regularizar sus IP para vender sus formatos o contenidos al mercado
-  internacional.
+- **Characteristic:** A large mass of small production companies that
+  need to get their IP in order to sell their formats or content to
+  the international market.
 
-### **10. Corea del Sur 🇰🇷**
+### **10. South Korea 🇰🇷**
 
-- **Por qué es clave:** Epicentro creativo de Asia (K-Dramas, cine
-  indie, webtoons y videojuegos). El volumen de contenido generado por
-  estudios independientes o medianos para abastecer la demanda global es
-  descomunal.
+- **Why it's key:** Asia's creative epicenter (K-Dramas, indie cinema,
+  webtoons, and video games). The volume of content generated by
+  independent or mid-sized studios to meet global demand is enormous.
 
-- **Característica:** Una industria tecnológica madura donde la adopción
-  de herramientas de IA en la preproducción es vista como un estándar
-  competitivo de eficiencia.
+- **Characteristic:** A mature tech industry where adopting AI tools
+  in pre-production is seen as a competitive efficiency standard.
 
-### **Estrategia de Lanzamiento Comercial (Go-To-Market)**
+### **Go-To-Market Strategy**
 
-1.  **Fase 1 (Mercado Hispanohablante):** España, México y Argentina
-    (para validar el modelo en español con normativas locales de
-    DNDA/INDAUTOR/OEPM).
+1.  **Phase 1 (Spanish-Speaking Market):** Spain, Mexico, and
+    Argentina (to validate the model in Spanish under local
+    DNDA/INDAUTOR/OEPM regulations).
 
-2.  **Fase 2 (Anglosajón e Indie Global):** EE.UU. (Sector Indie) y
-    Canadá (aprovechando la simplicidad de la normativa US Copyright y
-    la alta cultura de pago por software).
+2.  **Phase 2 (Anglophone & Global Indie):** the U.S. (Indie sector)
+    and Canada (leveraging the simplicity of US Copyright law and the
+    strong culture of paying for software).
 
 //////////////////////////////////////////////////////////////////
 
-Profundización del benchmark enfocada en métricas operativas y datos de
-mercado para validar la viabilidad comercial y la tracción inicial del
-SaaS.
+A deeper dive into the benchmark, focused on operational metrics and
+market data to validate the commercial viability and early traction of
+the SaaS.
 
-### **Métricas y Análisis de Mercado por País**
+### **Metrics and Market Analysis by Country**
 
-  ------------- ------------------ -------------------------------- ---------------------
-  **País /      **Productoras      **Facturación Promedio por       **Tasa de Litigios /
-  Región**      Activas (Target    Proyecto/PyME**                  Reclamos de IP (Nivel
-                PyME/Indie)**                                       de Riesgo)**
+| **Country / Region** | **Active Production Companies (Target SME/Indie)** | **Average Revenue per Project/SME** | **IP Litigation/Claims Rate (Risk Level)** |
+| --- | --- | --- | --- |
+| **1. United States** 🇺🇸 | **~25,000–30,000** (indies, shorts, commercials, indie video games). | **$100K–$3M USD** (micro-budget to mid-size indie projects). | **Critical (Very High):** Highly litigious market. E&O insurers won't issue policies without a *script clearance* report. |
+| **2. United Kingdom** 🇬🇧 | **~27,000** registered SMEs and production companies (99% bill under £5M). | **$150K–$2M USD** per independent project. | **High:** Strict regulatory rigidity from the BBC, Channel 4, and the IPO (Intellectual Property Office). Frequent trademark/music lawsuits. |
+| **3. Canada** 🇨🇦 | **~3,500–4,500** production and service houses. | **$200K–$2.5M USD** (backed by tax incentives). | **High:** High audit rate for *Chain of Title* to access regional tax credits. |
+| **4. France** 🇫🇷 | **~4,000–5,000** small independent production companies. | **€150K–€1.5M** (largely financed via the CNC). | **Medium-High:** Strong focus on *Droit d'Auteur* (author's rights). Strict penalties around authors' moral rights and music. |
+| **5. Spain** 🇪🇸 | **~6,700** audiovisual companies and production houses. | **€100K–€1M** per independent project. | **Growing (Medium):** Direct requirement from the DNDA and the ICAA for granting public aid and incentives. |
+| **6. Mexico** 🇲🇽 | **~1,200–1,400** active independent production companies. | **$50K–$500K USD** per indie/streaming project. | **Medium:** Pressure from platforms (Netflix, ViX) that require clearance to acquire catalog content. |
+| **7. Brazil** 🇧🇷 | **~3,000–4,000** small production companies (registered with ANCINE). | **$50K–$400K USD** average per local project. | **Medium:** Recurring conflicts with music collection societies (ECAD) and trademarks. |
+| **8. India** 🇮🇳 | **~15,000+** studios and independents (regional cinema). | **$20K–$300K USD** (regional indie/Tollywood/Mollywood). | **Very High:** High volume of plagiarism and copyright claims over music and scripts in local courts. |
+| **9. Argentina** 🇦🇷 | **~800–1,000** independent production companies and developers. | **$30K–$300K USD** per project. | **Medium-Low:** Few formal lawsuits, but constant distribution blocks due to SADAIC/ARGENTORES claims. |
+| **10. South Korea** 🇰🇷 | **~3,500** independent K-Content and Webtoon studios. | **$100K–$1M USD** per mid-size production. | **High:** Strong regulation around on-screen trademarks (unauthorized product placement) and OTT platforms. |
 
-  **1. Estados  **\~25,000 --      **\$100K -- \$3M USD**           **Crítica (Muy
-  Unidos** 🇺🇸   30,000** (Indies,  (Proyectos micro-budget a indie  Alta):** Mercado
-                cortos, comercial, medio).                          hiperlitigioso. Las
-                videojuegos                                         aseguradoras de E&O
-                indie).                                             no emiten pólizas sin
-                                                                    informe de *script
-                                                                    clearance*.
+### **Key Points on Risk and Litigation Analysis**
 
-  **2. Reino    **\~27,000** pymes **\$150K -- \$2M USD** por       **Alta:** Rigidez
-  Unido** 🇬🇧    y productoras      proyecto independiente.          normativa de BBC,
-                registradas (99%                                    Channel 4 e INP
-                facturan \<£5M).                                    (Intellectual
-                                                                    Property Office).
-                                                                    Demandas por
-                                                                    marcas/música
-                                                                    frecuentes.
+- **The E&O (Errors & Omissions) Insurance "Bottleneck":** In the US,
+  Canada, and the UK, no film or series gets distributed in theaters
+  or on streaming without E&O insurance. To secure this insurance, a
+  lawyer charges between **$3,000 and $10,000 USD** just to review the
+  script (*script clearance report*). Your SaaS automates 80% of that
+  process at a fraction of the cost.
 
-  **3. Canadá** **\~3,500 --       **\$200K -- \$2.5M USD**         **Alta:** Alta tasa
-  🇨🇦            4,500** casas de   (apoyado en incentivos           de auditoría por
-                producción y       fiscales).                       *Chain of Title* para
-                servicios.                                          acceder a créditos
-                                                                    fiscales regionales.
+- **Most Frequent Claims in the Industry:**
 
-  **4.          **\~4,000 --       **€150K -- €1.5M** (gran parte   **Media-Alta:**
-  Francia** 🇫🇷  5,000** pequeñas   financiado vía CNC).             Fuerte enfoque en
-                productoras                                         *Droit d'Auteur*.
-                independientes.                                     Sanciones estrictas
-                                                                    por derechos morales
-                                                                    de autores y música.
+  1.  **Music (40% of claims):** Unauthorized use of background
+      compositions or background chords.
 
-  **5. España** **\~6,700**        **€100K -- €1M** por proyecto    **Creciente
-  🇪🇸            empresas y         independiente.                   (Media):** Requisito
-                productoras                                         directo de la DNDA y
-                audiovisuales.                                      el ICAA para la
-                                                                    concesión de ayudas
-                                                                    públicas e
-                                                                    incentivos.
+  2.  **Trademarks (25%):** Visibility of unauthorized logos (e.g., a
+      car or a beverage brand in shot).
 
-  **6. México** **\~1,200 --       **\$50K -- \$500K USD** por      **Media:** Presión
-  🇲🇽            1,400**            proyecto indie/streaming.        ejercida por
-                productoras                                         plataformas (Netflix,
-                independientes                                      ViX) que exigen
-                activas.                                            *clearance* para
-                                                                    comprar catálogo.
+  3.  **Likeness Rights and Real People (20%):** Character names that
+      match real people, or use of private locations without a
+      *location release*.
 
-  **7. Brasil** **\~3,000 --       **\$50K -- \$400K USD** promedio **Media:** Conflictos
-  🇧🇷            4,000** pequeñas   por proyecto local.              recurrentes con
-                productoras                                         entidades de
-                (registradas en                                     recaudación de música
-                ANCINE).                                            (ECAD) y marcas
-                                                                    comerciales.
+  4.  **Intellectual Property / Background Symbols (15%):** Paintings,
+      books, posters, or sculptures that appear on the set.
 
-  **8. India**  **\~15,000+**      **\$20K -- \$300K USD** (Indie   **Muy Alta:** Alto
-  🇮🇳            sellos e           regional/Tollywood/Mollywood).   volumen de plagio y
-                independientes                                      reclamos por derechos
-                (cine regional).                                    de autor de música y
-                                                                    guiones en tribunales
-                                                                    locales.
+### **Average Costs of Claims and Defending IP**
 
-  **9.          **\~800 -- 1,000** **\$30K -- \$300K USD** por      **Media-Baja:** Pocos
-  Argentina**   productoras        proyecto.                        juicios formales,
-  🇦🇷            independientes y                                    pero bloqueo
-                desarrolladores.                                    constante de
-                                                                    distribución por
-                                                                    reclamos de
-                                                                    SADAIC/ARGENTORES.
+An IP lawsuit in a US federal court costs on average **between
+$75,000 and $350,000 USD** before reaching trial, and can escalate to
+**more than $1.4M USD** if it goes to a full trial. As a result, more
+than 90% of cases are resolved through out-of-court settlements.
 
-  **10. Corea   **\~3,500**        **\$100K -- \$1M USD** por       **Alta:** Fuerte
-  del Sur** 🇰🇷  estudios           producción mediana.              regulación en marcas
-                independientes de                                   comerciales en
-                K-Content y                                         pantalla (*product
-                Webtoons.                                           placement* no
-                                                                    autorizado) y
-                                                                    plataformas OTT.
-  ------------- ------------------ -------------------------------- ---------------------
+| **Claim Type** | **Frequency in the Indie Sector** | **Average Claim/Extortion Amount** | **Average Out-of-Court Settlement** |
+| --- | --- | --- | --- |
+| **Unauthorized Music Synchronization** | **Very High (~40%)** | $50,000–$250,000 USD | $10,000–$45,000 USD (plus back royalties) |
+| **Use of Trademarks On-Screen** | **High (~25%)** | $120,000–$750,000 USD | Digital frame modification ($15K–$50K) or a payment of $20K–$80K |
+| **Likeness Rights and Real People** | **Medium-High (~20%)** | $100,000–$1M+ USD | $15,000–$60,000 USD |
+| **Background Artwork / Photography** | **Medium (~15%)** | $30,000–$150,000 USD | $5,000–$25,000 USD |
+| **Plagiarism / Idea Theft** | **Low-Medium (~10%)** | $500,000–$5M+ USD | $50,000–$200,000 USD (to avoid an injunction) |
 
-### **Puntos Clave del Análisis de Riesgos y Litigios**
+### **Risk Statistics and the "Injunction" Effect**
 
-- **El \"Cuello de Botella\" de los Seguros E&O (Errors & Omissions):**
-  En EE. UU., Canadá y Reino Unido, ninguna película o serie se
-  distribuye en cine o streaming sin un seguro E&O. Para contratar este
-  seguro, un abogado exige cobrar entre **\$3,000 y \$10,000 USD** solo
-  por revisar el guion (*script clearance report*). Tu SaaS automatiza
-  el 80% de ese proceso a una fracción del costo.
+- **Distribution Claims Ratio:** It's estimated that **1 in every 8
+  independent productions** (approximately 12% to 15%) receives at
+  least one formal IP claim or demand letter when the project is
+  presented to buyers or distributors.
 
-- **Reclamos Más Frecuentes en la Industria:**
+- **The Maximum Danger (Injunction):** The real risk for an SME
+  production company isn't the fine — it's the **court-ordered
+  injunction**. If an IP rights holder files for an injunction over
+  music or trademark use 2 weeks before a festival or OTT platform
+  premiere, the production company would rather pay an extortionate
+  settlement of **$30,000 USD** than lose a **$500,000 USD**
+  distribution deal.
 
-  1.  **Música (40% de los reclamos):** Uso no autorizado de
-      composiciones en segundo plano o acordes de fondo.
+### **Financial Standard for E&O (Errors & Omissions) Policies**
 
-  2.  **Marcas Comerciales (25%):** Visibilidad de logotipos no
-      autorizados (ej. un auto o una bebida en plano).
+Industry insurers operate under standardized metrics that define the
+*Script Clearance* software market:
 
-  3.  **Derechos de Imagen y Personas Reales (20%):** Nombres de
-      personajes que coinciden con personas reales o uso de locaciones
-      privadas sin *location release*.
+- **Standard Coverage Limit:** **$1,000,000 USD** per claim /
+  **$3,000,000 USD** aggregate.
 
-  4.  **Propiedad Intelectual / Símbolos de Fondo (15%):** Cuadros,
-      libros, pósteres o esculturas que aparecen en el set de grabación.
+- **Deductible (*Deductible/Retention*):** Between **$10,000 and
+  $25,000 USD**. This means that if a production company receives a
+  small claim of $15,000 USD over a background song, the insurer
+  **pays nothing**; the SME has to cover it entirely out of pocket.
 
-### **Costos Promedio de Reclamos y Defender la IP**
+- **Cost of a Clearance Lawyer:** A specialized lawyer charges between
+  **$3,000 and $10,000 USD** to review a script for E&O insurance.
 
-Un litigio judicial de IP en un tribunal federal de EE. UU. cuesta en
-promedio **entre \$75,000 y \$350,000 USD** antes de llegar a juicio, y
-puede escalar a **más de \$1.4M USD** si va a juicio completo. Por ello,
-más del 90% de los casos se resuelven mediante acuerdos extrajudiciales.
+### **Final Argument for Selling the SaaS**
 
-+--------------------+----------------+---------------+-------------------+
-| > **Tipo de        | > **Frecuencia | > **Monto     | > **Costo         |
-| > Reclamo**        | > en el Sector | > Promedio de | > Promedio de     |
-|                    | > Indie**      | > Demanda /   | > Acuerdo         |
-|                    |                | > Extorsión** | > Extrajudicial** |
-+--------------------+----------------+---------------+-------------------+
-| > **Sincronización | > **Muy Alta   | > \$50,000 -- | > \$10,000 --     |
-| > Musical No       | > (\~40%)**    | > \$250,000   | > \$45,000 USD    |
-| > Autorizada**     |                | > USD         | > (más regalías   |
-|                    |                |               | > pasadas)        |
-+--------------------+----------------+---------------+-------------------+
-| > **Uso de Marcas  | > **Alta       | > \$120,000   | > Modificación    |
-| > Registradas en   | > (\~25%)**    | > --          | > digital del     |
-| > Pantalla**       |                | > \$750,000   | > fotograma       |
-|                    |                | > USD         | > (\$15K--\$50K)  |
-|                    |                |               | > o pago de       |
-|                    |                |               | > \$20K--\$80K    |
-+--------------------+----------------+---------------+-------------------+
-| > **Derechos de    | > **Media-Alta | > \$100,000   | > \$15,000 --     |
-| > Imagen y         | > (\~20%)**    | > -- \$1M+    | > \$60,000 USD    |
-| > Personas         |                | > USD         |                   |
-| > Reales**         |                |               |                   |
-+--------------------+----------------+---------------+-------------------+
-| > **Obras de Arte  | > **Media      | > \$30,000 -- | > \$5,000 --      |
-| > de Fondo /       | > (\~15%)**    | > \$150,000   | > \$25,000 USD    |
-| > Fotografía**     |                | > USD         |                   |
-+--------------------+----------------+---------------+-------------------+
-| > **Plagio / Robo  | > **Baja-Media | > \$500,000   | > \$50,000 --     |
-| > de Idea (*Idea   | > (\~10%)**    | > -- \$5M+    | > \$200,000 USD   |
-| > Theft*)**        |                | > USD         | > (para evitar    |
-|                    |                |               | > medida          |
-|                    |                |               | > cautelar)       |
-+--------------------+----------------+---------------+-------------------+
-
-### **Estadísticas de Riesgo y el Efecto \"Medida Cautelar\"**
-
-- **Ratio de Reclamos en Distribución:** Se estima que **1 de cada 8
-  producciones independientes** (aproximadamente el 12% a 15%) recibe al
-  menos un reclamo de IP formal o una carta de demanda al momento de
-  presentar el proyecto a compradores o distribuidores.
-
-- **El Peligro Máximo (Injunction / Interdicto):** El verdadero riesgo
-  para una productora PyME no es la multa, sino la **orden judicial de
-  paralización (Injunction)**. Si un titular de IP interpone una medida
-  cautelar por uso de música o marca 2 semanas antes del estreno en un
-  festival o plataforma OTT, la productora prefiere pagar un acuerdo
-  extorsivo de **\$30,000 USD** antes que perder el contrato de
-  distribución de **\$500,000 USD**.
-
-### **Estándar Financiero de las Pólizas E&O (Errors & Omissions)**
-
-Las aseguradoras de la industria operan bajo métricas estandarizadas que
-definen el mercado del software de *Script Clearance*:
-
-- **Límite Estándar de Cobertura:** **\$1,000,000 USD** por reclamo /
-  **\$3,000,000 USD** agregados.
-
-- **Deducible (*Deductible/Retention*):** Entre **\$10,000 y \$25,000
-  USD**. Esto significa que si la productora recibe un reclamo pequeño
-  de \$15,000 USD por una canción de fondo, la aseguradora **no paga
-  nada**; la PyME debe cubrirlo enteramente de su bolsillo.
-
-- **Costo del Abogado para Clearance:** Un abogado especializado cobra
-  entre **\$3,000 y \$10,000 USD** por revisar un guion para un seguro
-  E&O.
-
-### **Argumento Final para la Venta del SaaS**
-
-Un solo reclamo menor de IP (incluso infundado) le cuesta a una
-productora independiente un mínimo de **\$10,000 a \$25,000 USD** en
-deducibles y honorarios legales. Tu plataforma SaaS, vendida por una
-suscripción mensual o un pago por guión analizado, actúa como un
-\"seguro preventivo por IA\" que reduce ese riesgo en un 90%.
+A single minor IP claim (even an unfounded one) costs an independent
+production company a minimum of **$10,000 to $25,000 USD** in
+deductibles and legal fees. Your SaaS platform, sold via a monthly
+subscription or a pay-per-script-analyzed model, acts as "AI-powered
+preventive insurance" that cuts that risk by 90%.

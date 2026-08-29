@@ -1,242 +1,239 @@
-Funcionalidad de **\"Compliance Interno, Biblia de Proyecto y Coherencia
-Narrative\"** transforma tu idea en una solución integral de gestión de
-proyectos audiovisuales. Pasa de ser únicamente una herramienta legal a
-ser un **asistente completo de desarrollo y producción para estudios y
-productoras**.
+The **"Internal Compliance, Project Bible, and Narrative Coherence"**
+feature transforms your idea into a comprehensive audiovisual project
+management solution. It goes from being just a legal tool to becoming
+a **full development and production assistant for studios and
+production companies**.
 
-### **¿Cómo funcionaría este módulo de Compliance Interno?**
+### **How would this Internal Compliance module work?**
 
-1.  **Carga de la \"Raíz del Proyecto\" (Knowledge Base):**
+1.  **Uploading the "Project Root" (Knowledge Base):**
 
-    - La productora crea un proyecto y sube su \"Biblia\", que puede
-      incluir:
+    - The production company creates a project and uploads its
+      "Bible," which can include:
 
-      - **Guías de Marca y Tono:** Ej. *\"Destinado a audiencia infantil
-        (PG-13 máximo), cero lenguaje soez, sin escenas de violencia
-        explícita o consumo de alcohol\"*.
+      - **Brand and Tone Guidelines:** E.g. *"Intended for a
+        children's audience (PG-13 maximum), zero foul language, no
+        scenes of explicit violence or alcohol consumption."*
 
-      - **Biblia de Personajes y Lore:** Biografías, personalidad, arcos
-        de personaje, reglas del universo.
+      - **Character Bible and Lore:** Biographies, personality,
+        character arcs, universe rules.
 
-      - **Resumen / Escaleta de Temporada:** Si es una serie, la
-        estructura general de los episodios 1 al 10.
+      - **Season Summary / Outline:** If it's a series, the overall
+        structure of episodes 1 through 10.
 
-2.  **Validación Automática al Cargar Nuevos Guiones:** Cada vez que un
-    guionista o showrunner sube el guion de un nuevo episodio (o una
-    nueva versión), la IA realiza una doble auditoría automática:
+2.  **Automatic Validation When Uploading New Scripts:** Every time a
+    screenwriter or showrunner uploads the script for a new episode
+    (or a new version), the AI performs an automatic dual audit:
 
-    - **Auditoría de Normas y Directivas (Policy Compliance):** Detecta
-      desvíos de los protocolos internos. Ej. *\"Alerta: En la página
-      14, el personaje principal usa lenguaje inapropiado para la
-      clasificación infantil establecida en la guía del proyecto\"*.
+    - **Rules and Guidelines Audit (Policy Compliance):** Detects
+      deviations from internal protocols. E.g. *"Alert: On page 14,
+      the main character uses language inappropriate for the
+      children's rating established in the project guide."*
 
-    - **Auditoría de Coherencia Argumental (Narrative & Lore
-      Continuity):** Verifica la lógica de la historia entre episodios.
-      Ej. *\"Fisura argumental: En la página 8 del Episodio 4, el
-      personaje menciona que su padre falleció en su infancia, pero en
-      el Episodio 1 se estableció que su padre vive en el extranjero\"*.
+    - **Plot Coherence Audit (Narrative & Lore Continuity):** Verifies
+      the story's logic across episodes. E.g. *"Plot hole: On page 8
+      of Episode 4, the character mentions that his father died
+      during his childhood, but Episode 1 established that his father
+      lives abroad."*
 
-3.  **Reporte de Coherencia + Tracker de Aprobación:** Genera una vista
-    clara con las alertas clasificadas por tipo (Normativa / Continuidad
-    / Coherencia de Personaje) con sugerencias concretas de edición.
+3.  **Coherence Report + Approval Tracker:** Generates a clear view
+    with alerts classified by type (Policy / Continuity / Character
+    Coherence) along with concrete editing suggestions.
 
-### **¿Cómo encaja esto con los Partners de la Hackathon?**
+### **How does this fit with the Hackathon Partners?**
 
-Esta funcionalidad adicional hace que tu arquitectura multi-agente sea
-aún más robusta y permite aprovechar mejor los partners del hackathon:
+This additional feature makes your multi-agent architecture even more
+robust and allows you to make better use of the hackathon partners:
 
-#### **1. ClickHouse (Partner Clave para este módulo):**
+#### **1. ClickHouse (Key Partner for This Module):**
 
-- **Por qué es perfecto:** La continuidad argumental y el seguimiento de
-  cumplimiento entre múltiples episodios requiere almacenar y
-  estructurar un historial masivo de \"hechos\" (*facts*), eventos por
-  página, reglas de la biblia del proyecto y decisiones previas.
+- **Why it's a perfect fit:** Plot continuity and compliance tracking
+  across multiple episodes require storing and structuring a massive
+  history of "facts," page-level events, Project Bible rules, and
+  prior decisions.
 
-- **Rol:** ClickHouse actúa como la **base de datos vectorial y de
-  eventos en tiempo real**. Guarda la \"Biblia\" indexada y el estado de
-  cada escena/episodio, permitiendo que Gemini haga consultas
-  ultrarrápidas de continuidad histórica sin perder contexto.
+- **Role:** ClickHouse acts as the **real-time vector and event
+  database**. It stores the indexed "Bible" and the state of each
+  scene/episode, allowing Gemini to run ultra-fast historical
+  continuity queries without losing context.
 
-#### **2. Parallel (Partner del Módulo Legal/IP):**
+#### **2. Parallel (Legal/IP Module Partner):**
 
-- **Rol:** Sigue siendo el motor para auditar el cumplimiento
-  **externo** (leyes locales de propiedad intelectual, marcas
-  registradas, licencias de música, regulaciones de contenido según la
-  clasificación de edad del país).
+- **Role:** Continues to serve as the engine for auditing **external**
+  compliance (local intellectual property laws, registered trademarks,
+  music licenses, content regulations based on the country's age
+  rating system).
 
-#### **3. Replit (Entorno y Despliegue):**
+#### **3. Replit (Environment and Deployment):**
 
-- **Rol:** Aloja el dashboard de la plataforma donde los miembros del
-  equipo de producción pueden arrastrar sus PDFs de guion y ver los
-  módulos de **Legal Clearance (Parallel)** y **Compliance Interno &
-  Continuidad (ClickHouse)** en una sola interfaz interactiva.
+- **Role:** Hosts the platform dashboard, where production team
+  members can drag and drop their script PDFs and view the **Legal
+  Clearance (Parallel)** and **Internal Compliance & Continuity
+  (ClickHouse)** modules in a single interactive interface.
 
-### **Arquitectura Multi-Agente de la Plataforma**
+### **Platform Multi-Agent Architecture**
 
-Tu aplicación tendría un sistema de **3 Agentes Especializados**:
+Your application would have a system of **3 Specialized Agents**:
 
-1.  **Agente Legal & IP (Powered by Parallel):** Escanea el guion en
-    busca de elementos de propiedad intelectual de terceros y consulta
-    la web en tiempo real para armar el plan de licenciamiento.
+1.  **Legal & IP Agent (Powered by Parallel):** Scans the script for
+    third-party intellectual property elements and queries the web in
+    real time to build the licensing plan.
 
-2.  **Agente de Compliance & Continuidad (Powered by ClickHouse +
-    Gemini):** Compara el guion entrante contra la \"Biblia de
-    Proyecto\" alojada en ClickHouse y reporta desvíos de políticas
-    internas o agujeros en la trama (*plot holes*).
+2.  **Compliance & Continuity Agent (Powered by ClickHouse + Gemini):**
+    Compares the incoming script against the **Project Bible** hosted
+    in ClickHouse and reports deviations from internal policies or
+    plot holes.
 
-3.  **Agente Coordinador / Orchestrator:** Consolida los hallazgos de
-    los dos agentes anteriores en un tablero unificado con semáforos de
-    aprobación (Verde/Rojo/Porcentaje de avance).
+3.  **Coordinator / Orchestrator Agent:** Consolidates the findings
+    from the two previous agents into a unified dashboard with
+    approval status indicators (Green/Red/Progress percentage).
 
-Esta combinación resuelve un verdadero dolor de cabeza en la industria
-del entretenimiento y demuestra un uso completo y avanzado de la
-plataforma de Google Cloud con sus partners.
+This combination solves a real pain point in the entertainment
+industry and demonstrates a complete, advanced use of the Google Cloud
+platform together with its partners.
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-Para lograr que la Inteligencia Artificial analice guiones, evalúe
-compliance y mantenga coherencia narrativa, **no se necesita entrenar un
-modelo desde cero** (lo cual costaría millones de dólares). En su lugar,
-se utiliza un enfoque moderno de ingeniería de software para IA que
-combina **Gemini** con tres técnicas clave: **RAG (Retrieval-Augmented
-Generation)**, **Fine-Tuning / Few-Shot Prompting** y **Model Context
-Protocol (MCP)**.
+To get the AI to analyze scripts, evaluate compliance, and maintain
+narrative coherence, **there's no need to train a model from scratch**
+(which would cost millions of dollars). Instead, a modern AI software
+engineering approach is used, combining **Gemini** with three key
+techniques: **RAG (Retrieval-Augmented Generation)**, **Fine-Tuning /
+Few-Shot Prompting**, and **Model Context Protocol (MCP)**.
 
-### **1. Preparación de Datos y Estructuración (El \"Conocimiento Base\")**
+### **1. Data Preparation and Structuring (The "Knowledge Base")**
 
-Para que la IA entienda tus documentos (guiones, leyes locales, la
-\"Biblia\" de la serie y las guías de compliance), debes convertir esos
-textos no estructurados en datos procesables:
+For the AI to understand your documents (scripts, local laws, the
+series' "Bible," and compliance guidelines), you need to convert this
+unstructured text into processable data:
 
-- **Chunking (Fragmentación):** Los guiones no se leen como un solo
-  bloque. Un procesador analiza el PDF del guion y lo divide en
-  **escenas, diálogos y acotaciones**, etiquetando el número de página y
-  personaje.
+- **Chunking:** Scripts aren't read as a single block. A processor
+  analyzes the script PDF and splits it into **scenes, dialogue, and
+  stage directions**, tagging the page number and character.
 
-- **Embeddings & Vector Database (ClickHouse):** Cada escena y cada
-  regla de la \"Biblia\" del proyecto se convierten en vectores
-  matemáticos (representaciones numéricas del significado) y se guardan
-  en **ClickHouse**.
+- **Embeddings & Vector Database (ClickHouse):** Every scene and every
+  rule from the project's "Bible" is converted into mathematical
+  vectors (numerical representations of meaning) and stored in
+  **ClickHouse**.
 
-  - *Ejemplo:* La regla \"Destinado a niños, sin violencia\" se guarda
-    como una norma. Cada escena del episodio nuevo se compara
-    vectorialmente contra esa norma para medir similitud o violación.
+  - *Example:* The rule "Intended for children, no violence" is
+    stored as a norm. Each scene of the new episode is compared
+    vectorially against that norm to measure similarity or violation.
 
-### **2. El Enfoque de Micro-Agentes Especializados**
+### **2. The Specialized Micro-Agent Approach**
 
-En lugar de pedirle a un solo prompt \"analiza todo el guion\", la
-arquitectura de **Google Cloud (Vertex AI Agent Builder)** te permite
-crear un equipo de **3 sub-agentes con instrucciones y roles muy
-específicos**:
+Instead of asking a single prompt to "analyze the whole script," the
+**Google Cloud (Vertex AI Agent Builder)** architecture lets you
+create a team of **3 sub-agents with very specific instructions and
+roles**:
 
-#### **A. Agente de Extracción de IP y Compliance Legal**
+#### **A. IP Extraction and Legal Compliance Agent**
 
-- **Instrucción/Prompt del Agente:** Recibe las escenas fragmentadas e
-  identifica entidades (canciones, logotipos, libros, cuadros de fondo,
-  marcas de autos).
+- **Agent Instruction/Prompt:** Receives the fragmented scenes and
+  identifies entities (songs, logos, books, background artwork, car
+  brands).
 
-- **Entrenamiento via Few-Shot Examples:** Le enseñas al agente dándole
-  10 o 100 ejemplos reales de guiones con sus desgloses de IP bien
-  hechos (*\"Entrada: \'Entra a un Starbucks\...\' -\> Salida: \'Marca
-  comercial de tercero: Starbucks. Estado: Licencia requerida\'\"*).
+- **Training via Few-Shot Examples:** You train the agent by giving it
+  10 or 100 real script examples with well-done IP breakdowns
+  (*"Input: 'Enters a Starbucks...' → Output: 'Third-party trademark:
+  Starbucks. Status: License required.'"*).
 
-- **Herramienta Externa (Parallel):** Cuando el agente encuentra una
-  canción o marca, no \"adivina\" la ley; ejecuta una llamada a
-  **Parallel Search API** para buscar en internet las leyes del país de
-  producción y los correos de las entidades gestoras de derechos de
-  autor.
+- **External Tool (Parallel):** When the agent finds a song or brand,
+  it doesn't "guess" the law — it makes a call to the **Parallel
+  Search API** to search the internet for the laws of the production
+  country and the contact emails of the copyright-managing entities.
 
-#### **B. Agente de Continuidad y Coherencia (Lore & Plot)**
+#### **B. Continuity and Coherence Agent (Lore & Plot)**
 
-- **Técnica RAG (Retrieval-Augmented Generation):** Al procesar la
-  escena 5 del Episodio 3, el agente consulta a la base de datos
-  (**ClickHouse**) el historial de los episodios anteriores:
+- **RAG Technique (Retrieval-Augmented Generation):** When processing
+  scene 5 of Episode 3, the agent queries the database (**ClickHouse**)
+  for the history of previous episodes:
 
-  1.  *Consulta:* \"¿Qué sabemos sobre la familia del Personaje A en
-      episodios previos?\"
+  1.  *Query:* "What do we know about Character A's family from
+      previous episodes?"
 
-  2.  *Respuesta de ClickHouse:* \"En Ep 1, Pág 4, se establece que es
-      hijo único.\"
+  2.  *ClickHouse response:* "In Ep 1, Pg 4, it's established that
+      he's an only child."
 
-  3.  *Análisis:* Si en el Ep 3, Pág 12 el personaje habla de su
-      \"hermano mayor\", el agente detecta la **fisura argumental**.
+  3.  *Analysis:* If in Ep 3, Pg 12 the character talks about his
+      "older brother," the agent detects the **plot hole**.
 
-#### **C. Agente de Compliance Interno**
+#### **C. Internal Compliance Agent**
 
-- Comparación directa entre la escena y los \"protocolos\" subidos. Si
-  el protocolo prohíbe el lenguaje soez y el analizador sintáctico de
-  Gemini detecta groserías, genera una **alerta de violación de
-  política**.
+- Direct comparison between the scene and the uploaded "protocols." If
+  the protocol prohibits foul language and Gemini's syntactic analyzer
+  detects profanity, it generates a **policy violation alert**.
 
-### **3. Ajuste Fino y Reglas de Formato (Fine-Tuning)**
+### **3. Fine-Tuning and Format Rules**
 
-Para garantizar respuestas consistentes, precisas y en el formato que
-necesita tu panel de control (JSON con alertas, porcentajes y semáforos
-verde/rojo):
+To ensure responses that are consistent, accurate, and in the format
+your control panel needs (JSON with alerts, percentages, and
+green/red status indicators):
 
-1.  **Structured Outputs (Salida Estructurada):** Se configura Gemini
-    usando esquemas JSON obligatorios. La IA no responde con texto libre
-    fluido, sino con un objeto como este:
+1.  **Structured Outputs:** Gemini is configured using mandatory JSON
+    schemas. The AI doesn't respond with free-flowing text, but with
+    an object like this:
 
 JSON
 
 {
 
-\"categoria\": \"Propiedad Intelectual\",
+"category": "Intellectual Property",
 
-\"elemento\": \"Canción \'Yellow\' de Coldplay\",
+"element": "Coldplay's 'Yellow'",
 
-\"pagina\": 14,
+"page": 14,
 
-\"tipo_riesgo\": \"Derechos de Terceros\",
+"risk_type": "Third-Party Rights",
 
-\"plan_de_accion\": \"Obtener licencia de sincronización musical\",
+"action_plan": "Obtain music synchronization license",
 
-\"estado\": \"Pendiente (Rojo)\",
+"status": "Pending (Red)",
 
-\"porcentaje_completado\": 0,
+"percent_complete": 0,
 
-\"contacto_sugerido\": \"licensing@publisher.com\"
+"suggested_contact": "licensing@publisher.com"
 
 }
 
-2.  **Evaluación y Feedback Loop:** Creas un conjunto de evaluación
-    (*Eval Set*) con 20 guiones de prueba. Evalúas las respuestas de la
-    IA comparadas con el criterio de un abogado/script supervisor
-    humano. Si el agente comete errores, ajustas las instrucciones del
-    prompt o añades más ejemplos en el sistema (*Prompt Engineering*).
+2.  **Evaluation and Feedback Loop:** You create an evaluation set
+    (*Eval Set*) of 20 test scripts. You evaluate the AI's responses
+    against the judgment of a human lawyer/script supervisor. If the
+    agent makes mistakes, you adjust the prompt instructions or add
+    more examples to the system (*Prompt Engineering*).
 
-### **Resumen del Flujo Técnico**
+### **Technical Flow Summary**
 
-**1.Carga del Proyecto (La Raíz):**Configuración inicial en ClickHouse.
+**1. Project Upload (The Root):** Initial setup in ClickHouse.
 
-La productora sube la Biblia, reglas de compliance y guiones anteriores.
-El sistema los indexa en la base de datos vectorial **ClickHouse**.
+The production company uploads the Bible, compliance rules, and
+previous scripts. The system indexes them in the **ClickHouse** vector
+database.
 
-**2.Lectura del Nuevos Guion:**Procesamiento en Google Cloud / Gemini.
+**2. New Script Reading:** Processing in Google Cloud / Gemini.
 
-El usuario sube el nuevo guion en PDF. Gemini lo divide por escenas,
-personajes, diálogos y descripciones.
+The user uploads the new script as a PDF. Gemini splits it by scenes,
+characters, dialogue, and descriptions.
 
-**3.Investigación Externa via Parallel:**Conexión en tiempo real a la
+**3. External Research via Parallel:** Real-time connection to the
 web.
 
-El Agente Legal extrae las menciones de marcas/música y usa **Parallel**
-para consultar la legislación local del país de filmación y los datos de
-contacto oficiales.
+The Legal Agent extracts brand/music mentions and uses **Parallel** to
+look up the local legislation of the filming country and official
+contact information.
 
-**4.Auditoría de Continuidad y Compliance:**Cross-check vectorial.
+**4. Continuity and Compliance Audit:** Vector cross-check.
 
-El Agente de Continuidad cruza el nuevo episodio contra el historial
-guardado en ClickHouse para validar la coherencia narrativa y el respeto
-al tono/reglas infantiles.
+The Continuity Agent cross-references the new episode against the
+history stored in ClickHouse to validate narrative coherence and
+adherence to the tone/children's rules.
 
-**5.Consolidación en el Dashboard:**Renderizado en la interfaz web
+**5. Dashboard Consolidation:** Rendered in the web interface
 (Replit).
 
-Se genera la respuesta en formato JSON y el sistema muestra la tabla
-interactiva con semáforos (Verde/Rojo), planes de acción y borradores de
-correo redactados.
+The response is generated in JSON format, and the system displays the
+interactive table with status indicators (Green/Red), action plans,
+and drafted emails.
 
 ///////////////////////////////
 
@@ -244,164 +241,142 @@ correo redactados.
 
 ///////////////////////////////
 
-///////////////////////////////\
-\
-\
-\
-\
-Este flujo de trabajo end-to-end está estructurado en **5 fases clave**,
-desde la ingestión de documentos hasta el tablero de aprobación para el
-showrunner.
+///////////////////////////////
 
-### **Flujo de Trabajo: Módulo de Compliance Interno, Biblia y Lore Continuity**
+This end-to-end workflow is structured into **5 key phases**, from
+document ingestion to the approval dashboard for the showrunner.
 
-\[1. INGESTIÓN DE LA RAÍZ\] ──► \[2. CHUNKING Y VECTORIZACIÓN\] ──► \[3.
-PROCESAMIENTO MULTI-AGENTE\]
+### **Workflow: Internal Compliance, Bible, and Lore Continuity Module**
+
+[1. ROOT INGESTION] ──► [2. CHUNKING AND VECTORIZATION] ──► [3.
+MULTI-AGENT PROCESSING]
 
 │
 
-\[5. DASHBOARD Y TRACKER\] ◄─── \[4. EVALUACIÓN Y VALIDACIÓN\]
+[5. DASHBOARD AND TRACKER] ◄─── [4. EVALUATION AND VALIDATION]
 ◄────────────┘
 
-### **Fase 1: Ingestión y Configuración de la \"Raíz del Proyecto\"**
+### **Phase 1: Ingestion and Setup of the "Project Root"**
 
 **Actor:** Showrunner / Producer / Script Supervisor.
 
-- **Paso 1.1 --- Creación del Espacio de Trabajo:** El usuario crea una
-  nueva propiedad intelectual (ejemplo: *\"Proyecto: Serie Sci-Fi
-  Temporada 1\"*).
+- **Step 1.1 — Workspace Creation:** The user creates a new
+  intellectual property project (example: *"Project: Sci-Fi Series
+  Season 1"*).
 
-- **Paso 1.2 --- Carga de Documentos Madre (PDF/Docx/TXT):**
+- **Step 1.2 — Upload of Source Documents (PDF/Docx/TXT):**
 
-  - **Biblia de Proyecto:** Biografía de personajes, arcos narrativos,
-    reglas del universo (*lore*).
+  - **Project Bible:** Character biographies, narrative arcs, universe
+    rules (*lore*).
 
-  - **Guías de Tono y Policy Compliance:** Clasificación objetivo (ej.
-    PG-13), restricciones de lenguaje, violencia, acuerdos contractuales
-    de *product placement*.
+  - **Tone Guidelines and Policy Compliance:** Target rating (e.g.
+    PG-13), language and violence restrictions, product placement
+    contractual agreements.
 
-  - **Escaletas e Historial:** Resúmenes de episodios anteriores o
-    guiones aprobados previamente.
+  - **Outlines and History:** Summaries of previous episodes or
+    previously approved scripts.
 
-### **Fase 2: Procesamiento y Vectorización (ClickHouse Engine)**
+### **Phase 2: Processing and Vectorization (ClickHouse Engine)**
 
 **Actor:** Backend Services + ClickHouse.
 
-- **Paso 2.1 --- Parsing y Structural Chunking:** El motor extrae el
-  texto y lo segmenta mediante etiquetas estructurales: \[Personaje\],
-  \[Episodio\], \[Regla_Policy\], \[Escena\], \[Página\].
+- **Step 2.1 — Parsing and Structural Chunking:** The engine extracts
+  the text and segments it using structural tags: [Character],
+  [Episode], [Policy_Rule], [Scene], [Page].
 
-- **Paso 2.2 --- Generación de Embeddings:** Se generan vectores
-  semánticos a partir de las reglas y biografías cargadas.
+- **Step 2.2 — Embedding Generation:** Semantic vectors are generated
+  from the uploaded rules and biographies.
 
-- **Paso 2.3 --- Indexación en ClickHouse:** Se guardan los vectores y
-  metadatos en ClickHouse para consultas por similitud cosenoidal en
-  milisegundos.
+- **Step 2.3 — Indexing in ClickHouse:** Vectors and metadata are
+  stored in ClickHouse for cosine-similarity queries in milliseconds.
 
-### **Fase 3: Auditoría Multi-Agente del Nuevo Guion**
+### **Phase 3: Multi-Agent Audit of the New Script**
 
 **Actor:** Orchestrator Agent + Gemini 1.5 Pro + Parallel Search API.
 
-- **Paso 3.1 --- Subida del Guion Entrante:** El guionista sube el
-  archivo .pdf o .fdx del nuevo episodio (ej. *Episodio 04, Versión 2*).
+- **Step 3.1 — Incoming Script Upload:** The screenwriter uploads the
+  .pdf or .fdx file of the new episode (e.g. *Episode 04, Version 2*).
 
-- **Paso 3.2 --- División por Agentes Especializados:**
+- **Step 3.2 — Division Among Specialized Agents:**
 
-  - **Agente A: Compliance de Políticas (Gemini 1.5 Pro)**
+  - **Agent A: Policy Compliance (Gemini 1.5 Pro)**
 
-    - Compara cada fragmento del guion contra las reglas de la guía de
-      tono indexadas en ClickHouse.
+    - Compares each script fragment against the tone guide rules
+      indexed in ClickHouse.
 
-    - *Acción:* Detecta palabras malsonantes, consumo de sustancias o
-      giros de tono no permitidos según la clasificación por edades (ej.
-      PG-13).
+    - *Action:* Detects foul language, substance use, or tone shifts
+      not permitted under the age rating (e.g. PG-13).
 
-  - **Agente B: Continuidad Narrativa y Lore (ClickHouse RAG + Gemini)**
+  - **Agent B: Narrative Continuity and Lore (ClickHouse RAG +
+    Gemini)**
 
-    - Realiza búsquedas vectoriales (*Retrieval-Augmented Generation*)
-      en ClickHouse para consultar el historial del personaje citado en
-      la escena.
+    - Performs vector searches (*Retrieval-Augmented Generation*) in
+      ClickHouse to look up the history of the character referenced in
+      the scene.
 
-    - *Acción:* Valida datos cronológicos, parentescos, estados de
-      vida/muerte y coherencia de habilidades del personaje.
+    - *Action:* Validates chronological data, family relationships,
+      life/death status, and consistency of the character's
+      abilities.
 
-  - **Agente C: Legal & Clearance de IP (Parallel Search API)**
+  - **Agent C: Legal & IP Clearance (Parallel Search API)**
 
-    - Extrae marcas, obras de arte, música o ubicaciones reales
-      mencionadas en el texto.
+    - Extracts brands, artwork, music, or real locations mentioned in
+      the text.
 
-    - *Acción:* Consulta a Parallel Search API para traer leyes del país
-      de producción y contactos oficiales de gestión de derechos.
+    - *Action:* Queries the Parallel Search API to retrieve the laws
+      of the production country and official rights-management
+      contacts.
 
-### **Fase 4: Consolidación y Estructuración de Hallazgos**
+### **Phase 4: Consolidation and Structuring of Findings**
 
 **Actor:** Orchestrator Agent.
 
-- **Paso 4.1 --- Normalización de Datos:** El Agente Coordinador
-  consolida los outputs de los 3 agentes en un esquema JSON único y
-  estructurado (JSON Schema).
+- **Step 4.1 — Data Normalization:** The Coordinator Agent consolidates
+  the outputs of the 3 agents into a single, structured JSON schema
+  (JSON Schema).
 
-- **Paso 4.2 --- Asignación de Niveles de Riesgo y Semáforos:**
+- **Step 4.2 — Risk Level and Status Assignment:**
 
-  - **Crítico (Rojo):** Violación directa de política de contenido o
-    contradicción grave de *lore* (ej. personaje fallecido que reaparece
-    sin explicación).
+  - **Critical (Red):** Direct violation of content policy or a
+    serious lore contradiction (e.g. a deceased character reappearing
+    without explanation).
 
-  - **Advertencia (Amarillo):** Inconsistencia menor de diálogo o marca
-    registrada sin contrato preexistente.
+  - **Warning (Yellow):** Minor dialogue inconsistency or a registered
+    trademark without a pre-existing contract.
 
-  - **Conforme (Verde):** Elemento procesado y alineado con la Biblia
-    del Proyecto.
+  - **Compliant (Green):** Element processed and aligned with the
+    Project Bible.
 
-### **Fase 5: Reporte de Coherencia y Tracker de Aprobaciones**
+### **Phase 5: Coherence Report and Approval Tracker**
 
-**Actor:** Usuario Final (Panel de Control Interactiva).
+**Actor:** End User (Interactive Control Panel).
 
-- **Paso 5.1 --- Renderizado en el Dashboard:** La interfaz gráfica
-  despliega las alertas organizadas en tres columnas interactiva:
+- **Step 5.1 — Dashboard Rendering:** The graphical interface displays
+  alerts organized into three interactive columns:
 
-  1.  **Policy Compliance Violations:** Muestra la página exacta, la
-      regla infringida de la Biblia y la sugerencia de edición.
+  1.  **Policy Compliance Violations:** Shows the exact page, the
+      Bible rule that was violated, and the editing suggestion.
 
-  2.  **Narrative & Lore Continuity Alerts:** Muestra la contradicción
-      detectada citando la página del guion nuevo versus la página y
-      episodio de la Biblia/guion previo.
+  2.  **Narrative & Lore Continuity Alerts:** Shows the detected
+      contradiction, citing the page of the new script versus the
+      page and episode of the Bible/previous script.
 
-  3.  **IP Clearance Status & Outreach:** Presenta la lista de
-      marcas/música detectadas con datos de contacto actualizados y
-      borradores de correo redactados por IA para solicitar la licencia.
+  3.  **IP Clearance Status & Outreach:** Presents the list of
+      detected brands/music along with up-to-date contact information
+      and AI-drafted emails requesting the license.
 
-- **Paso 5.2 --- Registro de Resoluciones (Feedback Loop):** El
-  showrunner puede aceptar la sugerencia, marcar la alerta como
-  \"Resuelta\" o \"Excepción Aprobada\", actualizando el índice
-  vectorial de ClickHouse para futuros episodios.
+- **Step 5.2 — Resolution Logging (Feedback Loop):** The showrunner
+  can accept the suggestion, mark the alert as "Resolved" or
+  "Exception Approved," updating the ClickHouse vector index for
+  future episodes.
 
-### **Diagrama de Flujo (Sequence Summary)**
+### **Flow Diagram (Sequence Summary)**
 
-  ---------- ------------- ------------- ---------------- ----------------
-  **Paso**   **Módulo**    **Entrada**   **Proceso**      **Salida**
-
-  **1**      **Knowledge   Biblia /      Indexación       Base de datos de
-             Setup**       Directivas    vectorial en     Lore lista
-                                         ClickHouse       
-
-  **2**      **Guion       PDF Episodio  Parsing por      Chunks
-             Entrante**    N             escenas y        etiquetados
-                                         personajes       
-
-  **3**      **Policy      Chunks de     Gemini contrasta Banderas de
-             Check**       guion         vs. reglas       violación de
-                                         PG-13/Tono       política
-
-  **4**      **Lore        Chunks de     RAG en           Alertas de
-             Check**       guion         ClickHouse sobre fisuras
-                                         historial        argumentales
-
-  **5**      **IP Check**  Entidades     Búsqueda web en  Contactos de
-                           extraídas     vivo vía         licencias y
-                                         Parallel         estatus legal
-
-  **6**      **UI          JSON          Renderizado de   Tablero
-             Dashboard**   consolidado   alertas y        interactivo con
-                                         borradores       semáforos
-  ---------- ------------- ------------- ---------------- ----------------
+| **Step** | **Module** | **Input** | **Process** | **Output** |
+|---|---|---|---|---|
+| **1** | **Knowledge Setup** | Bible / Guidelines | Vector indexing in ClickHouse | Lore database ready |
+| **2** | **Incoming Script** | Episode N PDF | Parsing by scenes and characters | Tagged chunks |
+| **3** | **Policy Check** | Script chunks | Gemini compares vs. PG-13/tone rules | Policy violation flags |
+| **4** | **Lore Check** | Script chunks | RAG in ClickHouse against history | Plot hole alerts |
+| **5** | **IP Check** | Extracted entities | Live web search via Parallel | License contacts and legal status |
+| **6** | **UI Dashboard** | Consolidated JSON | Rendering of alerts and drafts | Interactive dashboard with status indicators |
