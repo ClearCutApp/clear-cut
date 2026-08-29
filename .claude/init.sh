@@ -1,0 +1,211 @@
+#!/usr/bin/env bash
+#
+# init.sh — bootstrap and verify the ClearCut agent loop.
+#
+#   ./.claude/init.sh            bootstrap, then verify
+#   ./.claude/init.sh verify     static checks on the loop configuration
+#   ./.claude/init.sh check      run the project quality gates (ruff, pytest)
+#
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CFG="$ROOT/.claude"
+AGENTS="$CFG/agents"
+ROLES=(leader implementer reviewer)
+STATUSES=(TODO IN_PROGRESS IN_REVIEW DONE BLOCKED SUPERSEDED)
+
+pass=0; fail=0
+ok()   { printf '  \033[32m✓\033[0m %s\n' "$1"; pass=$((pass+1)); }
+no()   { printf '  \033[31m✗\033[0m %s\n' "$1"; fail=$((fail+1)); }
+note() { printf '  \033[33m•\033[0m %s\n' "$1"; }
+sec()  { printf '\n\033[1m%s\033[0m\n' "$1"; }
+
+# frontmatter of a .md file: the lines between the first two --- markers
+frontmatter() { awk 'NR==1&&/^---$/{f=1;next} f&&/^---$/{exit} f' "$1"; }
+field()       { frontmatter "$1" | sed -n "s/^$2:[[:space:]]*//p" | head -1; }
+
+# ---------------------------------------------------------------- verify ----
+verify() {
+  sec "Files"
+  for f in AGENT.md CHECKPOINTS.md settings.json settings.local.json init.sh; do
+    [ -f "$CFG/$f" ] && ok ".claude/$f" || no ".claude/$f is missing"
+  done
+  for r in "${ROLES[@]}"; do
+    [ -f "$AGENTS/$r.md" ] && ok ".claude/agents/$r.md" || no ".claude/agents/$r.md is missing"
+  done
+  [ -x "$CFG/init.sh" ] && ok "init.sh is executable" || no "init.sh is not executable"
+
+  sec "Agent frontmatter"
+  for r in "${ROLES[@]}"; do
+    f="$AGENTS/$r.md"; [ -f "$f" ] || continue
+    [ "$(field "$f" name)" = "$r" ] && ok "$r: name matches filename" \
+      || no "$r: frontmatter name '$(field "$f" name)' != '$r'"
+    [ -n "$(field "$f" description)" ] && ok "$r: has a description" \
+      || no "$r: description is empty (agent cannot be selected)"
+    [ -n "$(field "$f" tools)" ] && ok "$r: declares tools" \
+      || no "$r: no tools declared (would inherit everything)"
+  done
+
+  sec "Tool boundaries (separation of concerns)"
+  rt="$(field "$AGENTS/reviewer.md" tools)"
+  case "$rt" in
+    *Write*) no "reviewer may Write — it must report, not fix" ;;
+    *)       ok "reviewer cannot Write source files" ;;
+  esac
+  case "$rt" in
+    *Edit*) ok "reviewer can Edit (CHECKPOINTS.md status)" ;;
+    *)      no "reviewer cannot Edit — it could not record a verdict" ;;
+  esac
+  it="$(field "$AGENTS/implementer.md" tools)"
+  for t in Write Edit Bash; do
+    case "$it" in *"$t"*) ok "implementer can $t" ;; *) no "implementer cannot $t" ;; esac
+  done
+  grep -q 'only file you may write' "$AGENTS/leader.md" \
+    && ok "leader is restricted to CHECKPOINTS.md in prose" \
+    || no "leader has no write restriction stated"
+  grep -q 'only file you may edit' "$AGENTS/reviewer.md" \
+    && ok "reviewer is restricted to CHECKPOINTS.md in prose" \
+    || no "reviewer has no edit restriction stated"
+
+  sec "Contract references"
+  for r in "${ROLES[@]}"; do
+    f="$AGENTS/$r.md"; [ -f "$f" ] || continue
+    grep -q 'AGENT.md' "$f"       && ok "$r reads AGENT.md"       || no "$r never reads AGENT.md"
+    grep -q 'CHECKPOINTS.md' "$f" && ok "$r reads CHECKPOINTS.md" || no "$r never reads CHECKPOINTS.md"
+  done
+
+  sec "Handoff wiring"
+  for r in "${ROLES[@]}"; do
+    f="$AGENTS/$r.md"; [ -f "$f" ] || continue
+    grep -q "^ROLE: $r$" "$f" && ok "$r emits its handoff block" || no "$r has no 'ROLE: $r' block"
+  done
+  grep -q '^NEXT: implementer' "$AGENTS/leader.md"    && ok "leader      -> implementer" || no "leader does not hand off to implementer"
+  grep -q '^NEXT: reviewer'    "$AGENTS/implementer.md" && ok "implementer -> reviewer"   || no "implementer does not hand off to reviewer"
+  grep -q '^NEXT: implementer' "$AGENTS/reviewer.md"  && ok "reviewer    -> implementer (rework)" || no "reviewer cannot send work back"
+  grep -q 'leader CP'          "$AGENTS/reviewer.md"  && ok "reviewer    -> leader (escalate)"    || no "reviewer cannot escalate"
+  grep -q 'done$'              "$AGENTS/reviewer.md"  && ok "reviewer    -> done (exit)"          || no "reviewer has no exit path"
+
+  sec "Termination guarantees"
+  grep -q '3/3' "$AGENTS/reviewer.md" && ok "attempt cap enforced by reviewer" || no "reviewer never enforces the attempt cap"
+  grep -q '3/3' "$CFG/CHECKPOINTS.md" && ok "attempt cap documented in state"  || no "CHECKPOINTS.md omits the attempt cap"
+  grep -q 'never send work back' "$AGENTS/reviewer.md" \
+    && ok "non-blocking findings cannot re-open a checkpoint" \
+    || no "non-blocking findings could loop forever"
+  grep -q 'BLOCKED' "$AGENTS/leader.md" && ok "leader absorbs BLOCKED checkpoints" || no "BLOCKED has no consumer — the loop can deadlock"
+  grep -q 'never move a checkpoint from' "$AGENTS/leader.md" \
+    && ok "leader cannot reset BLOCKED back to TODO" \
+    || no "leader may reset BLOCKED — unbounded rework"
+  grep -q 'never supersede a `Depth: 1`' "$AGENTS/leader.md" \
+    && ok "leader is bound to one generation of splits" \
+    || no "leader may split without bound"
+  grep -q 'Depth: 0' "$CFG/CHECKPOINTS.md" \
+    && ok "checkpoint template carries Depth" \
+    || no "CHECKPOINTS.md template has no Depth field"
+
+  sec "Boundary with gentle-ai"
+  grep -q '^## 11\. Relationship to gentle-ai' "$CFG/AGENT.md" \
+    && ok "AGENT.md declares the gentle-ai boundary" \
+    || no "no gentle-ai boundary section — two processes could coexist silently"
+  grep -q 'Do not use the SDD pipeline in this repo' "$CFG/AGENT.md" \
+    && ok "SDD pipeline is excluded from this repo" \
+    || no "SDD pipeline is not excluded — competing loop"
+  grep -q '\*\*AGENT.md wins\*\*' "$CFG/AGENT.md" \
+    && ok "AGENT.md wins over skills on conflict" \
+    || no "no conflict rule between skills and AGENT.md"
+  grep -q 'Never run both' "$CFG/AGENT.md" \
+    && ok "switching to SDD is a migration, not a drift" \
+    || no "nothing forbids running both loops"
+  if grep -lE '/sdd-(init|new|apply|verify|tasks|spec|design)' "$AGENTS"/*.md >/dev/null 2>&1; then
+    no "an agent invokes an SDD command: $(grep -lE '/sdd-' "$AGENTS"/*.md | xargs -n1 basename | tr '\n' ' ')"
+  else
+    ok "no agent invokes the SDD pipeline"
+  fi
+  if command -v gentle-ai >/dev/null 2>&1; then
+    ok "gentle-ai present ($(gentle-ai --version 2>/dev/null | head -1))"
+  else
+    note "gentle-ai not on PATH — optional; add \$HOME/go/bin to PATH"
+  fi
+
+  sec "Status machine"
+  for s in "${STATUSES[@]}"; do
+    grep -q "\`$s\`" "$CFG/AGENT.md" && ok "$s is defined in AGENT.md" || no "$s is not in the AGENT.md status table"
+  done
+  used="$(grep -ohE '\bStatus: [A-Z_]+' "$AGENTS"/*.md | sed 's/Status: //' | sort -u || true)"
+  for s in $used; do
+    printf '%s\n' "${STATUSES[@]}" | grep -qx "$s" \
+      && ok "agents use a known status: $s" \
+      || no "agents use an undefined status: $s"
+  done
+
+  sec "Loop termination (proved from the AGENT.md status table)"
+  out="$(python3 "$CFG/lib/termination.py" "$CFG/AGENT.md" || true)"
+  while IFS= read -r line; do
+    case "$line" in
+      OK\ *)      ok "${line#OK }" ;;
+      PROBLEM\ *) no "${line#PROBLEM }" ;;
+      "")         ;;
+      *)          note "$line" ;;
+    esac
+  done <<< "$out"
+
+  sec "Settings"
+  for f in settings.json settings.local.json; do
+    python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$CFG/$f" 2>/dev/null \
+      && ok "$f is valid JSON" || no "$f is not valid JSON"
+  done
+  grep -q '\.claude/settings\.local\.json' "$ROOT/.gitignore" 2>/dev/null \
+    && ok "settings.local.json is gitignored" || no "settings.local.json would be committed"
+  grep -q '^\.env$' "$ROOT/.gitignore" 2>/dev/null \
+    && ok ".env is gitignored" || no ".env would be committed"
+
+  sec "Result"
+  printf '  %d passed, %d failed\n\n' "$pass" "$fail"
+  [ "$fail" -eq 0 ]
+}
+
+# ------------------------------------------------------------- bootstrap ----
+bootstrap() {
+  sec "Bootstrap"
+  chmod +x "$CFG/init.sh"; ok "init.sh executable"
+
+  if [ -f "$ROOT/pyproject.toml" ] || [ -f "$ROOT/requirements.txt" ]; then
+    if [ ! -d "$ROOT/.venv" ]; then
+      python3 -m venv "$ROOT/.venv" && ok "created .venv"
+    else
+      ok ".venv present"
+    fi
+    # shellcheck disable=SC1091
+    . "$ROOT/.venv/bin/activate"
+    python -m pip install --quiet --upgrade pip
+    [ -f "$ROOT/requirements.txt" ] && python -m pip install --quiet -r "$ROOT/requirements.txt"
+    python -m pip install --quiet pytest ruff && ok "pytest + ruff installed"
+    note "activate with: source .venv/bin/activate"
+  else
+    note "no pyproject.toml / requirements.txt yet — nothing to install"
+    note "the first checkpoint should create the project skeleton (AGENT.md §2)"
+  fi
+}
+
+# ----------------------------------------------------------------- check ----
+check() {
+  sec "Quality gates"
+  [ -d "$ROOT/.venv" ] && . "$ROOT/.venv/bin/activate"
+  if command -v ruff >/dev/null 2>&1; then
+    ruff check "$ROOT" && ok "ruff check"
+    ruff format --check "$ROOT" && ok "ruff format"
+  else
+    note "ruff not installed — run ./.claude/init.sh first"
+  fi
+  if command -v pytest >/dev/null 2>&1 && [ -d "$ROOT/tests" ]; then
+    (cd "$ROOT" && pytest -q) && ok "pytest"
+  else
+    note "no tests yet"
+  fi
+}
+
+case "${1:-bootstrap}" in
+  verify)    verify ;;
+  check)     check ;;
+  bootstrap) bootstrap; verify ;;
+  *) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+esac

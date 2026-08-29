@@ -1,0 +1,22 @@
+# Claude Code — personal overlay, never committed
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+credentials*.json
+service-account*.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
