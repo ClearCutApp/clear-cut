@@ -9,6 +9,19 @@ Adapted from [petergyang/no-ai-slop](https://github.com/petergyang/no-ai-slop)
 
 ---
 
+## 0. Scope
+
+Applies to reader-facing prose: `docs/`, `README.md`, commit and PR
+descriptions, and narrative text shipped in the product.
+
+Does not apply to specifications — `AGENT.md`, `CHECKPOINTS.md`, and the agent
+definitions in `.claude/agents/`. Those are instructions, not narrative. They
+repeat one exact term on purpose where §2 would ask for variety, and they are
+written to be scanned by an agent under load rather than read through. §3's
+demand for concreteness still binds them.
+
+---
+
 ## 1. Banned words
 
 delve, foster, leverage, utilize, facilitate, empower, streamline, robust,
@@ -88,5 +101,12 @@ Run this whenever a diff touches `docs/`, `README.md`, or other prose:
 - [ ] No fake-profound kicker or summary-recap ending.
 - [ ] Em dashes, if present, are sparing and load-bearing.
 
-Any unchecked box on new/changed prose is a blocking finding, same weight as
-a failing `pytest`/`ruff` gate in `AGENT.md`.
+**When an unchecked box blocks.** Prose is gated, but it must not spin the loop
+(`AGENT.md` §6), so the weight depends on whether the prose is the work:
+
+- **Blocking** — the checkpoint's own acceptance criteria name the text (a
+  README, a doc, a PR description). The prose *is* the deliverable, so an
+  unchecked box carries the same weight as a failing `pytest` or `ruff` gate.
+- **Non-blocking** — the diff touches prose only in passing. The reviewer
+  records the finding and the leader raises it as its own checkpoint. Style
+  never sends a code checkpoint back for another attempt.
