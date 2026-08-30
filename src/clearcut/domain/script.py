@@ -10,15 +10,23 @@ from dataclasses import dataclass, field
 _WHITESPACE_RUN = re.compile(r"\s+")
 
 
+def normalize_text(text: str) -> str:
+    """Lowercase `text`, collapse whitespace runs, and strip its ends.
+
+    The one normalization "the same text" means across the domain: scene
+    hashing here and asset identity in `domain/dedupe.py` both reuse it
+    rather than retyping the rule.
+    """
+    return _WHITESPACE_RUN.sub(" ", text.strip().lower())
+
+
 def content_hash(text: str) -> str:
     """SHA-256 hex digest of `text`, normalized so identical scenes hash equal.
 
-    Normalization: lowercase, whitespace runs collapsed to one space, and
-    leading/trailing whitespace stripped. This is the identity delta
-    evaluation joins on across script versions (docs/plan/sdd.md Section 2).
+    This is the identity delta evaluation joins on across script versions
+    (docs/plan/sdd.md Section 2).
     """
-    normalized = _WHITESPACE_RUN.sub(" ", text.strip().lower())
-    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    return hashlib.sha256(normalize_text(text).encode("utf-8")).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
