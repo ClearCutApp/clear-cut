@@ -346,7 +346,7 @@ not.** When they disagree, this list wins.
 
 | Skill | Applies to |
 |---|---|
-| `cognitive-doc-design` | `docs/resources/`, `docs/plan/`, `README.md`, architecture and review-facing prose |
+| `cognitive-doc-design` | `docs/`, `README.md`, architecture and review-facing prose |
 | `design-taste-frontend` | The Compliance Tracker dashboard |
 | `redesign-existing-projects` | Dashboard revisions, once a UI exists |
 | `branch-pr` | Opening PRs |
