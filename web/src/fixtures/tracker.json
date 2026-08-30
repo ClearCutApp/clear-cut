@@ -1,0 +1,50 @@
+[
+  {
+    "item_id": "item_001",
+    "finding_id": "fnd_001",
+    "scene_numbers": [1],
+    "state": "BLOCKED",
+    "needs_review": false,
+    "required_document": "Product placement release",
+    "contact": null,
+    "litigation_posture": null,
+    "draft_email": null,
+    "note": null,
+    "updated_at": "2026-08-20T09:00:00Z",
+    "version": 1
+  },
+  {
+    "item_id": "item_002",
+    "finding_id": "fnd_002",
+    "scene_numbers": [2],
+    "state": "IN_PROGRESS",
+    "needs_review": false,
+    "required_document": "Synchronization license",
+    "contact": {
+      "name": "Rights Holder Music Publishing",
+      "email": "licensing@example.com"
+    },
+    "litigation_posture": "No history of enforcement litigation on file.",
+    "draft_email": null,
+    "note": "Awaiting quote from publisher.",
+    "updated_at": "2026-08-22T14:30:00Z",
+    "version": 2
+  },
+  {
+    "item_id": "item_003",
+    "finding_id": "fnd_003",
+    "scene_numbers": [3, 4],
+    "state": "CLEARED",
+    "needs_review": false,
+    "required_document": "Location permit",
+    "contact": {
+      "name": "City Parks Permitting Office",
+      "email": "permits@example.gov"
+    },
+    "litigation_posture": null,
+    "draft_email": null,
+    "note": "Permit approved through end of shoot week.",
+    "updated_at": "2026-08-18T11:15:00Z",
+    "version": 3
+  }
+]

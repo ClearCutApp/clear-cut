@@ -1,0 +1,62 @@
+{
+  "script_id": "scr_demo_001",
+  "project_id": "proj_demo_001",
+  "version": 1,
+  "jurisdiction_code": "US",
+  "scenes": [
+    {
+      "number": 1,
+      "heading": "INT. DINER - DAY",
+      "page_start": 1,
+      "page_end": 1,
+      "text": "MAYA sips a coffee while a BILLBOARD for a national soda brand looms outside the window.",
+      "content_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
+    },
+    {
+      "number": 2,
+      "heading": "EXT. CITY PARK - CONTINUOUS",
+      "page_start": 1,
+      "page_end": 2,
+      "text": "MAYA walks past a busker playing a recognizable pop song on guitar.",
+      "content_hash": "b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "fnd_001",
+      "scene_number": 1,
+      "page": 1,
+      "raw_text": "a BILLBOARD for a national soda brand",
+      "category": "INDUSTRIAL_PROPERTY",
+      "ner_label": "BRAND",
+      "risk_level": "MEDIUM",
+      "required_document": "Product placement release",
+      "citations": [
+        {
+          "uri": "https://example.com/trademark-registry/soda-brand",
+          "title": "National Soda Brand trademark registration",
+          "snippet": "Registered trademark covering beverage advertising."
+        }
+      ],
+      "contradicts": null
+    },
+    {
+      "finding_id": "fnd_002",
+      "scene_number": 2,
+      "page": 2,
+      "raw_text": "a busker playing a recognizable pop song",
+      "category": "COPYRIGHT_WORKS",
+      "ner_label": "MUSIC_EXISTING",
+      "risk_level": "HIGH",
+      "required_document": "Synchronization license",
+      "citations": [
+        {
+          "uri": "https://example.com/ascap/song-title",
+          "title": "ASCAP repertory entry",
+          "snippet": "Performance rights held by the listed publisher."
+        }
+      ],
+      "contradicts": null
+    }
+  ]
+}
