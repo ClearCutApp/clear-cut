@@ -1,4 +1,4 @@
-"""The seven ports the parallel verticals implement (docs/plan/sdd.md Section 3).
+"""The eight ports the parallel verticals implement (docs/plan/sdd.md Section 3).
 
 Each port exists because it crosses a real I/O boundary: an HTTPS call to
 Document AI, Gemini, Vertex AI Search, or the Parallel Task API, a BigQuery
@@ -9,6 +9,11 @@ place a concrete adapter is wired to one of these.
 `TrackerStore` and `Notifier` cover the tracker's two boundaries: versioned
 persistence over ClickHouse, and producer notification over an outbound
 webhook (docs/plan/sdd.md Section 3).
+
+`ContinuityCheck` is its own narrow port rather than a second `SceneExtractor`
+call: `SceneExtractor.extract(scenes, jurisdiction)` has no parameter for the
+bible facts a contradiction check needs, so it earns a separate network call
+against a different model (docs/plan/agentic-workflow.md Section 2.2).
 """
 
 import enum
@@ -117,3 +122,10 @@ class Notifier(Protocol):
     """Notifies a producer over an outbound webhook."""
 
     def notify(self, item: TrackerItem, reason: str) -> None: ...
+
+
+@runtime_checkable
+class ContinuityCheck(Protocol):
+    """Checks one scene against a batch of Project Bible facts (D11)."""
+
+    def check(self, scene: Scene, facts: list[BibleFact]) -> Finding | None: ...
