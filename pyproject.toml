@@ -1,0 +1,24 @@
+[project]
+name = "clearcut"
+version = "0.1.0"
+description = "ClearCut / IP Guardian -- agentic script-clearance engine"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "pytest==9.1.1",
+  "ruff==0.16.5",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+src = ["src"]
+extend-exclude = [".claude"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
