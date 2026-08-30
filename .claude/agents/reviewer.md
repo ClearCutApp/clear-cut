@@ -39,8 +39,8 @@ Run things. A review with no command output is not a review.
    implementation, an abstraction with one caller, config nobody reads, a
    parameter no caller passes. All blocking.
 8. Secrets — no literal keys, no keys in logs or test fixtures.
-9. Prose — if the diff touches `docs/`, `README.md`, or other non-code
-   writing, run the `.claude/WRITING.md` checklist. Banned words, unfixed
+9. Prose — if the diff touches `resources/`, `plan/`, `README.md`, or other
+   non-code writing, run the `.claude/WRITING.md` checklist. Banned words, unfixed
    slop patterns, or a failed portability test are blocking, same as a
    failing gate above.
 
@@ -55,8 +55,9 @@ that records its own conclusions is writing state nobody reviewed.
 
 ## Prose in the diff
 
-If the diff touches `docs/`, `README.md`, or other reader-facing prose, run the
-checklist in `.claude/WRITING.md` §4 over the **new and changed lines only** —
+If the diff touches `resources/`, `plan/`, `README.md`, or other reader-facing
+prose, run the checklist in `.claude/WRITING.md` §4 over the
+**new and changed lines only** —
 you are reviewing this checkpoint, not the repository's back catalogue.
 
 Weight it as §4 says: blocking when an acceptance criterion names the text, so
