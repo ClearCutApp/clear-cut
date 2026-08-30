@@ -118,6 +118,18 @@ def test_non_2xx_response_raises_research_unavailable_with_status_code() -> None
     assert excinfo.value.status_code == 500
 
 
+def test_unrecognized_confidence_string_maps_to_low_instead_of_raising() -> None:
+    # `FieldBasis.confidence` is typed `Optional[str]` by the Parallel SDK, so
+    # any string can arrive; an unrecognized one must not raise (CP-016).
+    body = copy.deepcopy(_result_body())
+    body["output"]["basis"][0]["confidence"] = "probably"
+    adapter = _adapter(body)
+
+    claim = adapter.find(_ASSET_NAME, Category.COPYRIGHT_WORKS, _JURISDICTION)
+
+    assert claim.confidence == Confidence.LOW
+
+
 def test_module_does_not_import_or_reference_risk_level() -> None:
     source = _ADAPTER_SOURCE.read_text()
     tree = ast.parse(source)

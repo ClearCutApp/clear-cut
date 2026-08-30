@@ -43,10 +43,17 @@ class _DocumentProcessorClient(Protocol):
 
 
 def _page_spans(document: documentai.Document) -> list[tuple[int, int, int]]:
-    """`(page_number, start_index, end_index)` for each page's own text anchor."""
+    """`(page_number, start_index, end_index)` for each page with a text anchor.
+
+    A page whose `text_segments` is empty carries no position data of its
+    own — a blank or image-only page, ordinary in a scanned screenplay — so
+    it is skipped instead of crashing `min()`/`max()` on nothing (CP-016).
+    """
     spans = []
     for page in document.pages:
         segments = page.layout.text_anchor.text_segments
+        if not segments:
+            continue
         start = min(int(segment.start_index) for segment in segments)
         end = max(int(segment.end_index) for segment in segments)
         spans.append((page.page_number, start, end))
@@ -57,6 +64,24 @@ def _pages_overlapping(spans: list[tuple[int, int, int]], start: int, end: int) 
     return [
         number for number, span_start, span_end in spans if span_start < end and span_end > start
     ]
+
+
+def _nearest_page(spans: list[tuple[int, int, int]], start: int, end: int) -> int:
+    """The page whose span is closest to a scene that overlaps none (CP-016).
+
+    `spans` is never empty here: `parse` already raises before calling this
+    when no page carries any text.
+    """
+
+    def distance(span: tuple[int, int, int]) -> int:
+        _, span_start, span_end = span
+        if end <= span_start:
+            return span_start - end
+        if start >= span_end:
+            return start - span_end
+        return 0
+
+    return min(spans, key=distance)[0]
 
 
 class DocumentAIIngestion:
@@ -72,6 +97,8 @@ class DocumentAIIngestion:
         if not starts:
             raise NoScenesFound(script_id)
         spans = _page_spans(document)
+        if not spans:
+            raise IngestionFailed(self._processor_id)
         boundaries = [*starts, len(document.text)]
         return [
             self._scene(number, document.text[start:end], spans, start, end)
@@ -88,6 +115,8 @@ class DocumentAIIngestion:
     ) -> Scene:
         heading = text.splitlines()[0].strip()
         pages = _pages_overlapping(spans, start, end)
+        if not pages:
+            pages = [_nearest_page(spans, start, end)]
         return Scene(
             number=number,
             heading=heading,

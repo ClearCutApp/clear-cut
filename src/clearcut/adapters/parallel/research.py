@@ -145,6 +145,15 @@ def _domain_citations(citations: list[ParallelCitation]) -> tuple[Citation, ...]
 
 
 def _confidence_from(value: str | None) -> Confidence:
+    """Maps Parallel's free-form confidence string to `Confidence` (CP-016).
+
+    `FieldBasis.confidence` is typed `Optional[str]` by the Parallel SDK, so
+    any string can arrive. One nobody recognizes maps to `Confidence.LOW`,
+    which under D9 flags the item for review rather than trusting it blind.
+    """
     if value is None:
         return Confidence.LOW
-    return Confidence(value.upper())
+    try:
+        return Confidence(value.upper())
+    except ValueError:
+        return Confidence.LOW

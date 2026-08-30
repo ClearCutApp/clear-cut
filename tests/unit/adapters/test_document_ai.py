@@ -167,3 +167,95 @@ def test_parse_makes_no_network_call() -> None:
     adapter.parse("gs://clearcut-scripts-intake/script.pdf", "script-1")
 
     assert len(client.requests) == 1
+
+
+def test_page_with_empty_text_segments_is_skipped_other_pages_still_parse() -> None:
+    # A blank or image-only page in a scanned screenplay carries no text
+    # segments at all; it must not crash the pages that do have text (CP-016).
+    text = "INT. APARTMENT - DAY\n\nJohn stares at the wall.\n"
+    document = documentai.Document(
+        text=text,
+        pages=[
+            documentai.Document.Page(
+                page_number=1,
+                layout=documentai.Document.Page.Layout(
+                    text_anchor=documentai.Document.TextAnchor(
+                        text_segments=[
+                            documentai.Document.TextAnchor.TextSegment(end_index=len(text))
+                        ]
+                    )
+                ),
+            ),
+            documentai.Document.Page(
+                page_number=2,
+                layout=documentai.Document.Page.Layout(
+                    text_anchor=documentai.Document.TextAnchor(text_segments=[])
+                ),
+            ),
+        ],
+    )
+    client = FakeDocumentProcessorClient(document=document)
+    adapter = DocumentAIIngestion(client=client, processor_id="processor-1")
+
+    scenes = adapter.parse("gs://clearcut-scripts-intake/script.pdf", "script-1")
+
+    assert len(scenes) == 1
+    assert (scenes[0].page_start, scenes[0].page_end) == (1, 1)
+
+
+def test_response_with_no_pages_raises_ingestion_failed_naming_processor_id() -> None:
+    # No page carries any text segment (here: no pages at all), so the
+    # adapter cannot place any scene on a page (CP-016).
+    text = "INT. APARTMENT - DAY\n\nJohn stares at the wall.\n"
+    document = documentai.Document(text=text, pages=[])
+    client = FakeDocumentProcessorClient(document=document)
+    adapter = DocumentAIIngestion(
+        client=client, processor_id="projects/clearcut-hack/locations/us/processors/dummy"
+    )
+
+    with pytest.raises(IngestionFailed) as excinfo:
+        adapter.parse("gs://clearcut-scripts-intake/script.pdf", "script-1")
+
+    assert excinfo.value.processor_id == "projects/clearcut-hack/locations/us/processors/dummy"
+
+
+def test_scene_overlapping_no_page_span_falls_back_to_the_nearest_page() -> None:
+    # Neither page span overlaps the scene's character range; the fallback
+    # picks the page nearest by character distance, not simply the first
+    # page in the list (CP-016) — proven by listing the farther page first.
+    text = "INT. APARTMENT - DAY\n\nJohn stares at the wall.\n"
+    document = documentai.Document(
+        text=text,
+        pages=[
+            documentai.Document.Page(
+                page_number=5,
+                layout=documentai.Document.Page.Layout(
+                    text_anchor=documentai.Document.TextAnchor(
+                        text_segments=[
+                            documentai.Document.TextAnchor.TextSegment(
+                                start_index=200, end_index=250
+                            )
+                        ]
+                    )
+                ),
+            ),
+            documentai.Document.Page(
+                page_number=2,
+                layout=documentai.Document.Page.Layout(
+                    text_anchor=documentai.Document.TextAnchor(
+                        text_segments=[
+                            documentai.Document.TextAnchor.TextSegment(
+                                start_index=100, end_index=150
+                            )
+                        ]
+                    )
+                ),
+            ),
+        ],
+    )
+    client = FakeDocumentProcessorClient(document=document)
+    adapter = DocumentAIIngestion(client=client, processor_id="processor-1")
+
+    scenes = adapter.parse("gs://clearcut-scripts-intake/script.pdf", "script-1")
+
+    assert (scenes[0].page_start, scenes[0].page_end) == (2, 2)
