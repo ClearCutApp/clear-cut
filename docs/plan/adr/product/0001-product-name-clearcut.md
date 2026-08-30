@@ -14,13 +14,13 @@ hackathon submission form asks for a single name.
 ## Decision
 
 The product is ClearCut in every new artifact. That covers the repository, the
-plan/ documents, source code identifiers, the web UI, the demo, and the
-submission. IP Guardian survives only as a historical name inside resources/,
+docs/plan/ documents, source code identifiers, the web UI, the demo, and the
+submission. IP Guardian survives only as a historical name inside docs/resources/,
 where the original downloaded documents keep it.
 
 ## Consequences
 
 New readers meet one name and can search the repo for it. The pitch materials
-in resources/ still carry IP Guardian and the engine name; we cite them as
+in docs/resources/ still carry IP Guardian and the engine name; we cite them as
 source material rather than rewriting them, so anyone following a citation into
-resources/ hits the old names and must know they refer to ClearCut.
+docs/resources/ hits the old names and must know they refer to ClearCut.

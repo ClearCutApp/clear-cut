@@ -11,9 +11,9 @@ Adapted from [petergyang/no-ai-slop](https://github.com/petergyang/no-ai-slop)
 
 ## 0. Scope
 
-Applies to reader-facing prose: `resources/`, `plan/`, `README.md`, commit and
+Applies to reader-facing prose: `docs/resources/`, `docs/plan/`, `README.md`, commit and
 PR descriptions, and narrative text shipped in the product. The planning
-documents in `plan/` are deliverables in their own right, so §4 applies to them
+documents in `docs/plan/` are deliverables in their own right, so §4 applies to them
 at blocking weight.
 
 Does not apply to specifications — `AGENT.md`, `CHECKPOINTS.md`, and the agent
@@ -93,7 +93,7 @@ with regard to, in order to, going forward.
 
 ## 4. Reviewer checklist
 
-Run this whenever a diff touches `resources/`, `plan/`, `README.md`, or other
+Run this whenever a diff touches `docs/resources/`, `docs/plan/`, `README.md`, or other
 prose:
 
 - [ ] No banned word or empty filler phrase from §1, unless quoted as an

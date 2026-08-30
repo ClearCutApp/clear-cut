@@ -1,7 +1,7 @@
 """Jurisdiction value object and the ten jurisdictions ClearCut supports.
 
 `corpus_prefix` values mirror the folder layout under
-`gs://clearcut-legal-corpus/` (plan/infrastructure.md Section 2): Argentina,
+`gs://clearcut-legal-corpus/` (docs/plan/infrastructure.md Section 2): Argentina,
 United States, Spain, and Mexico are given there explicitly (`argentina/`,
 `usa/`, `spain/`, `mexico/`); the remaining six follow the same common-name
 convention.

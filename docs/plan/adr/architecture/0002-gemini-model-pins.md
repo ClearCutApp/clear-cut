@@ -23,7 +23,7 @@ relying on response_mime_type alone.
 
 ## Consequences
 
-This record supersedes the six stale pins in resources/; we do not edit them in
+This record supersedes the six stale pins in docs/resources/; we do not edit them in
 place, so readers of those files must check here first. Model IDs live in
 configuration, which makes the next generation swap a one-line change. The
 flash tier may reason more weakly than a pro model on hard findings, and the

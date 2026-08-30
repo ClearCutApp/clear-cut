@@ -1,4 +1,4 @@
-"""Tests for the ten supported jurisdictions (plan/sdd.md Section 2)."""
+"""Tests for the ten supported jurisdictions (docs/plan/sdd.md Section 2)."""
 
 import pytest
 

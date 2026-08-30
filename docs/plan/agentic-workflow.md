@@ -3,7 +3,7 @@
 This document defines ClearCut's agent topology and orchestration: what each
 agent does, which model it runs, which stores it reads and writes, and how a
 script moves from upload to a cleared tracker. Code structure lives in
-`plan/sdd.md`.
+`docs/plan/sdd.md`.
 
 ## 1. Topology
 
@@ -239,7 +239,7 @@ that changes an item's state.
 
 ## 9. Boundaries
 
-This document owns agent topology and orchestration; `plan/sdd.md` owns code
+This document owns agent topology and orchestration; `docs/plan/sdd.md` owns code
 structure, and the two meet at the ports. Script parsing and page anchors
 ride ScriptIngestion, and scene hashing happens in the AnalyzeScript and
 EvaluateDelta use cases. The Rights and IP and Policy agents ride

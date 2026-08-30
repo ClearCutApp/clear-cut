@@ -1,6 +1,6 @@
 """Script and Scene, the units of analysis, chunking, and hashing.
 
-plan/sdd.md Section 2.
+docs/plan/sdd.md Section 2.
 """
 
 import hashlib
@@ -15,7 +15,7 @@ def content_hash(text: str) -> str:
 
     Normalization: lowercase, whitespace runs collapsed to one space, and
     leading/trailing whitespace stripped. This is the identity delta
-    evaluation joins on across script versions (plan/sdd.md Section 2).
+    evaluation joins on across script versions (docs/plan/sdd.md Section 2).
     """
     normalized = _WHITESPACE_RUN.sub(" ", text.strip().lower())
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()

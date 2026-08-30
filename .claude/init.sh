@@ -220,7 +220,7 @@ bootstrap() {
     . "$ROOT/.venv/bin/activate"
     python -m pip install --quiet --upgrade pip
     [ -f "$ROOT/requirements.txt" ] && python -m pip install --quiet -r "$ROOT/requirements.txt"
-    python -m pip install --quiet pytest ruff && ok "pytest + ruff installed"
+    python -m pip install --quiet pytest ruff mypy && ok "pytest + ruff + mypy installed"
     note "activate with: source .venv/bin/activate"
   else
     note "no pyproject.toml / requirements.txt yet — nothing to install"
@@ -229,20 +229,33 @@ bootstrap() {
 }
 
 # ----------------------------------------------------------------- check ----
+# `cmd && ok "x"` alone never fails this function under `set -e`: a failing
+# command that is not the last one in an AND-OR list does not trigger `-e`
+# (POSIX), so a bare `&&` here would let a broken gate report success. Each
+# step instead follows `verify()`'s own `ok`/`no` bookkeeping, and the
+# function returns non-zero exactly when `no` fired.
 check() {
   sec "Quality gates"
   [ -d "$ROOT/.venv" ] && . "$ROOT/.venv/bin/activate"
   if command -v ruff >/dev/null 2>&1; then
-    ruff check "$ROOT" && ok "ruff check"
-    ruff format --check "$ROOT" && ok "ruff format"
+    ruff check "$ROOT" && ok "ruff check" || no "ruff check"
+    ruff format --check "$ROOT" && ok "ruff format" || no "ruff format"
   else
     note "ruff not installed — run ./.claude/init.sh first"
   fi
+  if command -v mypy >/dev/null 2>&1 && [ -d "$ROOT/src" ]; then
+    (cd "$ROOT" && mypy src tests) && ok "mypy" || no "mypy"
+  else
+    note "mypy not installed — run ./.claude/init.sh first"
+  fi
   if command -v pytest >/dev/null 2>&1 && [ -d "$ROOT/tests" ]; then
-    (cd "$ROOT" && pytest -q) && ok "pytest"
+    (cd "$ROOT" && pytest -q) && ok "pytest" || no "pytest"
   else
     note "no tests yet"
   fi
+  sec "Result"
+  printf '  %d passed, %d failed\n\n' "$pass" "$fail"
+  [ "$fail" -eq 0 ]
 }
 
 case "${1:-bootstrap}" in

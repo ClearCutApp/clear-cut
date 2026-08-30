@@ -29,3 +29,18 @@ Track judges score our Parallel usage, so the demo must show Task API research
 prominently instead of burying it behind the tracker UI. That also concentrates
 risk; if Parallel's API degrades during judging week, the feature the track
 judges care about is the one that breaks.
+
+Task API processors are slower than a live demo tolerates, with `core` at a
+1.5-minute median, so the on-camera lookup runs through Search MCP while the
+Task API run starts at upload. `docs/plan/infrastructure.md` section 7.1 records
+that split.
+
+## References
+
+- API overview: https://docs.parallel.ai/getting-started/overview
+- Task API quickstart: https://docs.parallel.ai/task-api/task-quickstart
+- Research basis and citations:
+  https://docs.parallel.ai/task-api/guides/access-research-basis
+- Search API quickstart: https://docs.parallel.ai/search/search-quickstart
+- MCP servers: https://docs.parallel.ai/integrations/mcp/quickstart
+- Worked examples: https://github.com/parallel-web/parallel-cookbook

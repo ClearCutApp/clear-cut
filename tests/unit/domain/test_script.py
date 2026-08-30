@@ -1,4 +1,4 @@
-"""Tests for Scene, Script, and content_hash (plan/sdd.md Section 2)."""
+"""Tests for Scene, Script, and content_hash (docs/plan/sdd.md Section 2)."""
 
 import pytest
 
@@ -47,7 +47,7 @@ def test_scene_populates_its_own_content_hash_from_text():
 def test_scene_is_frozen():
     scene = _scene(1)
     with pytest.raises(AttributeError):
-        scene.text = "changed"
+        setattr(scene, "text", "changed")
 
 
 def test_script_holds_its_scenes_in_order():

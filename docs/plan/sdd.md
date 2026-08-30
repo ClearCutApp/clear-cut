@@ -9,7 +9,7 @@ three layers with dependencies pointing inward, ports only at real I/O
 boundaries, no abstraction from §4's banned list, tests before code.
 
 The build supersedes the architecture in
-`resources/Technical-Architecture-and-Hackathon-Framing.md`. Two of that
+`docs/resources/Technical-Architecture-and-Hackathon-Framing.md`. Two of that
 document's ideas survive in concrete form here: the Legal Inference Engine
 becomes the `SceneExtractor` port, and the Territorial Actionability Engine
 becomes the `LegalGrounding` and `RightsResearch` ports. Its Dynamic
@@ -145,7 +145,7 @@ Flask serves JSON only. Routes live in `adapters/http/` and do nothing beyond
 mapping HTTP to use-case input and output.
 
 The AnalyzeScript use case realizes the agent topology described in
-`plan/agentic-workflow.md` by coordinating the adapter calls in-process;
+`docs/plan/agentic-workflow.md` by coordinating the adapter calls in-process;
 nothing deploys as a separate orchestrator agent. The project Q&A agent is
 the one component hosted on Google Cloud Agent Builder, with the Vertex AI
 Search data store attached as its grounding source.

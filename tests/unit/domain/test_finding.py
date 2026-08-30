@@ -1,10 +1,11 @@
 """Tests for Finding, RiskLevel, Category, NerLabel, and Citation (CP-003).
 
-SDD reference: plan/sdd.md Section 2.
+SDD reference: docs/plan/sdd.md Section 2.
 """
 
 import dataclasses
 import enum
+from typing import Any
 
 import pytest
 
@@ -41,7 +42,7 @@ def test_citation_is_a_frozen_dataclass_with_uri_title_snippet():
     assert citation.title == "Song page"
     assert citation.snippet == "lyrics"
     with pytest.raises(dataclasses.FrozenInstanceError):
-        citation.uri = "changed"
+        setattr(citation, "uri", "changed")
 
 
 @pytest.mark.parametrize(
@@ -57,8 +58,8 @@ def test_risk_level_raised_steps_up_one_level_and_ceils_at_critical(level, expec
     assert level.raised() == expected
 
 
-def _finding(**overrides) -> Finding:
-    fields = dict(
+def _finding(**overrides: Any) -> Finding:
+    fields: dict[str, Any] = dict(
         finding_id="EVT-001",
         scene_number=4,
         page=12,

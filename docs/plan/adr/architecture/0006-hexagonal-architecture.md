@@ -5,7 +5,7 @@ Date: 2026-08-29
 
 ## Context
 
-Two target layouts contradict each other. resources/Codebase-Structure.md
+Two target layouts contradict each other. docs/resources/Codebase-Structure.md
 pastes a flat Flask app.py with templates, while .claude/AGENT.md section 2
 mandates a hexagonal src/clearcut/ split into domain, application, and
 adapters, wired in one place, composition.py.

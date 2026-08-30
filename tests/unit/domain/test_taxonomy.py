@@ -1,7 +1,9 @@
 """Tests for the NER-label-to-category mapping (CP-003).
 
-SDD reference: plan/sdd.md Section 2.
+SDD reference: docs/plan/sdd.md Section 2.
 """
+
+from typing import cast
 
 import pytest
 
@@ -41,4 +43,4 @@ def test_music_and_art_labels_all_map_to_copyright_works():
 
 def test_category_for_rejects_a_value_that_is_not_a_ner_label():
     with pytest.raises(ValueError, match="not-a-real-label"):
-        category_for("not-a-real-label")
+        category_for(cast(NerLabel, "not-a-real-label"))
