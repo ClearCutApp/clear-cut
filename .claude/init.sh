@@ -244,7 +244,7 @@ check() {
     note "ruff not installed — run ./.claude/init.sh first"
   fi
   if command -v mypy >/dev/null 2>&1 && [ -d "$ROOT/src" ]; then
-    (cd "$ROOT" && mypy src tests) && ok "mypy" || no "mypy"
+    (cd "$ROOT" && mypy src tests infra) && ok "mypy" || no "mypy"
   else
     note "mypy not installed — run ./.claude/init.sh first"
   fi
