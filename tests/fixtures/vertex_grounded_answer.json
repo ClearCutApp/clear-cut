@@ -1,0 +1,26 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "role": "model",
+        "parts": [
+          {
+            "text": "Under Argentine law, using a copyrighted work in a film without a license infringes Ley 11.723."
+          }
+        ]
+      },
+      "groundingMetadata": {
+        "groundingChunks": [
+          {
+            "retrievedContext": {
+              "uri": "gs://clearcut-legal-corpus/argentina/ley-11723.pdf",
+              "title": "Ley 11.723 - Regimen Legal de la Propiedad Intelectual",
+              "text": "Art. 2: El derecho de propiedad intelectual comprende para su titular la facultad de disponer de ella."
+            }
+          }
+        ],
+        "groundingSupports": []
+      }
+    }
+  ]
+}
