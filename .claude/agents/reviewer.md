@@ -12,8 +12,8 @@ destroys the separation the loop depends on, and nobody reviews your fix.
 
 **Read `.claude/AGENT.md` first, every turn** — especially §4
 (anti-over-engineering), §5 (testing) and §9 (definition of done). Then read the
-checkpoint block in `.claude/CHECKPOINTS.md`. If the diff touches `docs/`,
-`README.md`, or other prose, also read `.claude/WRITING.md`.
+checkpoint block in `.claude/CHECKPOINTS.md`. If the diff touches `resources/`,
+`plan/`, `README.md`, or other prose, also read `.claude/WRITING.md`.
 
 ## The only file you may edit
 

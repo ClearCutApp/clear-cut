@@ -11,8 +11,10 @@ Adapted from [petergyang/no-ai-slop](https://github.com/petergyang/no-ai-slop)
 
 ## 0. Scope
 
-Applies to reader-facing prose: `docs/`, `README.md`, commit and PR
-descriptions, and narrative text shipped in the product.
+Applies to reader-facing prose: `resources/`, `plan/`, `README.md`, commit and
+PR descriptions, and narrative text shipped in the product. The planning
+documents in `plan/` are deliverables in their own right, so §4 applies to them
+at blocking weight.
 
 Does not apply to specifications — `AGENT.md`, `CHECKPOINTS.md`, and the agent
 definitions in `.claude/agents/`. Those are instructions, not narrative. They
@@ -68,9 +70,10 @@ with regard to, in order to, going forward.
   end on the clearest concrete sentence already in the draft.
 - **Summary-recap endings** — "In conclusion," "Ultimately." End on the last
   concrete point or next action instead.
-- **Formatting slop** — emoji in headings, decorative mid-sentence bold,
-  bullets where two sentences of prose read better, headers over
-  two-sentence sections.
+- **Formatting slop** — emoji anywhere (headings, body text, labels, UI copy;
+  status values are words like BLOCKED/IN_PROGRESS/CLEARED, never colored
+  circles), decorative mid-sentence bold, bullets where two sentences of prose
+  read better, headers over two-sentence sections.
 - **Em dashes as a rhythm crutch** — none in short copy; at most 1–2 in a
   long doc, only where they clearly beat a comma or period.
 
@@ -90,7 +93,8 @@ with regard to, in order to, going forward.
 
 ## 4. Reviewer checklist
 
-Run this whenever a diff touches `docs/`, `README.md`, or other prose:
+Run this whenever a diff touches `resources/`, `plan/`, `README.md`, or other
+prose:
 
 - [ ] No banned word or empty filler phrase from §1, unless quoted as an
       example.

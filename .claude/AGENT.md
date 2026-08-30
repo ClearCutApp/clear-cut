@@ -15,7 +15,8 @@ rights holders per jurisdiction, and audits narrative continuity against a
 project bible.
 
 Stack: Python 3.11+, Flask, Google GenAI (Gemini), Parallel Search API,
-ClickHouse. Reference docs live in `docs/`.
+ClickHouse. Reference docs live in `resources/`; planning documents live in
+`plan/`.
 
 This file governs code. Its companion `.claude/WRITING.md` governs prose — docs,
 `README.md`, commit and PR descriptions — and exempts specification files like
