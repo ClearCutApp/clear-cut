@@ -1,0 +1,39 @@
+{
+  "document": {
+    "text": "INT. APARTMENT - DAY\n\nJOHN sits at the table, reading a newspaper.\n\nEXT. STREET - NIGHT\n\nJOHN walks down the street. The city hums with life.\n\nHe pauses at a crossing, looking both ways before continuing on.\n\nINT./EXT. CAR - CONTINUOUS\n\nJOHN gets in the car and starts the engine.\n",
+    "pages": [
+      {
+        "pageNumber": 1,
+        "layout": {
+          "textAnchor": {
+            "textSegments": [{ "endIndex": "68" }]
+          }
+        }
+      },
+      {
+        "pageNumber": 2,
+        "layout": {
+          "textAnchor": {
+            "textSegments": [{ "startIndex": "68", "endIndex": "143" }]
+          }
+        }
+      },
+      {
+        "pageNumber": 3,
+        "layout": {
+          "textAnchor": {
+            "textSegments": [{ "startIndex": "143", "endIndex": "209" }]
+          }
+        }
+      },
+      {
+        "pageNumber": 4,
+        "layout": {
+          "textAnchor": {
+            "textSegments": [{ "startIndex": "209", "endIndex": "281" }]
+          }
+        }
+      }
+    ]
+  }
+}
