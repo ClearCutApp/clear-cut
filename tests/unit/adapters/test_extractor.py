@@ -144,6 +144,16 @@ def test_raises_extraction_failed_for_an_unrecognized_ner_label() -> None:
         adapter.extract([_scene(1)], jurisdiction_for("US"))
 
 
+def test_generate_content_call_carries_the_model_the_adapter_was_constructed_with() -> None:
+    client = FakeGeminiClient()
+    model = "model-injected-at-construction"
+    adapter = GeminiSceneExtractor(client=client, model=model)
+
+    adapter.extract([_scene(1)], jurisdiction_for("US"))
+
+    assert client.calls[0].model == model
+
+
 def test_empty_scene_list_returns_empty_list_and_makes_no_client_calls() -> None:
     client = FakeGeminiClient()
     adapter = GeminiSceneExtractor(client=client, model="gemini-3.7-flash")

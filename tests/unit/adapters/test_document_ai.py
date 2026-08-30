@@ -150,6 +150,16 @@ def test_transport_error_is_translated_to_ingestion_failed_carrying_processor_id
         pytest.fail("expected IngestionFailed to be raised")
 
 
+def test_process_request_carries_the_processor_id_the_adapter_was_constructed_with() -> None:
+    client = FakeDocumentProcessorClient(document=_fixture_document())
+    processor_id = "processor-injected-at-construction"
+    adapter = DocumentAIIngestion(client=client, processor_id=processor_id)
+
+    adapter.parse("gs://clearcut-scripts-intake/script.pdf", "script-1")
+
+    assert client.requests[0].name == processor_id
+
+
 def test_parse_makes_no_network_call() -> None:
     client = FakeDocumentProcessorClient(document=_fixture_document())
     adapter = DocumentAIIngestion(client=client, processor_id="processor-1")

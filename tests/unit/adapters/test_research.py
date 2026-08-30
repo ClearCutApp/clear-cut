@@ -63,9 +63,8 @@ def _adapter(
 
 def test_adapter_implements_rights_research_port() -> None:
     adapter = _adapter(_result_body())
-    assert isinstance(adapter, RightsResearch)
     checked: RightsResearch = adapter
-    assert checked is adapter
+    assert isinstance(checked, RightsResearch)
 
 
 def test_fixture_task_result_returns_rights_claim_with_expected_fields() -> None:
