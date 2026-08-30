@@ -25,7 +25,9 @@ extend-exclude = [".claude"]
 select = ["E", "F", "I"]
 
 [tool.mypy]
-python_version = "3.11"
+# 3.12: numpy >= 2.5 ships PEP 695 stubs that a 3.11 target cannot parse,
+# and pytest imports numpy under TYPE_CHECKING. The dev interpreter is 3.12.
+python_version = "3.12"
 strict = true
 
 [[tool.mypy.overrides]]
