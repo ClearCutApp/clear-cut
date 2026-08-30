@@ -1,0 +1,46 @@
+{
+  "output": {
+    "type": "json",
+    "content": {
+      "claims": [
+        {
+          "holder": "Sony Music Publishing",
+          "contact": "licensing@sonymusicpub.com",
+          "litigation_posture": "No known disputes over similar synchronization uses."
+        },
+        {
+          "holder": "Unverified Rights Aggregator LLC",
+          "contact": "info@example.com",
+          "litigation_posture": "Unknown."
+        }
+      ]
+    },
+    "basis": [
+      {
+        "field": "claims.0",
+        "reasoning": "ASCAP and BMI Songview both list Sony Music Publishing as the administering publisher for this composition.",
+        "confidence": "high",
+        "citations": [
+          {
+            "url": "https://www.ascap.com/repertory#/ace/search/title/Hotel%20California",
+            "title": "ASCAP ACE Repertory",
+            "excerpts": ["Sony Music Publishing administers the synchronization rights."]
+          }
+        ]
+      },
+      {
+        "field": "claims.1",
+        "reasoning": "A single unverified forum post named this aggregator; no primary source confirmed it.",
+        "confidence": "low",
+        "citations": []
+      }
+    ]
+  },
+  "run": {
+    "run_id": "trun_fixture123",
+    "status": "completed",
+    "is_active": false,
+    "processor": "core",
+    "interaction_id": "int_fixture123"
+  }
+}
