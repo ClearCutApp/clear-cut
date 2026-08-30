@@ -32,5 +32,6 @@ def dedupe_findings(findings: list[Finding]) -> list[tuple[Finding, tuple[int, .
         scene_numbers[identity].append(finding.scene_number)
 
     return [
-        (survivors[identity], tuple(sorted(scenes))) for identity, scenes in scene_numbers.items()
+        (survivors[identity], tuple(sorted(set(scenes))))
+        for identity, scenes in scene_numbers.items()
     ]

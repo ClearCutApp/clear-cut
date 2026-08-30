@@ -86,6 +86,24 @@ def test_surviving_finding_is_the_first_one_seen_unchanged():
     assert result[0][0] == first
 
 
+def test_two_findings_in_the_same_scene_collapse_to_one_scene_number():
+    first = _finding(finding_id="EVT-001", scene_number=7)
+    second = _finding(finding_id="EVT-002", scene_number=7)
+    third = _finding(finding_id="EVT-003", scene_number=9)
+
+    result = dedupe_findings([first, second, third])
+
+    assert result[0][1] == (7, 9)
+
+
+def test_asset_repeated_three_times_in_one_scene_returns_a_single_element_tuple():
+    findings = [_finding(finding_id=f"EVT-{n:03d}", scene_number=4) for n in range(3)]
+
+    result = dedupe_findings(findings)
+
+    assert result[0][1] == (4,)
+
+
 def test_findings_differing_only_in_case_and_spacing_collapse_together():
     first = _finding(finding_id="EVT-001", raw_text="  A Bottle of  Quilmes  ", scene_number=1)
     second = _finding(finding_id="EVT-002", raw_text="a bottle of quilmes", scene_number=2)
