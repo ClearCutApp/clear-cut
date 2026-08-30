@@ -1,14 +1,14 @@
-"""The five ports the parallel verticals implement (docs/plan/sdd.md Section 3).
+"""The seven ports the parallel verticals implement (docs/plan/sdd.md Section 3).
 
 Each port exists because it crosses a real I/O boundary: an HTTPS call to
-Document AI, Gemini, Vertex AI Search, or the Parallel Task API, or a
-BigQuery read/write (AGENT.md Section 4 — a port only for a real boundary).
-`composition.py` is the only place a concrete adapter is wired to one of
-these.
+Document AI, Gemini, Vertex AI Search, or the Parallel Task API, a BigQuery
+read/write, a ClickHouse read/write, or an outbound webhook (AGENT.md
+Section 4 — a port only for a real boundary). `composition.py` is the only
+place a concrete adapter is wired to one of these.
 
-`TrackerStore` and `Notifier` are not declared here. They have no caller and
-no parallel implementer to coordinate with until phase 4; declaring them now
-would be an interface with zero callers. They arrive with their adapters.
+`TrackerStore` and `Notifier` cover the tracker's two boundaries: versioned
+persistence over ClickHouse, and producer notification over an outbound
+webhook (docs/plan/sdd.md Section 3).
 """
 
 import enum
@@ -18,7 +18,8 @@ from typing import Protocol, runtime_checkable
 from clearcut.domain.bible import BibleFact
 from clearcut.domain.finding import Category, Citation, Finding
 from clearcut.domain.jurisdiction import Jurisdiction
-from clearcut.domain.script import Scene
+from clearcut.domain.script import Scene, Script
+from clearcut.domain.tracker import TrackerItem
 
 
 class Confidence(enum.StrEnum):
@@ -89,3 +90,30 @@ class LoreStore(Protocol):
     def index(self, project_id: str, records: list[BibleFact | Scene]) -> None: ...
 
     def search(self, project_id: str, query: str, limit: int) -> list[BibleFact]: ...
+
+
+@runtime_checkable
+class TrackerStore(Protocol):
+    """Persists tracker items and script versions over ClickHouse.
+
+    Both tables live behind one port: the versioned `TrackerItem` rows and
+    the `script_versions` side EvaluateDelta reads (docs/plan/sdd.md
+    Section 3).
+    """
+
+    def save(self, items: list[TrackerItem]) -> None: ...
+
+    def latest(self, item_id: str) -> TrackerItem: ...
+
+    def latest_for_project(self, project_id: str) -> list[TrackerItem]: ...
+
+    def record_script(self, script: Script) -> None: ...
+
+    def latest_script(self, project_id: str) -> Script | None: ...
+
+
+@runtime_checkable
+class Notifier(Protocol):
+    """Notifies a producer over an outbound webhook."""
+
+    def notify(self, item: TrackerItem, reason: str) -> None: ...
