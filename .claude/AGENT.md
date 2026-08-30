@@ -15,7 +15,12 @@ rights holders per jurisdiction, and audits narrative continuity against a
 project bible.
 
 Stack: Python 3.11+, Flask, Google GenAI (Gemini), Parallel Search API,
-ClickHouse. Reference docs live in `docs/`.
+ClickHouse. Reference docs live in `resources/`; planning documents live in
+`plan/`.
+
+This file governs code. Its companion `.claude/WRITING.md` governs prose — docs,
+`README.md`, commit and PR descriptions — and exempts specification files like
+this one.
 
 Prose in this repo — docs, `README.md`, PR/commit text — follows
 `.claude/WRITING.md`, not this file. That contract is kept separate from
@@ -248,6 +253,8 @@ NEXT: implementer CP-004 | leader CP-004 | done
 - [ ] `pytest -q` green, `ruff check .` and `ruff format --check .` clean.
 - [ ] Layer rules (§2) hold — verified by import direction.
 - [ ] No item from §4 introduced.
+- [ ] Prose in the diff satisfies `.claude/WRITING.md` (§4 checklist, at the
+      weight that file defines).
 - [ ] `CHECKPOINTS.md` updated with the outcome.
 
 ---
@@ -303,10 +310,16 @@ configurator, not a scaffold: it ships no application structure.
    implement a second, competing loop. Running both splits the state between
    SDD artifacts and `CHECKPOINTS.md`, and neither is then trustworthy. This
    repo's loop is `leader → implementer → reviewer`, full stop.
-2. **Engram memory is available to all three agents** for recall across
-   sessions. It never becomes loop state: `CHECKPOINTS.md` remains the only
-   place a checkpoint's status lives, because the loop must resume from a file
-   a human can read and edit.
+2. **Engram memory is read by all three agents, written by one.** All three may
+   `mem_search` / `mem_get_observation` for recall across sessions. Only the
+   `leader` may `mem_save` / `mem_update` — a reviewer or implementer that
+   records its own conclusions is writing state nobody reviewed, which is the
+   same reason the reviewer cannot `Write` code. The implementer and reviewer
+   surface anything worth keeping through `Notes`; the leader decides.
+
+   Memory is recall, never loop state. `CHECKPOINTS.md` remains the only place a
+   checkpoint's status lives, because the loop must resume from a file a human
+   can read and edit.
 3. **Skills are available and encouraged.** Where a skill conflicts with §2–§5,
    **AGENT.md wins** — a skill cannot authorise an untested change, a layer
    violation, or an abstraction banned by §4.

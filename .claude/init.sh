@@ -27,7 +27,7 @@ field()       { frontmatter "$1" | sed -n "s/^$2:[[:space:]]*//p" | head -1; }
 # ---------------------------------------------------------------- verify ----
 verify() {
   sec "Files"
-  for f in AGENT.md CHECKPOINTS.md settings.json settings.local.json init.sh; do
+  for f in AGENT.md WRITING.md CHECKPOINTS.md settings.json settings.local.json init.sh; do
     [ -f "$CFG/$f" ] && ok ".claude/$f" || no ".claude/$f is missing"
   done
   for r in "${ROLES[@]}"; do
@@ -67,6 +67,28 @@ verify() {
     && ok "reviewer is restricted to CHECKPOINTS.md in prose" \
     || no "reviewer has no edit restriction stated"
 
+  sec "Memory grants (Engram)"
+  mem_read="mem_search"; mem_write="mem_save"
+  for r in "${ROLES[@]}"; do
+    t="$(field "$AGENTS/$r.md" tools)"
+    case "$t" in
+      *"$mem_read"*) ok "$r can read memory" ;;
+      *)             no "$r cannot read memory — no mem_search grant" ;;
+    esac
+  done
+  lt="$(field "$AGENTS/leader.md" tools)"
+  case "$lt" in
+    *"$mem_write"*) ok "leader can write memory" ;;
+    *)              no "leader cannot write memory — nobody can record decisions" ;;
+  esac
+  for r in implementer reviewer; do
+    t="$(field "$AGENTS/$r.md" tools)"
+    case "$t" in
+      *"$mem_write"*) no "$r may write memory — unreviewed state" ;;
+      *)              ok "$r cannot write memory" ;;
+    esac
+  done
+
   sec "Contract references"
   for r in "${ROLES[@]}"; do
     f="$AGENTS/$r.md"; [ -f "$f" ] || continue
@@ -101,6 +123,26 @@ verify() {
   grep -q 'Depth: 0' "$CFG/CHECKPOINTS.md" \
     && ok "checkpoint template carries Depth" \
     || no "CHECKPOINTS.md template has no Depth field"
+
+  sec "Prose contract (WRITING.md)"
+  grep -q 'WRITING.md' "$CFG/AGENT.md" \
+    && ok "AGENT.md points at the prose contract" \
+    || no "AGENT.md never references WRITING.md"
+  grep -q 'WRITING.md' "$AGENTS/reviewer.md" \
+    && ok "reviewer checks prose against WRITING.md" \
+    || no "reviewer never applies the prose contract"
+  grep -q 'WRITING.md' "$AGENTS/implementer.md" \
+    && ok "implementer writes to the prose contract" \
+    || no "implementer never reads the prose contract"
+  grep -q '^## 0\. Scope' "$CFG/WRITING.md" \
+    && ok "WRITING.md declares its scope" \
+    || no "WRITING.md has no scope — would apply to specs too"
+  grep -q '\*\*Non-blocking\*\*' "$CFG/WRITING.md" \
+    && ok "prose findings can be non-blocking" \
+    || no "all prose findings block — style can spin the loop past 3 attempts"
+  grep -q 'new and changed lines only' "$AGENTS/reviewer.md" \
+    && ok "prose review is scoped to the diff" \
+    || no "reviewer could raise findings on untouched prose"
 
   sec "Boundary with gentle-ai"
   grep -q '^## 11\. Relationship to gentle-ai' "$CFG/AGENT.md" \

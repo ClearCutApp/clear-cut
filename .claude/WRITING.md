@@ -9,6 +9,21 @@ Adapted from [petergyang/no-ai-slop](https://github.com/petergyang/no-ai-slop)
 
 ---
 
+## 0. Scope
+
+Applies to reader-facing prose: `resources/`, `plan/`, `README.md`, commit and
+PR descriptions, and narrative text shipped in the product. The planning
+documents in `plan/` are deliverables in their own right, so §4 applies to them
+at blocking weight.
+
+Does not apply to specifications — `AGENT.md`, `CHECKPOINTS.md`, and the agent
+definitions in `.claude/agents/`. Those are instructions, not narrative. They
+repeat one exact term on purpose where §2 would ask for variety, and they are
+written to be scanned by an agent under load rather than read through. §3's
+demand for concreteness still binds them.
+
+---
+
 ## 1. Banned words
 
 delve, foster, leverage, utilize, facilitate, empower, streamline, robust,
@@ -55,9 +70,10 @@ with regard to, in order to, going forward.
   end on the clearest concrete sentence already in the draft.
 - **Summary-recap endings** — "In conclusion," "Ultimately." End on the last
   concrete point or next action instead.
-- **Formatting slop** — emoji in headings, decorative mid-sentence bold,
-  bullets where two sentences of prose read better, headers over
-  two-sentence sections.
+- **Formatting slop** — emoji anywhere (headings, body text, labels, UI copy;
+  status values are words like BLOCKED/IN_PROGRESS/CLEARED, never colored
+  circles), decorative mid-sentence bold, bullets where two sentences of prose
+  read better, headers over two-sentence sections.
 - **Em dashes as a rhythm crutch** — none in short copy; at most 1–2 in a
   long doc, only where they clearly beat a comma or period.
 
@@ -77,7 +93,8 @@ with regard to, in order to, going forward.
 
 ## 4. Reviewer checklist
 
-Run this whenever a diff touches `docs/`, `README.md`, or other prose:
+Run this whenever a diff touches `resources/`, `plan/`, `README.md`, or other
+prose:
 
 - [ ] No banned word or empty filler phrase from §1, unless quoted as an
       example.
@@ -88,5 +105,12 @@ Run this whenever a diff touches `docs/`, `README.md`, or other prose:
 - [ ] No fake-profound kicker or summary-recap ending.
 - [ ] Em dashes, if present, are sparing and load-bearing.
 
-Any unchecked box on new/changed prose is a blocking finding, same weight as
-a failing `pytest`/`ruff` gate in `AGENT.md`.
+**When an unchecked box blocks.** Prose is gated, but it must not spin the loop
+(`AGENT.md` §6), so the weight depends on whether the prose is the work:
+
+- **Blocking** — the checkpoint's own acceptance criteria name the text (a
+  README, a doc, a PR description). The prose *is* the deliverable, so an
+  unchecked box carries the same weight as a failing `pytest` or `ruff` gate.
+- **Non-blocking** — the diff touches prose only in passing. The reviewer
+  records the finding and the leader raises it as its own checkpoint. Style
+  never sends a code checkpoint back for another attempt.
