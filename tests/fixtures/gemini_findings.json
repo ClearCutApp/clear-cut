@@ -1,0 +1,18 @@
+[
+  {
+    "scene_number": 4,
+    "category": "SPECIAL_SYMBOLS",
+    "ner_label": "BRAND",
+    "raw_text": "Sam laces up his NIKE high-tops.",
+    "risk_level": "MEDIUM",
+    "required_document": "Trademark clearance letter"
+  },
+  {
+    "scene_number": 4,
+    "category": "SPECIAL_SYMBOLS",
+    "ner_label": "MUSIC_EXISTING",
+    "raw_text": "\"Bohemian Rhapsody\" plays low on the car radio.",
+    "risk_level": "HIGH",
+    "required_document": "Music synchronization license"
+  }
+]
