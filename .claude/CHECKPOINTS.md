@@ -80,12 +80,47 @@ would pull a Node toolchain into a root that has none — `web/` owns npm, and
 keeping that boundary is D5's whole point. Strictness is `strict = true` over
 `src/clearcut`, relaxed only for untyped test functions. The mechanism that
 catches signature drift is an annotated assignment binding each fake to its
-port; mypy checks parameter names, order, and types across that assignment.
+port.
 
 *Edge: before, not alongside.* If it lands alongside the adapters, CP-012's own
 "mypy exits 0" criterion becomes hostage to five branches it cannot see, and its
 three attempts burn on other people's code. It is one small turn, and CP-011,
 CP-013 run in parallel with it, so the wall-clock cost is close to zero.
+
+**D3 amended 2026-08-30, after CP-009 and CP-010 both disproved a third of it.**
+The original text claimed the annotated binding makes mypy check "parameter
+names, order, and types". Two reviewers proved independently, on separate
+adapters and with a minimal probe, that **mypy does not check a Protocol's
+positional parameter names** — this is documented mypy behaviour, not a version
+bug. Renaming `ground`'s `query` to `question`, and `find`'s `asset_name` to
+`name`, each left `mypy src tests` at `Success`, including under
+`--no-incremental --cache-dir=/dev/null`. What the binding actually proves,
+each verified by mutation rather than by reading:
+
+- **Arity.** A method taking a different number of parameters fails.
+- **Parameter types.** Swapping `extract(scenes, jurisdiction)` to
+  `extract(jurisdiction, scenes)` produced 11 `arg-type` errors through the
+  `checked: SceneExtractor` binding — order is caught *because the types
+  differ*, which is why it holds for all five ports and would not hold for two
+  same-typed parameters.
+- **Return type.** Widening `ground`'s return to `str` fails the assignment.
+- **Method presence.** Which `runtime_checkable` `isinstance` also gives.
+
+A rename is caught only at a *keyword* call site through the **concrete**
+adapter type (`adapter.ground(query=...)`), never through the port binding.
+The consequence is a rule, not a checkpoint (see D15): **use cases call port
+methods positionally.**
+
+*The inert-binding pitfall, found in 3 of the 5 adapter tests.* Writing
+`assert isinstance(adapter, Port)` **above** `checked: Port = adapter` narrows
+`adapter` to `Port` first, so the annotated assignment then binds `Port` to
+`Port` and proves nothing at all — the mutation it exists to catch passes.
+Correct order is the annotated assignment **first**, the `isinstance` second
+(or dropped, since it only re-checks method names). CP-009 and CP-008 are
+fixed; `tests/unit/adapters/test_research.py:66-67` still has it backwards and
+is repaired by CP-015. A module-level annotated binding with no narrowing at
+all — CP-006's `test_document_ai.py:71`, CP-007's `test_extractor.py:80` — is
+the cleanest form and cannot regress this way.
 
 **D4. `__init__.py` under every `tests/` directory, folded into CP-012.** Two
 test files sharing a basename anywhere in the tree currently kill collection for
@@ -157,26 +192,1638 @@ those ports are now fixed. The Backlog preamble and the phase-4 entries are
 rewritten to say what is now concrete and what genuinely still waits on the
 adapters (only `composition.py`, which needs their constructors).
 
+### Settled 2026-08-30, phase 4 planning (D8–D18)
+
+Eight days to the 2026-09-07 submission. Every ruling below states what it
+costs the demo, because that is the tiebreak now.
+
+**D8. `python_version = "3.12"` is ratified; CP-012's archived criterion is
+amended, not reverted.** CP-012 ticked a criterion pinning `"3.11"`;
+`pyproject.toml` now reads `"3.12"` (conductor change, commit `959faf0`). The
+cause is real and outside our code: `numpy` 2.5.2 is installed, it ships PEP 695
+generic syntax in its stubs, a 3.11 mypy target cannot parse that syntax, and
+`pytest` imports `numpy` under `TYPE_CHECKING`, so every test file drags it in.
+The dev interpreter is 3.12.3. Reverting means suppressing numpy for mypy —
+`follow_imports = skip` on a package we do not call — which trades a truthful
+config line for a blind spot, to satisfy a criterion no longer describing the
+toolchain. `requires-python` stays `>=3.11`: it is the floor for *running*
+ClearCut, and nothing in `src/` uses 3.12-only syntax today.
+
+The one edge this opens: mypy at 3.12 will accept syntax that a 3.11 runtime
+rejects, and nothing catches it. That is closed by pinning the deployed runtime
+rather than by another gate — the Cloud Run deploy checkpoint (Backlog) carries
+`--runtime python312`, and CP-017 records the same in `pyproject.toml`'s
+classifiers. CP-012's archived criterion gains a dated inline amendment; no new
+checkpoint.
+
+**D9. Confidence-to-risk: MEDIUM raises the risk one step, LOW sets
+`needs_review` on the tracker item.** SDD §4.1 step 5 says low confidence "marks
+the finding unverified", and `Finding` has no such field. Adding one means
+changing a frozen, reviewed domain dataclass and every construction site, to
+carry a producer-facing "do not trust this yet" signal that `TrackerItem` already
+has a field for — `needs_review`, which D-day's delta path (§4.3) sets for
+exactly the same reason. Reusing it keeps the domain unchanged, keeps one
+vocabulary for one meaning in the dashboard, and costs nothing. So: HIGH leaves
+the finding alone, MEDIUM calls `RiskLevel.raised()`, LOW leaves the risk and
+sets `needs_review=True` on the item that finding produces. Owned by
+`AnalyzeScript` (CP-025), never by an adapter, because `Confidence` carries no
+risk rule of its own — `ports.py` says so in its own docstring.
+
+**D10. `/api/analyze` takes a `gcs_uri` in this phase; multipart upload is a
+later checkpoint with its own port.** The Backlog asked whether SDD §4.1 step 1's
+"the route streams the PDF to `gs://...`" survives SDD §4's "routes do nothing
+beyond mapping HTTP to use-case input and output". It does not: a GCS write is a
+real I/O boundary, so it belongs behind a port with an adapter, not inside a
+route. But SDD §4.1 already admits the other input — "multipart **or an existing
+GCS URI**" — and taking only the URI removes a port, an adapter, and a
+checkpoint from the critical path eight days out. The operator runs
+`gcloud storage cp` and POSTs the URI; the intake bucket CP-013 provisions is
+unchanged. Multipart upload with a `ScriptStorage` port is filed in the Backlog,
+and it is the SPA's dependency, not the demo's.
+
+**D11. The contradiction check earns its own narrow `ContinuityCheck` port. It
+does not ride `SceneExtractor`.** The Backlog held this open; the frozen
+signatures answer it. `SceneExtractor.extract(scenes, jurisdiction) ->
+list[Finding]` cannot express "compare this scene against these facts": there is
+no parameter for the facts. Riding it therefore means either changing a port
+CP-005's review froze, or having the extractor adapter call `LoreStore` itself —
+which puts orchestration inside an adapter and breaks AGENT.md §2 rule 3.
+
+Is a second port proliferation, which §4 forbids? No: it is a second *network
+call*, to a different model (gemini-3.1-flash-lite, SDD §4.1 step 5), with a
+different prompt and a different output shape. §4 bans a port without a real I/O
+boundary; this is one. It stays a single method — `check(scene, facts) ->
+Finding | None` — which is narrower than the port it declined to join. It brings
+the port count to eight, and it is the last one: nothing else in phase 4 or 5
+crosses a boundary these eight do not already cover.
+
+The one-line scene summary SDD §4.1 step 5 also attributes to flash-lite is
+**not** in scope for that port. It is LoreStore row metadata, no use case reads
+it, and no checkpoint needs it. Backlog.
+
+**D12. `AnswerProjectQuestion` gets no ninth port.** SDD §3 fixes its
+collaborators at `(lore, grounding, tracker)` and separately says it is "backed
+by gemini-3.1-flash-lite". Taken literally that needs a fourth collaborator SDD
+does not name. Resolved by observing what `LegalGrounding` already returns:
+`GroundedAnswer(text, citations)` — Vertex AI Search's grounded natural-language
+answer, cited. The use case retrieves bible facts through `LoreStore`, gets that
+grounded text through `LegalGrounding` when the question names a legal topic,
+reads tracker state for territory-blocker questions, and returns a
+`ProjectAnswer` carrying all three with their citations. No free-text generation
+in-process, so no port. The Agent Builder agent app CP-014 provisioned is where
+conversational phrasing lives if the demo wants it, and it is already wired to
+the same data store. If a later checkpoint proves prose composition is needed,
+that is a new port with a real caller — which is the order §4 asks for.
+
+**D13. `finding_id` is minted by `AnalyzeScript` as `EVT-NNN`, not by the
+extractor.** Found while checking the phase-4 preconditions:
+`adapters/gemini/extractor.py:141` sets `finding_id=str(uuid.uuid4())`, while
+SDD §2 specifies `EVT-NNN`, "sequential per project, assigned at first detection
+and **stable across script versions**". An adapter cannot produce that — it does
+not know the project or its existing sequence, and a UUID is by construction not
+stable across versions, which is precisely the identity EvaluateDelta's
+carry-forward joins on. So the extractor's id is a placeholder the use case
+replaces after dedupe. This is not a defect in CP-007: no criterion of its asked
+for `EVT-NNN`, and the id had no consumer until now. Folded into CP-025 as a
+criterion; no checkpoint against the adapter, which is left untouched.
+
+**D14. OpenTelemetry is deferred to the Backlog, dated and reasoned.** SDD §6 and
+§8(d) both name it, so this is a deliberate cut, not an oversight. Spans go
+*inside* the adapters (§6: "Adapters create the spans around their outbound
+calls"), so it is six diffs across five checkpoints that are `DONE` and reviewed,
+plus a provider setup in `composition.py`, for a surface that changes no
+user-facing behaviour. If it slips, the demo still runs; if the pipeline slips,
+there is nothing to trace. It lands after the end-to-end run works, and the
+Grafana dashboard §8(d) describes is the last thing built, not the first.
+`composition.py` (CP-029) is therefore wiring only.
+
+**D14 is OVERTURNED on 2026-08-30 by the user, relayed through the conductor.**
+The original text above stays as written, because the triage was sound on its
+own terms and a reader deserves to see why it was overridden rather than that it
+vanished. Its costs were real: six diffs across reviewed checkpoints, a provider
+setup, and no user-facing behaviour changed. What it did not weigh is that this
+question was already closed. The user gave a standing instruction earlier in the
+project — "grafana is not optional" — which is why SDD §6 specifies OTLP export
+to Grafana Cloud and why `docs/plan/adr/observability/0008-observability-grafana-otel.md`
+carries `Status: Accepted` with the words "a launch requirement rather than an
+add-on". A leader may sequence a requirement a human has ruled on; it may not
+triage the requirement away. The most D14 could legitimately do was put the cut
+back to the user, which the conductor did, and the answer was to restore it as
+an active checkpoint now.
+
+The deciding argument is the debt, not the schedule. An accepted ADR that reads
+"mandatory" over a repository that silently ignores it costs more than one
+instrumentation cycle, because the next reader has no way to tell which of the
+other nine ADRs are also dead letters, and the cheap way to find out is to
+ignore all of them.
+
+What changes: OpenTelemetry becomes CP-031 in Active, with the dependency edges
+its real position in the graph gives it (CP-023, CP-029, CP-030) rather than a
+place at the head of the queue — the user asked for it active, not for it to
+jump the graph. What does not change: the Grafana dashboard and the check that
+traces appear in it stay live checks under SDD §8, next to §8(a) through §8(d),
+since none of them run in CI. CP-031's own acceptance criteria are verifiable
+with no Grafana account at all.
+
+(D14's last line names CP-029 for `composition.py`; that is CP-030. The original
+sentence is left as it was.)
+
+**D15. No checkpoint for the keyword-call-site guard D3's amendment leaves
+open.** CP-009's reviewer offered two exits: strike "parameter names" from the
+criterion, or open a checkpoint forcing one keyword call through each concrete
+adapter so mypy sees a rename. Struck, for now. The exposure is a *future*
+rename of a parameter on one of five adapters that are all `DONE`, frozen, and
+touched by nothing on the phase-4 path; and the call sites that would break are
+the use cases, which are being written this turn under one rule stated where
+they are written: **use cases call port methods positionally**
+(`self._grounding.ground(query, jurisdiction)`). That closes the gap at the only
+five call sites that exist, at zero cost. Filed in the Backlog so a later turn
+can add the guard when the file count makes a convention unreliable — which is
+the same reasoning D4 used to reject a convention, applied honestly in the other
+direction because there the file count was five *unseen* branches and here it is
+five files one implementer writes.
+
+**D16. `google-cloud-discoveryengine` 0.20.2 stays installed; CP-017 settles it
+by making the `.venv` stop being the record.** CP-009's reviewer asked for it to
+come out of the environment record. Uninstalling it from `.venv` is a local
+mutation that no test observes, that a fresh `pip install` would undo, and that
+risks breaking a transitive requirement of `langchain-google-vertexai` on the
+one machine the demo is recorded from. The actual finding underneath it — that
+`.venv` is the only record of what this project needs — is fixed by CP-017,
+which declares the dependencies in `pyproject.toml` and adds a test that fails
+when `src/` imports something undeclared. Once that lands, an extra package in
+`.venv` is noise, not a record. No separate checkpoint; do **not** uninstall.
+
+**D17. `infra/README.md`'s missing "upload the PDFs first" step is folded into
+the Cloud Run deploy checkpoint, in the Backlog.** CP-014's run order jumps from
+step 3 to `gcloud storage ls "gs://clearcut-legal-corpus/**"` without ever
+saying a human must put the legal PDFs in that bucket first. Real, and worth
+fixing — but it fails loudly (an empty listing yields an empty manifest, and
+CP-014's own failure path exits non-zero before creating an empty data store),
+so nobody is misled, they are stopped. Two lines of prose do not earn an
+implementer turn plus a reviewer turn eight days out. The Cloud Run deploy
+checkpoint edits the same run-order list in the same file; it carries this as a
+criterion so it cannot be lost.
+
+**D18. The two `web/` findings wait for the container that makes them bite.**
+(a) Malformed JSON inside a 200 escapes `requestJson` as a raw `SyntaxError`
+rather than `ApiError` (`web/src/api/client.ts:108`). Real, and confirmed by
+CP-011's reviewer with a probe — but the only backend that will ever answer this
+client is Flask's `jsonify`, which does not emit malformed JSON, and the code
+that would miss the distinction (a container branching on `instanceof ApiError`)
+does not exist yet. It is one `try/catch` and one test, and it belongs in the
+checkpoint that writes that branch. (b) Tailwind, which ADR 0009 and SDD §5 name
+as stack and CP-011 correctly declined to add with nothing testing it, lands
+with the first container that needs visual styling. Both are attached to the
+first-container Backlog entry rather than left implicit.
+
+### Settled 2026-08-30, the specification queue two reviews left open (D19–D21)
+
+Four questions arrived from reviewers with evidence attached. None blocks a
+checkpoint today, and every one of them decides itself the wrong way if nobody
+rules — which is the only reason they are worth a leader turn eight days out.
+
+**D19. Scene renumbering is accepted as full re-analysis cost. ADR 0007's
+Consequences paragraph is amended; SDD §2, `diff_scenes`, and CP-020's criteria
+are not.** CP-020's reviewer established the conflict precisely: SDD §2 states
+the `(number, heading)` join normatively twice, CP-020's criteria restate it
+four times, and criterion 5 declares REMOVED+ADDED the *correct* answer for a
+same-number heading change. So a hash-first join is not a refinement of the
+spec, it is a different spec.
+
+What the ADR asks for splits in two, and only one half is unserved.
+*Correctness holds.* Permissions are not lost on renumbering: carry-forward
+joins on asset identity — `(category, normalized raw_text)`, SDD §4.3 and
+CP-028's own criterion — "even when the asset moved to a different scene", and
+REMOVED scenes keep their open tracker items. `content_hash` is position-free
+and verified so. The ADR's Decision paragraph is satisfied in full. *Compute is
+wasted.* Top-inserting one scene renumbers every scene below it, and a
+`(number, heading)` join never pairs them, so each is re-extracted and
+re-embedded although its text is identical.
+
+Ruling for the second half rather than against it, on four grounds:
+
+- **The demo does not exercise it.** SDD §7 phase 5's exit condition is
+  "uploading v2 with **one edited scene** re-analyzes exactly that scene and
+  preserves CLEARED items". An edited scene keeps its number and its heading,
+  so the key join pairs it and the hash comparison decides it. The demo beat
+  lands under the join as built.
+- **Hash-first is incomplete, not merely costly.** It rescues only the
+  renumbered-*and*-unchanged scene. A scene both renumbered and edited misses
+  the hash join and then misses the key join too, so it still reads
+  REMOVED+ADDED.
+- **It needs a tie-break nothing specifies.** `content_hash` is not unique
+  within a version — two short scenes with identical normalized text collide —
+  and `diff_scenes` currently raises `ValueError` on a duplicate key. Inventing
+  a collision policy now, for a function whose only consumer (CP-028) is
+  unwritten, is the speculative generality §4 forbids.
+- **The costs are asymmetric.** Amending the ADR is one paragraph. The other
+  road reopens a reviewed `DONE` domain module, rewrites two SDD §2 sentences
+  and two CP-020 criteria, and spends a review, to change behaviour no
+  checkpoint calls yet.
+
+The counterweight, recorded because it cuts against this ruling rather than for
+it: `Scene.number` is an `int`, so ClearCut cannot represent the `14A` insert
+that production practice uses on a locked script precisely to avoid renumbering
+everything downstream. The waste is therefore not purely theoretical for a real
+series. That is a modelling gap in the scene number, not in the join key, and it
+is filed in the Backlog as one. It does not change today's answer, because the
+fix for it is a different change.
+
+Amendment text for
+`docs/plan/adr/architecture/0007-incremental-delta-by-scene-hash.md`, replacing
+its Consequences section entirely. It is carried as a criterion on CP-028,
+whose behaviour the paragraph describes, on D17's precedent: one paragraph does
+not earn an implementer turn plus a reviewer turn, and the checkpoint that pays
+the cost is the one whose reader needs the ADR to be true.
+
+> ## Consequences
+>
+> Scenes hash on content rather than position: `content_hash` covers the
+> normalized text and nothing else, so a renumbered but unchanged scene
+> produces the same hash.
+>
+> The join key is a separate question, and SDD §2 answers it differently:
+> scenes join across versions on `number` plus `heading`. Renumbering a scene
+> therefore does not merely move it, it changes its identity — the old number
+> leaves as REMOVED, the new one arrives as ADDED, and the two equal hashes are
+> never compared. Inserting a scene re-analyzes every scene below it.
+>
+> That cost is accepted. Clearance does not depend on it: carry-forward joins
+> on asset identity, `(category, normalized raw_text)`, not on the scene, so a
+> renumbered scene's findings keep their `finding_id` and their tracker state,
+> and REMOVED scenes keep their open items. What is spent is compute. Joining
+> on the hash first would recover some of it, but only for scenes renumbered
+> and left otherwise untouched, and it would need a rule for two scenes in one
+> version that hash alike — `content_hash` is not unique within a version.
+> Neither piece is specified, so neither is built.
+>
+> Edits below scene granularity also cost full price; a single changed line
+> re-embeds and re-analyzes the whole scene.
+
+**D19 corrected on 2026-08-31 by D37. The original text above stands unedited;
+this paragraph is the correction.** The "*Correctness holds*" half of this
+ruling rested on a behaviour that does not exist. It quoted CP-028's criterion
+5 — "carry-forward joins on asset identity — `(category, normalized raw_text)`"
+— and CP-028's review then measured that nothing in this repository can join on
+that pair: `TrackerItem` carries no `category` and no `raw_text`, `TrackerStore`
+exposes no findings read, and `infrastructure.md` §6 defines no findings table.
+Carry-forward joins on scene overlap. So permissions survive only for a scene
+that keeps its number, which is the case SDD §7 phase 5 demonstrates and the
+only case the demo exercises. An asset that moves to a different scene arrives
+as a new item at BLOCKED and a human clears it a second time, while the item it
+left behind stays open and flagged.
+
+The ruling stands, on the three grounds that never depended on the false
+premise: the demo does not exercise renumbering, hash-first is incomplete
+rather than merely costly, and it needs a tie-break nothing specifies. What
+changes is the size of the cost being accepted. It is not compute alone. The
+amendment text above is superseded by D37's, which says so in the ADR, and
+CP-045 lands it.
+
+**D20. `scene_numbers` is the set of scenes an asset appears in, not a list of
+its mentions. CP-032 makes it one.** CP-019's reviewer verified against the
+built module that `dedupe_findings([f("E1", 7), f("E2", 7), f("E3", 9)])`
+returns `(7, 7, 9)`, and correctly called it unspecified rather than a defect —
+no criterion and no contract forbids it, and `TrackerItem` rejects only an
+empty tuple.
+
+Accepting multiplicity would mean deciding what a repeat *means* to a producer
+reading the tracker, and no answer survives contact with the identity function.
+It cannot mean "mentioned twice in scene 7", because dedupe collapses on
+`(category, normalized raw_text)`: two mentions of the same asset in scene 7
+whose text differs at all stay separate entries and never meet. So a repeat
+counts only mentions whose normalized text matches exactly, which is a statistic
+about the screenwriter's phrasing rather than about clearance. Nothing reads it,
+no criterion asks for it, and SDD §2 calls the field "every scene where the
+asset appears" — a set, in the only reading that makes the sentence true.
+
+This clears the test I apply to every deferred finding: it changes observable
+behaviour. CP-023 persists the tuple and the dashboard renders it, so left alone
+it reaches the producer as "scenes 7, 7 and 9". The change is one line and a
+test, inside a pure domain function with no I/O — CP-032.
+
+**D21. The dependency gate resolves imports by dotted path. CP-017's second
+acceptance criterion is amended and CP-033 closes it; the repeated failure
+output rides along.** CP-017's reviewer measured the gate twice and got the same
+number both times: it catches 2 of 6 single removals, and declaring
+`google-api-core` by hand closed one instance without extending what the gate
+can see. `packages_distributions()` resolves whole top-level names only, so all
+seventeen `google-*` distributions collapse onto one key and declaring any one
+of them satisfies an import of any other. Closing that needs
+`Distribution.files` prefix matching, which the reviewer ran and confirmed
+resolves all five imports correctly — and which the second acceptance criterion
+forbids by naming the stdlib call. That is a specification change, so it is
+mine.
+
+A dated acceptance was the other exit, and the expected one, because the same
+reviewer proved no second undeclared import is hiding today. What overturns it is
+CP-031. `opentelemetry-api`, `opentelemetry-sdk`, and
+`opentelemetry-exporter-otlp-proto-http` all install under a single
+`opentelemetry` top-level namespace, the same shape as `google`, so under
+today's checker declaring one of the three satisfies imports of all three. The
+failure mode is specific and bad: `gcloud run deploy --source .` ships a
+container missing the exporter, every local test stays green, and the service
+dies at import on the one deploy the submission depends on. Declaring all three
+by hand is available, and it is exactly the remembering CP-017 exists to remove
+— its own Notes say so: "a list somebody has to remember to update is exactly
+what let `dependencies = []` survive five adapters."
+
+Neither pending import needs this on its own. `clickhouse-connect` (CP-023) and
+`flask` (CP-029) each own their top-level name, and an import of a distribution
+that is not installed at all is already reported rather than skipped — verified
+against the checker: an empty candidate set fails the intersection and the
+finding prints `<none installed>`. That behaviour is load-bearing for all three
+of those checkpoints, so CP-033 pins it with a test rather than leaving a
+rewrite free to drop it.
+
+CP-017's item (b) — the failure output repeating one finding per import
+statement, seven times over for `parallel-web` — folds into CP-033 rather than
+into the Backlog or a turn of its own. Same file, same function, one grouping,
+and it is the half of the output a human actually reads.
+
+### Settled 2026-08-30, six questions from four reviewers (D22–D26)
+
+Every one of them lands on a checkpoint that has not been dispatched — CP-025,
+CP-026, CP-029, CP-030 — which is the whole reason they are worth a turn today.
+Two of them (D23, D24) decide code three unwritten use cases are about to
+contain; ruling those after the code exists costs three reopened modules
+instead of one new checkpoint. Four checkpoints come out of these five
+rulings: CP-034 through CP-037.
+
+**D22. `TrackerItem` gains `with_draft_email(text, at)`, and CP-025's `Files`
+widen to reach it.** CP-018's reviewer found the mismatch: CP-025 must store a
+draft on an item, `TrackerItem` exposes only `transitioned_to` and
+`flagged_for_review`, and CP-025's `Files` exclude `domain/tracker.py`. As
+written that use case reaches for `dataclasses.replace` and bumps `version`
+itself, which hands the versioned-row rule — every change is a new row at
+`version + 1`, never a mutation (SDD §2) — a second owner in a second layer.
+
+Ruled the first way the reviewer offered. `with_draft_email(text, at)` is a
+third sibling of two methods that already exist, returning a new item at
+`version + 1` with `state` unchanged, in the exact shape `flagged_for_review`
+already has. It is not a new abstraction under §4: it is one more
+`dataclasses.replace` one-liner on the aggregate that owns the other two, which
+is Information Expert applied where §3 says to apply it.
+
+Sanctioning `replace` in the use case costs the same number of lines and buys a
+second place that knows how a version is bumped. The day that rule gains a
+field — an `updated_by`, say — one of the two sites gets missed, and
+ClickHouse's latest-wins read resolves the miss to a stale row with nothing to
+signal it. That is the same failure CP-018's own `frozen=True` test exists to
+catch, which is the evidence that this project already decided this question
+once in the other direction.
+
+CP-025 also gains a criterion that its module contains no `dataclasses.replace`
+on a `TrackerItem`. It is a one-line source assertion in that use case's own
+test file, not a guard framework — but "the use case does not bump versions" is
+a convention until something fails without it, and conventions are what D4
+already declined to trust.
+
+**D23. Adapter errors cross the port as domain errors, by subclassing three
+types in `domain/errors.py`. CP-034 does it; CP-035 carries the transport
+half.** CP-027's reviewer measured the cost of today's arrangement rather than
+asserting it: `src/clearcut/application/answer_project_question.py:109-111`
+holds the repo's first and only `except` in `application/`, it is
+`except Exception`, and injecting `TypeError`, `AttributeError` and
+`ZeroDivisionError` into `grounding.ground` each produced a silent bible-only
+answer. `KeyboardInterrupt` correctly propagates, since the catch is
+`Exception` and not `BaseException`.
+
+The implementer had no other legal move. `NoGroundedSource` lives at
+`adapters/gcp/vertex_search.py:27`, `application/` may not import
+`clearcut.adapters` (`tests/unit/test_layer_boundaries.py` enforces it), so
+that layer had no name to catch. CP-006's ruling — all five verticals keep
+their errors in their own module, `domain/errors.py` holds only
+`UnknownJurisdiction` — answered *where the class is defined*, at a time when
+nothing outside `adapters/` ever caught one. It never answered how a caller
+names one, and it is being extended into that gap by one implementer at a time.
+
+What decides this is not the swallowed `TypeError`, real as that is. It is
+CP-029 and CP-030 read together. CP-029 must map "the adapter's not-found error
+to 404 and an adapter unavailability error to 502". Its module is
+`src/clearcut/adapters/http/routes.py`, so under today's convention it names
+those errors by importing `clearcut.adapters.clickhouse.tracker` — and CP-030's
+second criterion makes `composition.py` "the only module under
+`src/clearcut/` importing from `clearcut.adapters`", enforced by extending the
+layer-boundary test. **The two checkpoints cannot both pass as written.** One of
+them would have been quietly rewritten mid-turn by whichever implementer hit it
+first, which is the outcome this decision exists to prevent.
+
+The ruling: `domain/errors.py` gains three types, and every adapter error
+subclasses exactly one of them.
+
+- `RecordNotFound` — the record asked for does not exist. CP-029 maps it to
+  404. Subclass: `TrackerItemNotFound`.
+- `SourceUnavailable` — an external source could not answer and the request
+  cannot continue without it. CP-029 maps it to 502. Subclasses:
+  `TrackerUnavailable`, `LoreUnavailable`, `IngestionFailed`, `NoScenesFound`,
+  `ExtractionFailed`, `ResearchUnavailable`, `ContinuityCheckFailed`,
+  `NotificationFailed`.
+- `EnrichmentMissing` — a source answered and had nothing to add for this
+  input. The caller continues without it, and it never reaches a route.
+  Subclasses: `NoGroundedSource`, `NoRightsHolderFound`.
+
+*Subclassing, not replacing.* That is what makes this cheap, and it is also
+what keeps CP-006's ruling true instead of overturning it. The class stays in
+its adapter module and keeps naming the processor id or the item id — "an error
+naming a processor id is an adapter's translation, not a domain rule" is still
+right. What changes is the *type* that crosses the port, which becomes a domain
+type, which is what §2 rule 3 has asked for since before CP-006 was written.
+Each `src/` edit is one word inside one class statement.
+
+*Three names, not one and not eight.* Each has a caller named in an existing
+checkpoint's criteria today: `RecordNotFound` in CP-029's 404 line and CP-025's
+propagate-unchanged failure path; `SourceUnavailable` in CP-029's 502 line;
+`EnrichmentMissing` in CP-026's "one enrichment failure does not fail the run"
+and in CP-027's repaired catch. A fourth would have none, which is exactly what
+§4 forbids.
+
+*The one imprecision, recorded rather than smoothed over.* `NoScenesFound`
+means a PDF parsed and held no scenes — bad input, not a broken upstream — and
+502 mislabels it. A fourth class for it would have no caller, because no
+checkpoint asks for a 422. It goes under `SourceUnavailable` and earns its own
+class the day a checkpoint needs the distinction.
+
+*Where the fatal line falls.* `ResearchUnavailable` is a Parallel API 5xx, not
+an unresolvable holder, so it is fatal and sits under `SourceUnavailable`.
+CP-026 names only `NoGroundedSource` and `NoRightsHolderFound` as survivable,
+and that is the right split: a Parallel outage that quietly yields a report
+with no rights holder on any finding is worse for a demo than a 502 that says
+what happened.
+
+CP-034 carries all of it — the three types, the eleven class statements, the
+repair of `answer_project_question.py` to `except EnrichmentMissing`, one
+contract test that fails on a twelfth unclassified adapter error, and one guard
+that fails on a bare `except Exception` under `application/`. Its dependencies
+on CP-016, CP-022 and CP-036 are file disjointness only.
+
+*The transport half, and why it is a separate checkpoint.* CP-024's reviewer
+found `httpx.ConnectError` and `httpx.ReadTimeout` leaving `webhook.py:34` raw,
+and `research.py:96` has the same shape, catching only `APIStatusError`. A
+caller handling a refused connection would `import httpx` in `application/`,
+which §2 rule 2 forbids. Same rule, different work: those two adapters wrap
+their outbound call so `httpx.TransportError` — the common base of both — turns
+into the adapter's own error under `SourceUnavailable`. It is two `except`
+clauses and their tests, it is a distinct behaviour from classifying errors
+that already exist, and unlike CP-034 it is cuttable: a refused connection
+during the demo is an infrastructure failure a 500 also reports, whereas CP-029
+cannot be written at all until CP-034 lands. CP-035.
+
+**D24. `TrackerItem` gains `project_id`. `ports.py` is not touched at all, and
+CP-036 lands it before CP-025 and CP-026 write their call sites.** CP-023's
+reviewer verified the gap against the built code and it is exactly as reported:
+`domain/tracker.py` gives `TrackerItem` no `project_id`, `ports.py` declares
+`save(items: list[TrackerItem]) -> None` with no project channel, and
+`adapters/clickhouse/tracker.py:150-151` issues `SELECT * FROM tracker_items`
+with no `WHERE`, ignoring the `project_id` it was handed. `latest_for_project`
+returns the latest version of every item in the table. The asymmetry is visible
+one method away: `latest_script(project_id)` does filter, at `tracker.py:173`,
+because `Script` carries `project_id` and `TrackerItem` does not.
+
+Both exits the reviewer offered are declined, and a third is taken.
+
+*Why not accept single-project scope.* No demo path exercises it — SDD §8(d)
+seeds one project, and with one project's rows in the table the unfiltered read
+returns the right answer, so accepting it costs nothing before 2026-09-07. What
+decides against it is that three unwritten use cases are about to be written
+against a read method whose parameter is decorative. A parameter that is
+ignored gets copied, and the next reader reasonably assumes rows are
+project-scoped because the method's name says so.
+
+*Why not `save(project_id, items)`, which is what the reviewer proposed.*
+It breaks `ResolveFinding`. CP-025 loads one item by `item_id`, changes it, and
+saves the new version; SDD §4.2's routes for it are `PATCH /api/tracker/
+{item_id}` and `POST /api/tracker/{item_id}/actions`, both item-scoped. Under
+that signature the use case must be handed a `project_id` it has no way to
+know, so the fix propagates into `execute`'s parameters, into two route bodies,
+and into the SPA client that fills them — to write a column it could have read
+off the item it just loaded.
+
+*Why the field.* `LoreStore.index(project_id, records)` carries scope
+separately, and that is correct there for a reason that does not transfer:
+`BibleFact` and `Scene` are only ever written by `AnalyzeScript` and
+`EvaluateDelta`, and both hold the project. `TrackerItem` is written by those
+two *and* by `ResolveFinding`, which does not. A type written from an
+item-scoped context has to be self-describing. So the project goes on the item,
+`save(items)` is unchanged, and `latest_for_project` filters on the column
+`save` now writes.
+
+The consequence worth stating plainly: **no port signature changes.** `ports.py`
+is not opened, so none of the eight checkpoints built on it is disturbed, and
+CP-036 takes no dependency on CP-022's in-flight `ports.py` edit.
+
+*The cost, measured not guessed.* `TrackerItem` goes to thirteen fields where
+SDD §2 lists twelve; that deviation is recorded here rather than hidden, and it
+is the same kind of call D13 made about `finding_id`. There are eight
+`TrackerItem(` construction sites in five files, all of them factories in test
+modules plus `_row_to_tracker_item` in the ClickHouse adapter, so the mechanical
+cost is one non-default field and eight call sites. Doing this after CP-025,
+CP-026 and CP-028 land adds three application modules, their tests, and the D15
+positional-call tests that pin how each of them calls `save`. This is the
+cheapest this fix will ever be, and it gets monotonically more expensive from
+here — which is the whole argument for spending a turn on it now.
+
+CP-036 carries it, depending on CP-023 and CP-024 for file disjointness.
+CP-025, CP-026 and CP-034 depend on it.
+
+**D25. `_LEGAL_TOPIC_WORDS` is widened, including past morphology. CP-037.**
+CP-027's reviewer measured the vocabulary against the document it implements.
+`docs/plan/agentic-workflow.md` §6's own canonical example — "Can we show the
+mural in scene 12?", the question that section says pulls grounded Mexican law
+— returns `False`. So do "Do we need permission for the Coca-Cola bottle?"
+("permit" is listed, "permission" is not) and "Is the song cleared for
+streaming?" ("clearance" is, "cleared" is not). Every miss degrades safely to a
+bible-only answer and no criterion pins the vocabulary, which is why it is
+scope and not a defect.
+
+Widened, because the failure lands on a demo beat. Two of the three misses are
+morphology — `permit`/`permission`, `clearance`/`cleared`,
+`license`/`licensed` — and stem prefixes close them. The third is not: "Can we
+show the mural in scene 12?" contains no legal word at all, in any form. It is
+a clearance question because of what it proposes to *do* with an asset, so the
+vocabulary has to reach the depiction verbs — `show`, `use`, `depict`,
+`feature`, `display` — before the plan's own example works.
+
+That widening buys false positives; "show me the blocked items" would ground.
+The false positive is the cheap error, at one Vertex AI Search call. The false
+negative costs the Q&A beat outright: the canonical question answered from the
+bible alone, no Mexican law, no citation, in front of whoever is watching.
+CP-027's zero-call criterion stays satisfied — it asks that a question naming no
+legal topic calls `ground` zero times, and that stays true for the questions it
+names.
+
+Ceiling under §4: a frozenset of stems and `str.startswith`. No stemmer, no NLP
+dependency, no model call inside a predicate. If stems stop being enough, the
+answer is a different retrieval trigger with a per-call cost attached, which is
+what the reviewer said, and that is a different checkpoint.
+
+**D26. `TrackerItem` gets no jurisdiction field. Declined; the answer stops
+implying the filter instead.** `docs/plan/agentic-workflow.md` §6 describes
+"What is still blocking release in Mexico?" as a query for "BLOCKED items whose
+jurisdiction set includes Mexico". `TrackerItem` carries no jurisdiction, so
+the answer lists every blocked item in the project.
+
+Declined, and unlike D24 this one does not get more expensive by waiting — it
+gets cheaper. A per-item jurisdiction *set* only means something once one
+project is analyzed against several jurisdictions, and nothing builds that:
+`SceneExtractor.extract(scenes, jurisdiction)` takes one,
+`LegalGrounding.ground(query, jurisdiction)` takes one, `AnalyzeScript` runs
+against one, and CP-029's `POST /api/analyze` accepts one `jurisdiction_code`.
+Every item a run produces therefore shares that run's single jurisdiction, so
+today's unfiltered answer is *correct* for the demo rather than merely
+harmless. The field's shape depends on a feature that does not exist, and
+guessing it now is the speculative generality §4 forbids. SDD §2 does not list
+it among `TrackerItem`'s fields either.
+
+The cost of building it anyway: a field on a domain dataclass CP-018 reviewed,
+a ClickHouse column, construction sites in CP-025 and CP-026, and a filter in
+the Q&A use case — four checkpoints for a filter with exactly one correct
+input.
+
+What is fixed instead, because a decline should not leave a misleading answer
+standing: the blocker answer names the jurisdiction it covers.
+`AnswerProjectQuestion.execute(project_id, question, jurisdiction)` already
+receives one, so the text can state which territory these items are blocked in
+rather than implying a filter `TrackerItem` cannot express. One line and one
+test, carried by CP-037 because it is the same file. The field itself goes to
+the Backlog, behind the multi-jurisdiction analysis it needs.
+
+**D27. The bare `ValueError`s stay where they are. The one that a request can
+actually reach is stopped at the route, by widening a criterion CP-029 already
+has; the other is unreachable and a 500 is the honest answer. No fourth error
+class.** CP-034's reviewer is right that `vertex_search.py:58` and
+`lore_store.py:93` cross a port as non-domain types and that CP-034's contract
+walk cannot see them — it collects module-owned `Exception` subclasses, and a
+`raise ValueError` is neither. What the report does not separate, and what
+decides this, is that the two are not reachable the same way.
+
+*Three sites, not two, and the third is already owned.* `webhook.py:30` raises
+the same bare `ValueError` on a blank `webhook_url`. It is in `__init__`, not in
+a port method, so it fires in `composition.py` at startup — which is exactly
+CP-030's "a missing required variable fails at startup naming that variable, not
+at the first request". Nothing to do; recorded so the next reader who greps
+`raise ValueError` under `adapters/` finds all three ruled.
+
+*`vertex_search.py:58` cannot be reached from any request.* A `Jurisdiction` is
+never constructed from request data: `jurisdiction_for` (`domain/jurisdiction.py:38`)
+returns one of the ten frozen values in `JURISDICTIONS` or raises
+`UnknownJurisdiction`, and all ten carry a non-blank `corpus_prefix`. A blank
+prefix therefore means someone edited that tuple, which is a programming error,
+and a 500 is what a programming error should be. The guard is not deleted
+either: `jurisdiction: ANY("")` returns every jurisdiction rather than failing,
+so removing it trades a loud 500 for silently unfiltered legal citations — the
+failure D2 named when it put this guard here.
+
+*`lore_store.py:93` is reachable, and it is a bad request, not a bug.*
+`POST /api/question` carries `project_id` from the body into
+`AnswerProjectQuestion.execute`, which passes it straight to
+`self._lore.search(project_id, ...)` (`answer_project_question.py:99`). A blank
+one lands on that guard and leaves as a bare `ValueError`, so today it would be
+a 500 for input the caller got wrong. That is a route's job, and CP-029 already
+does it for one field: "`POST /api/analyze` without `gcs_uri` returns 400 naming
+the missing field, before any adapter call". The criterion is widened from one
+field to the rule it was already an instance of, covering the two routes that
+take a `project_id`. The adapter guard then becomes what the other one already
+is — unreachable from a request, and a 500 if it ever fires.
+
+*Why not a fourth base under `domain/errors.py` mapping to 400.* D23's rule was
+that each of the three names has a caller in some checkpoint's criteria today,
+and that a fourth would have none. That still holds after this ruling and
+because of it: once the route refuses a blank field, no reachable raiser is left
+to classify. Building the class anyway is an interface with one implementation
+and no caller, which §4 bans by name, and it would have to reclassify raise
+sites CP-034's last criterion deliberately froze.
+
+*The blind spot, recorded rather than closed.* The contract walk will never see
+a `raise ValueError`, and no widening of it would — catching that shape needs a
+raise-site AST scan, a third structural guard, for a rule with three known sites
+that are now all ruled. It goes to the Backlog with this reason. What lands
+instead is a behavioural pin at the only place it can be observed: CP-029's 500
+criterion gains a `ValueError` case, so if either guard ever does fire, the
+response is a 500 with a JSON body and no stack trace rather than a Flask
+traceback in front of whoever is watching the demo. Two amended criteria on
+CP-029, no new checkpoint, no `src/` change.
+
+**D28. `NotificationFailed` reaching a 502 is correct on the path that exists.
+Declined, because the partial success it would misreport does not happen — and
+the trigger that reopens this is named.** Verified against `resolve_finding.py`
+rather than against the report, because the report's premise is checkable and it
+does not hold. `ResolveFinding.execute` (`resolve_finding.py:74-80`) reads
+`self._tracker.latest(item_id)`, and on a `Notify` action calls
+`self._notifier.notify(...)` and returns the item **unchanged**. The `save` is in
+the other branch, after `_apply`. No path in that module both writes a row and
+notifies, and `rg` confirms `notify` has exactly one call site in `src/`.
+
+So the request the reviewer describes — the producer clicks approve, the row is
+written, the UI is told it failed — is not a request this code can serve.
+`POST /api/tracker/{item_id}/actions` with `{"action": "notify"}` writes nothing;
+notifying *is* the whole request. When it fails, 502 says the one thing that
+happened, and it is true. The transition paths (`PATCH /api/tracker/{item_id}`,
+and `actions` with `draft_email`) write and never notify, so their only 502 comes
+from `TrackerUnavailable`, which is a write that genuinely failed.
+
+*Neither exit is taken, and that is the point.* `ResolveFinding` does not catch:
+a catch would swallow the only failure a notify request has to report, turning a
+502 into a 200 that lies — the same swallowing D23 spent a checkpoint removing
+from `answer_project_question.py`. The route does not distinguish either, because
+there are not two outcomes to tell apart. `NotificationFailed`'s place under
+`SourceUnavailable` (D23, CP-034) is unaffected by this ruling in either
+direction; the type was never the question.
+
+*What reopens it, written down so the next turn decides on evidence.* The day one
+action both writes a row and notifies, the write becomes observable and 502
+becomes wrong. The two likeliest are the Backlog's `generate_document` and
+`stakeholder_link`, or a transition that notifies on entering BLOCKED. The fix
+then is not a status code and not a catch in the use case: it is to report the
+outcome of the write and carry the notification failure as a field in the
+response body, which SDD §4.1 step 8's JSON shape already accommodates. Building
+that today means a catch with no failure it can honestly report and a
+partial-success shape on a route that has no partial success — speculative
+generality under §4, eight days out. CP-029 needs no criterion for it; the note
+on that block records it so the implementer does not re-derive it mid-turn.
+
+**D29. Both guards in `test_error_boundaries.py` are widened. CP-038, and it is
+dispatchable today.** These two are the ones that cost nothing to accept and
+buy back the thing CP-034 was careful about: a guard that cannot fail is worse
+than no guard, because the suite reports it as green.
+
+*The AST guard is narrower than its own purpose.* It matches `ast.Name` with id
+`"Exception"` only (`test_error_boundaries.py:62-64`), so `except:` — where
+`node.type` is `None` — and `except (Exception,)` — an `ast.Tuple` — both pass,
+proven by mutation, not read off. The guard exists so `application/` names what
+it catches, and two of the three ways to not name it are invisible to it.
+CP-025's `resolve_finding.py` has no behavioural backstop of its own, so this is
+the only thing standing between a future `except:` and exactly the swallowing
+D23 measured. `except BaseException` rides along in the same predicate for the
+same reason and the same cost.
+
+*The contract walk can pass vacuously.* `pkgutil.walk_packages` with no
+`onerror` swallows an `ImportError` and drops that module from the walk, so an
+adapter that fails to import is an adapter the test never inspected, and it goes
+green. This is the same failure class as the `parents[1]` bug CP-034's
+implementer caught by mutation — a guard that always passes — and it matters now
+rather than later because CP-029 is about to add the first new adapter package
+since the walk was written.
+
+*One checkpoint, not two, and not folded into CP-029.* Both are edits to one
+file that nothing else opens: CP-034 deliberately kept these guards out of
+`test_layer_boundaries.py`, which CP-030, CP-031 and CP-035 all extend. Neither
+touches `src/`, both are gate integrity rather than behaviour, and folding them
+into CP-029 would put a tests-only fix behind CP-026 for no reason. CP-038 is
+dependency-free and parallel-safe with everything in flight.
+
+*The one constraint on how it is built.* The non-vacuity assertion is
+membership-based, never a module count: CP-029 adds `adapters/http/`, and a
+count would turn red for the wrong reason in someone else's turn. And the
+widened AST predicate must still pass on the narrow catches CP-034 installed,
+including a tuple of two domain errors — a guard that bans the fix it was
+written to protect is not a stricter guard, it is a broken one. Both are
+criteria on the block.
+
+### Settled 2026-08-30, six findings from four reviewers (D30–D35)
+
+All six arrived non-blocking, from checkpoints that have since passed. Two of
+them — D30 and D31 — are not about how ClearCut is built but about what it
+claims to do, and both would ship silently: one leaves a headline feature with
+no data to run on, the other answers a clearance question with an assurance it
+has no evidence for. That is why they get checkpoints eight days out rather
+than Backlog lines. Four checkpoints come out of the six: CP-039 through
+CP-042.
+
+**D30. `AnalyzeScript` calls `record_script` after `tracker.save`, and
+`EvaluateDelta` does the same for the version it produces. The route cannot,
+and `POST /api/analyze` carries the version so it does not have to. CP-039
+lands the writer, CP-041 lands the caller `EvaluateDelta` would otherwise never
+get.** CP-026's reviewer verified it twice: `record_script` is declared at
+`ports.py:115`, implemented at `adapters/clickhouse/tracker.py:165`, and called
+from no module under `src/`. So `latest_script` has no writer, CP-028's first
+step diffs against `None` forever, and incremental delta evaluation — a
+headline feature in `docs/plan/proposal.md` and one of the five demo beats —
+cannot run even once. CP-026 was right to leave it out: no criterion of its
+named the call, and its ordered-sequence test ends at `tracker.save`, so an
+unrequested call would have failed that assertion as readily as satisfied
+anything.
+
+*Not the route, on three grounds.* CP-029's factory takes use-case instances
+and nothing else, so a route that wrote the script row would have to hold a
+`TrackerStore` — which SDD §4 forbids in the same sentence that defines the
+layer ("routes do nothing beyond mapping HTTP to use-case input and output"),
+and which CP-030's import gate would then have to be argued down. The use case
+already holds that port and already builds the `Script`
+(`analyze_script.py:142-149`), so Information Expert (§3) puts the write where
+the data is. And the write has to happen on both paths — first analysis and
+every re-analysis — so a route-side write would be the same three lines in two
+places, one of which a later checkpoint forgets.
+
+*After `save`, not before.* Then `latest_script` only ever names a version
+whose tracker items are persisted. A script row recorded ahead of a failing
+save advertises an analysis that never landed, and the next upload diffs
+against it.
+
+*The other half of the same defect is the caller.* After CP-028,
+`EvaluateDelta` has no route either, and a use case nothing calls is the same
+kind of gap as a port method nothing writes. SDD §4.3's first sentence says
+what its edge is: "Triggered when `POST /api/analyze` receives a project that
+already has a script version." Deciding that inside the route needs a tracker
+read the route may not do. The version comes from the request instead — which
+it has to anyway, because `AnalyzeScript.execute` takes `version: int`
+(`analyze_script.py:132-140`) and CP-029's three-field body has no way to
+supply it. `version == 1` calls `AnalyzeScript`, `version > 1` calls
+`EvaluateDelta`: one comparison, no read, no new port. D10 already set this
+precedent — the operator supplies the `gcs_uri` the system would otherwise
+derive, and supplying the version number is the same class of input. The cost
+is recorded rather than hidden: a caller that posts `version: 1` twice
+re-analyzes from scratch and records v1 again. Harmless for a two-version demo,
+and the honest fix is a project store, which the Backlog already holds.
+
+*Why CP-041 rather than a sixth route inside CP-029.* The branch needs
+`EvaluateDelta` to exist, so folding it in makes the largest route checkpoint
+wait on the largest use case, and CP-030 and CP-031 queue behind both. As its
+own node it is one comparison and its tests, it lands before CP-030 so
+`composition.py` is wired once, and CP-029 — which the conductor is dispatching
+now — keeps its dependency set of four `DONE` checkpoints.
+
+*No fourth error class.* CP-028's "no stored previous version" error subclasses
+`RecordNotFound` from `clearcut.domain.errors`, so CP-029's existing 404
+mapping covers it unchanged. D23's rule holds — the name already has callers —
+and D27's does too: nothing new to classify.
+
+**D31. A blocker answer over an empty tracker says the project is not indexed.
+It does not say nothing is blocked. CP-040.** CP-037's reviewer measured the
+regression its own criterion asked for: a blocker question against a project
+with zero tracker rows now answers "Nothing is blocked in Mexico.", where
+before CP-037 it answered "I have nothing indexed for this project." The
+reviewer passed the checkpoint correctly — the criterion asked for that
+phrasing, and nothing calls `AnswerProjectQuestion` yet, so no caller observes
+it.
+
+It is worth a checkpoint because the two sentences are the two halves of the
+liability argument this product is built on. `docs/plan/proposal.md` sells
+clearance evidence: a producer who reads "nothing is blocked" and ships is
+relying on a search that ran, and a producer who reads "nothing is indexed"
+knows to go and index. An empty dataset produces the first sentence today, so
+the assurance is derived from absence of data — which is the one input that
+cannot support it. Every other finding in this batch costs money, a call, or a
+reader's understanding; this one costs a claim the product cannot back.
+
+Three cases, one rule — **assurance requires rows**:
+
+1. no tracker rows for the project → nothing is indexed for it, and the text
+   makes no clearance claim at all;
+2. rows exist, none BLOCKED → nothing is blocked in the territory `execute` was
+   given, named (D26's line, kept);
+3. rows exist, some BLOCKED → unchanged.
+
+*Not CP-029.* The sentence is composed in
+`application/answer_project_question.py`, and a route that reworded it would be
+holding a rule the use case owns. CP-040 is that one file, one behaviour, and
+dispatchable today in parallel with CP-029. It narrows CP-037's sixth
+criterion — "the territory is named even when nothing is blocked" now holds for
+case 2 and not for case 1 — which is recorded here and pointed at from CP-037's
+archived Notes, on D8's precedent for amending a criterion that has already
+passed.
+
+**D32. `LegalGrounding` skips CONTINUITY and POLICY, on the argument CP-026
+already accepted for `RightsResearch`. CP-039, with the SDD sentence that
+describes it.** CP-026's reviewer found `_citations_for` unconditional at
+`analyze_script.py:183` while only `_claim_for` consults
+`_NO_RESEARCH_CATEGORIES`, so the legal corpus is queried with strings like
+`"CONTINUITY clearance: The mural was already destroyed in scene 3."`
+
+The cost is one Vertex AI Search call per contradiction, and that alone would
+be a Backlog line. What makes it a checkpoint is where the answer lands:
+`_citations_for`'s result goes onto the finding, so a bible contradiction
+reaches the report carrying articles of territorial copyright law retrieved for
+a query about narrative order. On screen that reads as a legal claim about a
+continuity error. CP-026's own criterion already states the rule in the
+neighbouring case — a bible contradiction "has no rights holder to resolve" —
+and it has no legal question either. Ruling it now is also the cheap moment:
+CP-029 wires the real adapter, after which every demo run pays for it.
+
+SDD §4.1 step 5's closing sentence names one lookup as skipped and now names
+both, so the specification stops describing a call the code does not make. One
+sentence, carried as a criterion on the checkpoint that changes the behaviour,
+on D17's and D19's precedent.
+
+**D33. The unasserted `AnalysisReport.script` metadata is pinned where the
+mutant lives; the gap it exposed in CP-029 gets its own criterion.** CP-026's
+reviewer measured it: `version=99` leaves all 311 tests green, and no criterion
+of CP-026 names `version`, `gcs_uri` or `jurisdiction_code`. Two different
+properties hide behind one finding. The report carrying what `execute` was
+given is CP-026's module (`analyze_script.py:142-149`), so it is one assertion
+in CP-039, whose diff already opens that test file. The response carrying it to
+the SPA is CP-029, and that checkpoint has no criterion naming the analyze
+response body at all — SDD §4.1 step 8 makes it the payload "the SPA needs no
+second call to render", so pinning its shape was missing rather than deferred.
+Both are one line. Neither is a second attempt on a passed checkpoint.
+
+**D34. `research.py`'s transport message gets the assertion `webhook.py`'s
+already has. CP-042.** CP-035's reviewer proved the asymmetry by mutation:
+replacing `research.py:104`'s `{error}` interpolation with `"boom"` leaves the
+suite at 311 passed, while the same mutation on `webhook.py:39` fails
+`test_connect_error_raises_notification_failed_with_a_connection_message`. The
+research-side test asserts only what the message is *not*. This is §5's rule
+exactly — production code with no test that fails without it — and it is the
+same class CP-035's own review blocked on, one adapter over. One assertion, no
+`src/` edit; `str(parallel.APITimeoutError)` is `"Request timed out."`, which
+the reviewer observed while mutating.
+
+**D35. The `walk_packages` docstring says what CP-038 measured. CP-042.**
+`test_error_boundaries.py:65-69` claims `walk_packages` "swallows a package's
+`ImportError` and silently drops it from the walk". CP-038's implementer and
+reviewer both measured that it does not: the `ModuleInfo` is yielded before any
+import, only packages are imported, so a broken leaf module always reaches
+`_adapter_modules`'s own unguarded import, and what `onerror=None` suppresses
+is recursion into a broken package's children. The test is correct and the
+property it pins is real; only the explanation is wrong, and it is wrong about
+the exact subtlety two turns were spent establishing. Left standing, it is the
+document a later reader would use to reopen D29's premise — which is the same
+failure D29 itself named, one layer over: a record that reports the opposite of
+what it proves.
+
+*One checkpoint for D34 and D35, not two.* Both are test-only, both are
+dependency-free, and each is a few lines. Two turns for that is the cost D17
+declined to pay for two lines of prose. The seam if a reviewer disagrees is the
+file boundary.
+
+**D36. The MVP ships with a mocked wiring mode, selected by `CLEARCUT_MODE`.
+CP-043, plus four criteria on CP-030 and two on CP-031.** A user decision of
+2026-08-31, relayed through the conductor: *"podes parar en mvp, mockear hasta
+que conecte los servicios."* It is ranked the way D14's overturn was ranked — a
+product decision the leader sequences, never one a leader triages away.
+
+What it changes is one branch in `composition.py`. `CLEARCUT_MODE=mock` wires
+in-memory implementations of the eight ports, seeded with the planted script of
+SDD §8(d), and reads none of the twelve environment variables. `CLEARCUT_MODE=live`
+is exactly what CP-030 already specifies, and it is what an absent variable
+means. Both modes ship. Connecting a real service afterwards is an environment
+change, not a code change, which is the property the decision was asking for.
+
+*Why the default is `live`, and why an unknown value is fatal.* A deployment
+that quietly serves a planted Ferrari because nobody set a variable is worse
+than one that refuses to start naming the credential it wants. So mock is
+opt-in, `CLEARCUT_MODE=demo` fails at startup naming both accepted values
+rather than falling back to either, and mock mode says so in one startup
+warning. A mocked service must be identifiable from its own logs.
+
+*Why the in-memory implementations live under `src/`.* `composition.py` cannot
+import from `tests/` — §2 rule 4 aside, `tests/` is not shipped, so a Cloud Run
+image built from `src/` would import a module that is not there. `tests/unit/fakes.py`
+therefore cannot be the answer, and the honest reading is that these are not
+test doubles at all: the demo is their production use. They are
+`src/clearcut/adapters/demo/`, they are CP-043's deliverable, and they get
+their own tests like any other adapter.
+
+*Why this is not the §4 violation it resembles.* §4 bans an interface with a
+single implementation and an abstraction with a single caller. This is neither:
+eight ports that already exist for real I/O boundaries gain a second
+implementation, and the second one is what the 2026-09-07 demo actually runs
+on. The failure §4 is pointing at here is drift — two implementations of one
+contract diverging — so CP-043 binds each class to its port with D3's annotated
+assignment, the mechanism that already catches arity, parameter types and
+return types across the five live adapters. The package is seed data plus eight
+thin classes. The moment one of them grows a rule its live counterpart does not
+have, it has stopped being a mock and started being a second system.
+
+*What mock mode must skip.* Everything that needs a service to exist: no
+ClickHouse client is constructed, `ensure_schema` is never called, no
+credential is read, no socket is opened. Asserted by clearing the environment
+down to `CLEARCUT_MODE=mock` and nothing else.
+
+*What mock mode must not skip: observability.* The demo's last thirty seconds
+are a Grafana trace of the run, and the run is mocked, so spans living only
+inside the live adapters would leave that beat with nothing to show. CP-031
+gains it explicitly: the five stage spans and the four metrics appear in both
+modes, with each demo adapter opening the same-named span as the live adapter
+it stands in for. Five one-line duplications, and no wrapper layer — a
+span-decorating class per port would be eight new types serving one purpose,
+which is the abstraction §4 bans by name.
+
+*The one panel that stays empty, and why that is correct.* `clearcut_gemini_tokens_total`
+is derived from a model's usage metadata. In mock mode no model ran, so the
+counter records nothing and the `extract` span carries no token attributes.
+Seeding plausible token counts would put a fabricated number on a dashboard
+shown to judges, in a product whose whole argument is that an unsourced
+plausible answer is worse than none. Stage latency, findings-by-severity and
+tracker-by-state all measure our own code and our own data, so all three stay
+real in mock mode. Token spend is the panel that comes back the day a real
+Gemini key lands.
+
+*One checkpoint plus amendments, not two checkpoints.* The seed data and the
+eight classes are one deliverable, one test file, and no dependency on anything
+in flight — CP-043, dispatchable now. The mode branch is an `if` and two wiring
+functions inside a file CP-030 is already writing; the graph was shaped once
+before (CP-041's Notes) precisely to avoid reopening `composition.py` for one
+constructor argument, and reopening it for one branch would repeat that mistake
+on purpose. If CP-030 reaches 3/3, the split axis is live wiring in one
+checkpoint and the mock branch in another.
+
+### Settled 2026-08-31, the first terminal verdict of the project (D37)
+
+**D37. CP-028 is SUPERSEDED downward. The specification moves to what the ports
+support; the ports do not move to the specification. CP-044 re-lands
+`EvaluateDelta` with the amended criterion, CP-045 corrects the ADR and SDD
+§4.3, and persisting asset identity goes to the Backlog with a dated reason.**
+
+CP-028's reviewer returned the first `BLOCKED` in this project and returned it
+correctly: twelve of thirteen behavioural criteria survive mutation, the gates
+are green at 386, and the one that fails is unreachable from inside the block's
+`Files`. Criterion 5 requires a re-extracted finding to keep its `finding_id`
+and its tracker state by matching `(category, normalized raw_text)` "even when
+the asset moved to a different scene". No store holds that pair between runs.
+`TrackerItem` (`domain/tracker.py`) carries neither field, `TrackerStore`
+exposes no findings read, and the Backlog has recorded the root cause since
+2026-08-30: no findings table in `infrastructure.md` §6 and no port for one.
+The code joins on scene-number overlap instead, which is the only join the
+ports can serve.
+
+The counterexample is measured, not argued. v1 scene 2 carries a Quilmes
+billboard as `EVT-002` at CLEARED. v2 edits the brand out of scene 2 and adds
+scene 9 carrying it. The run returns `EVT-003` BLOCKED on scene 9 and leaves
+`EVT-002` CLEARED with `needs_review` set on scene 2. One asset, two rows, and
+the clearance does not follow it.
+
+**Ruling: amend the criterion, not the schema.** Four grounds, weighed against
+2026-09-07.
+
+- **The demo does not exercise the case.** SDD §7 phase 5's exit condition is
+  "uploading v2 with **one edited scene** re-analyzes exactly that scene and
+  preserves CLEARED items". An edited scene keeps its number and its heading,
+  so it joins as CHANGED and scene-overlap matching pairs it. The beat lands
+  under the join as built. This is the same first ground D19 ruled on, and it
+  is still the true one.
+- **The other road reopens two `DONE` archives seven days out.** Persisting
+  asset identity is a field on `TrackerItem` (CP-025, CP-036), two ClickHouse
+  columns with a migration on an adapter CP-023 already shipped, a widened
+  `latest_for_project` read, and then a re-do of `EvaluateDelta`'s matching on
+  top. Four implementer turns and four reviewer turns minimum, on the critical
+  path that CP-041, CP-030 and CP-031 all queue behind. An unpersisted field
+  reads back empty, so there is no half of this worth landing.
+- **§4 forbids building it now.** "Build exactly what the current checkpoint's
+  acceptance criteria require" — and the criteria are the leader's to set. A
+  stored asset identity exists to serve a case no demo beat runs and no other
+  checkpoint reads.
+- **The behaviour that ships is defensible on its own.** A moved asset is not
+  dropped and not silently re-cleared. It mints a new item at BLOCKED, and the
+  item it left behind stays open and flagged for re-review. A producer sees
+  both rows. What it costs is a second clearance a human performs, which is
+  work, not a wrong answer.
+
+**The honesty conditions, which are the price of ruling this way.** A downgrade
+that hides itself is worse than the gap it hides, and this project's own
+argument (D31) is that an assurance without evidence behind it is the one
+failure it cannot afford.
+
+1. ADR 0007's Consequences section says plainly that a moved asset arrives as a
+   new item at BLOCKED and gets cleared again. The paragraph landed in the
+   blocked diff claims the opposite, verbatim from D19, and the ADR is
+   `Accepted`. CP-045 replaces it with the text below.
+2. SDD §4.3's carry-forward bullet stops describing an asset-identity match.
+   Same checkpoint, same reason: the specification currently describes code
+   nobody can write against these ports.
+3. D19 gains a dated correction, recorded above rather than here so the next
+   reader finds it where the false premise is. Its "permissions are not lost on
+   renumbering" holds for scenes that keep their number, and that is the demo
+   beat.
+4. The stale item stops being a bare flag. CP-044 gives it a note naming the
+   scene it was cleared against, so a producer reading a flagged CLEARED row
+   learns why it is flagged. Today it carries `needs_review` and an empty
+   `note`, which is non-silent but not diagnosable.
+
+**Why two checkpoints and not one, against D17's and D19's own precedent.**
+That precedent — one paragraph does not earn an implementer turn plus a
+reviewer turn, so carry it as a criterion on the checkpoint whose behaviour it
+describes — is what produced BLOCKING 2. The ADR paragraph rode into CP-028 as
+criterion 11 among twelve behavioural ones, its box was ticked, and a false
+claim reached an `Accepted` ADR. Prose that describes a behaviour needs a
+reviewer who is reading the prose against the code and nothing else. CP-045 is
+that turn. It is off the critical path, so the precedent's cost argument does
+not apply here.
+
+**Verbatim replacement for ADR 0007's Consequences section.** No em dash and no
+literal `--`: the reviewer measured that `sdd.md`, `proposal.md` and all ten
+ADRs contain zero em dashes, and that the blocked diff's ` -- ` substitution
+made ADR 0007 the only planning document using it. The house form is neither,
+so this text needs no dash.
+
+> ## Consequences
+>
+> Scenes hash on content rather than position: `content_hash` covers the
+> normalized text and nothing else, so a renumbered but unchanged scene
+> produces the same hash.
+>
+> The join key is a separate question, and SDD Section 2 answers it
+> differently: scenes join across versions on `number` plus `heading`.
+> Renumbering a scene therefore does not merely move it, it changes its
+> identity. The old number leaves as REMOVED, the new one arrives as ADDED,
+> and the two equal hashes are never compared. Inserting a scene re-analyzes
+> every scene below it.
+>
+> That compute cost is accepted, and clearance pays a second one beside it.
+> Carry-forward matches a re-extracted finding to an existing tracker item by
+> scene overlap, because no store holds a finding's category and text between
+> runs: `TrackerItem` carries neither, and Section 6 of `infrastructure.md`
+> defines no findings table. An asset that stays in its scene keeps its
+> `finding_id` and its tracker state across versions, which is the case
+> Section 7 phase 5 of the SDD demonstrates. An asset that moves to a
+> different scene does not. It arrives as a new item at BLOCKED and a human
+> clears it a second time, while the item it left behind stays open, flagged
+> for re-review, and carrying a note naming the scene it was cleared against.
+> Nothing is dropped and nothing is kept without saying so, and the repeated
+> clearance is real work.
+>
+> REMOVED scenes keep their open items, because a cut scene can return in v3.
+>
+> Joining on the hash first would recover some of the wasted compute, but only
+> for scenes renumbered and left otherwise untouched, and it would need a rule
+> for two scenes in one version that hash alike, since `content_hash` is not
+> unique within a version. Carrying a clearance across a move needs a stored
+> asset identity: a category and a normalized text on `TrackerItem`, the
+> columns behind them, and a read that joins on the pair. Neither is
+> specified, so neither is built. Both are recorded as known limitations.
+>
+> Edits below scene granularity also cost full price; a single changed line
+> re-embeds and re-analyzes the whole scene.
+
+**Verbatim replacement for SDD §4.3's fourth bullet**, the one beginning
+"Carry-forward matches by asset identity":
+
+> - Carry-forward matches by scene: a re-extracted finding on a CHANGED scene
+>   takes over the `finding_id` and the tracker state of an existing item
+>   whose `scene_numbers` overlap the changed set. Matching on the asset
+>   itself would need a stored category and normalized text per finding, and
+>   no table holds them (section 6 of `infrastructure.md` defines none), so an
+>   asset that moves to a different scene arrives as a new item at BLOCKED
+>   while its old item stays open, flagged for re-review with a note.
+>   Findings and permissions on unchanged scenes carry forward as they are. A
+>   CHANGED scene whose tracker item was CLEARED keeps its state but gets
+>   `needs_review` set to true and a notification, matching ADR 0007: the
+>   clearance is neither silently kept nor dropped. New assets, and assets the
+>   pipeline can no longer tell apart from new ones, get new EVT ids and start
+>   at BLOCKED.
+
+**And SDD §4.3's second bullet, for the same reason one bullet up.** That
+bullet's parenthetical promises the old LoreStore rows for a CHANGED scene are
+deleted before re-embedding. They are not: the frozen `LoreStore` port has no
+`delete`, the Backlog has carried it as a known limitation since 2026-08-30,
+and CP-044 does not build it either. Correcting one false sentence in §4.3
+while leaving its neighbour standing would make this ruling a preference rather
+than a rule, so CP-045 takes both. Verbatim replacement:
+
+> - ADDED and CHANGED scenes are re-extracted, re-enriched, and re-embedded.
+>   The design calls for deleting a CHANGED scene's old LoreStore rows first.
+>   That part is not built, because the `LoreStore` port has no `delete`
+>   method, so a changed scene leaves a stale row that later retrieval can
+>   return as history.
+
+**Most of the blocked diff is reusable, and CP-044's implementer should reuse
+it.** `src/clearcut/application/evaluate_delta.py` and
+`tests/unit/application/test_evaluate_delta.py` are untracked in the working
+tree right now, and `src/clearcut/domain/tracker.py` carries the `noted` method
+the REMOVED path needs. Twelve criteria passed mutation under two independent
+runs. Deleting that and starting again would spend the turn re-proving work a
+reviewer has already measured. The changes CP-044 asks for are the amended
+criterion 5, the note on the stale item, the blank-note guard on `noted`, and
+the module docstring. The modified ADR in the working tree belongs to CP-045
+and must not ride along in CP-044's commit.
+
+**The three non-blocking findings from the same review.**
+
+*(a) A delta run's `report.findings` omits UNCHANGED scenes' findings. To the
+Backlog, folded into the findings-table entry that already exists.* The root
+cause is the same missing store: an UNCHANGED scene is never re-extracted, by
+design, and nothing persisted its findings from v1. There is no cheap fix. The
+response cannot carry them without a findings table, and labelling the payload
+as partial would add a key that D30 and CP-041's second criterion forbid,
+because `web/src/api/client.ts` renders both paths from one shape. What holds
+in the meantime: the `tracker_items` in that same response cover every item in
+the project, changed or not, so the clearance record the producer acts on is
+complete. The findings overlay is the incomplete surface, and on a v2 upload
+"what changed" is what the reader asked for.
+
+*(b) `TrackerItem.noted` accepts a blank note where `with_draft_email` rejects
+one. Into CP-044 as a criterion.* CP-044 opens `domain/tracker.py` and
+`test_tracker.py` anyway, it is one guard and one test, and CP-044's own stale
+-item note gives `noted` a second caller. The sibling's reason applies
+unchanged: a version bump that stores nothing looks exactly like a version bump
+that stored a value.
+
+*(c) `evaluate_delta.py` at 386 lines against §4's 300-line guide, and
+`execute` at ~38 statements against 30. Declined, and it does not become a
+checkpoint.* §4 calls both soft and invites the argument. The file is long
+because the delta algorithm has five scene-state paths and each one is a named
+helper doing one thing; splitting it would produce a second module with one
+caller, which §4 bans by name in the sentence above the size guides. CP-044
+adds a note and a guard, so the file grows rather than shrinks. Recorded so the
+next reviewer does not re-raise it as new.
+
+*Not ruled this turn.* CP-043's review left three non-blocking items of its own
+(a copyright citation beside the trademark one, the bare `KeyError` in
+`InMemoryRightsResearch`, and a Notes overreach about project scoping). They
+belong to the next leader turn, and they are named here so they are not lost
+between one.
+
 ---
 
 ## Active
 
-_None. Every checkpoint is terminal; the loop is done._
+Nineteen when this section was written, fifteen now — four landed, and four more
+arrived on 2026-08-30 from D22 through D26. Still over `leader.md`'s soft cap of
+eight, for the same reason the turn before ran to fourteen: the cap exists
+against vague checkpoints, and the conductor dispatches these in parallel. Six
+had no dependency and went out together; the phase-4 graph below fans out from
+CP-018 and converges on CP-030. Delivering only the first eight would cost a whole leader round trip
+before the routes and the wiring could be dispatched, and there are eight days
+to 2026-09-07.
+
+Three of the sixteen (CP-015 to CP-017) clear the transversal queue the five
+adapter reviews left behind. The rest are phase 4 and the first half of phase 5.
+
+**Dispatchable in parallel right now, no dependencies, no shared files:**
+CP-015, CP-017, CP-018, CP-019, CP-020, CP-021. *All six have since landed;
+as of 2026-08-30 the dependency-free set is CP-033, plus CP-016 once CP-015
+clears.*
+
+**On the SDD §8(d) end-to-end path:** CP-016, CP-018, CP-019, CP-021, CP-022,
+CP-023, CP-026, CP-029, CP-030, and — added 2026-08-30 by D23 and D24 —
+CP-034 and CP-036. Everything else is either quality (CP-015, CP-017) or a
+second demo beat (CP-020, CP-027, CP-028).
+
+**Cuttable if the clock tightens, in this order:** CP-028 (phase 5),
+CP-027 (Q&A surface), CP-015 (regression guard, protects no demo path).
+CP-031 is not on that list and does not go back on it. The user ruled
+observability a launch requirement, and D14's amendment records why a leader
+cannot re-cut it.
+
+The seventeenth is CP-031, the OpenTelemetry instrumentation, added after the
+user overturned D14. It sits at the end of the graph behind CP-030 rather than
+at the front, because that is where instrumentation actually attaches.
+
+**Two more on 2026-08-30, from D20 and D21.** CP-032 and CP-033 are both
+dependency-free and both dispatchable immediately, so nothing already queued
+moves. Neither is on the SDD §8(d) end-to-end path and neither blocks a
+checkpoint that is. They are sequenced only by what would have to be redone
+later: CP-032 before CP-023 persists a `scene_numbers` tuple with repeats in it,
+and CP-033 before CP-031 adds the three `opentelemetry` distributions the gate
+cannot currently tell apart. Both are cuttable, after CP-028 and before CP-027
+in the order above.
+
+**Four more on 2026-08-30, from D22 through D26.** CP-034, CP-035, CP-036 and
+CP-037. Two of them are new serial nodes in front of the centrepiece, and that
+is deliberate: **CP-036 then CP-034 both land before CP-026.** Neither is
+dispatchable today — CP-036 waits on the CP-023 and CP-024 fixes now in flight,
+CP-034 waits on CP-036, CP-016 and CP-022 — so nothing already queued moves,
+and nothing that could go out today is held back. The order among the four is
+CP-036, CP-034, then CP-035 and CP-037 in either order.
+
+CP-036 goes first because it is the smallest and it unblocks the most: it opens
+`domain/tracker.py`, which CP-025 also needs (D22), and `clickhouse/tracker.py`,
+which CP-034 also needs. CP-034 goes second because CP-026 and CP-029 cannot be
+written consistently until the adapter-error convention has a name (D23) — CP-029
+and CP-030 contradict each other as written, which is the finding that made this
+worth two turns rather than a Backlog line.
+
+CP-035 and CP-037 are cuttable and go at the end of the cut list above, after
+CP-027. CP-034 and CP-036 are not cuttable: CP-034 is the precondition for
+CP-029's error mapping, and CP-036 closes a window that shuts the moment CP-026
+writes its `save` call.
+
+**One more on 2026-08-30, from D29.** CP-038, out of CP-034's review. It is the
+only one of that review's four findings that became a checkpoint: two were ruled
+into CP-029's criteria (D27) and one was declined with its evidence (D28).
+Dependency-free, tests-only, and parallel-safe with CP-026, CP-035 and CP-037 —
+it opens `tests/unit/test_error_boundaries.py`, which no other checkpoint names.
+Dispatchable immediately, and it moves nothing already queued. Not on the SDD
+§8(d) path, but it is not on the cut list either: both guards it repairs can
+currently report green on the failure they exist to catch, and a gate that
+cannot fail is the one kind of test worth fixing before the deadline rather than
+after it.
+
+**Four more on 2026-08-30, from D30 through D35, and the shape of the endgame.**
+CP-039, CP-040, CP-041 and CP-042. Everything before CP-028 is now `DONE`, so
+the remaining graph is small enough to state whole:
+
+- **Dispatchable immediately, in parallel, no shared files:** CP-029
+  (`adapters/http/`, `pyproject.toml`), CP-028 (`evaluate_delta.py`, ADR 0007),
+  CP-039 (`analyze_script.py`), CP-040 (`answer_project_question.py`), CP-042
+  (two test files). Five disjoint file sets; none of the five waits on another.
+- **Then CP-041**, which needs CP-028's use case and CP-029's route module.
+- **Then CP-030**, so `composition.py` is wired once against a route factory
+  whose parameter list has stopped changing. Landing CP-041 after CP-030 would
+  reopen the convergence checkpoint for one constructor argument.
+- **Then CP-031**, where it has always sat.
+
+Three of the four new ones are one file each. CP-039 and CP-040 are on the
+promise rather than the plumbing (D30, D31) and are **not** cuttable: without
+CP-039 the delta beat has no data to run against, and without CP-040 a
+clearance question over an empty project answers with an assurance nothing
+supports. CP-041 is not cuttable either — it is the only caller `EvaluateDelta`
+gets, so cutting it cuts CP-028 with it. CP-042 is cuttable and goes last on
+that list, since both halves are record accuracy rather than behaviour.
+
+**One more on 2026-08-31, and it is the user's decision rather than a leader's
+(D36).** CP-043 seeds the demo scenario behind the eight ports so the MVP runs
+mocked until the real services are connected. It is dependency-free, it opens a
+package no other checkpoint names (`src/clearcut/adapters/demo/`) plus one new
+test file, and it is dispatchable immediately: CP-028 is the only other
+checkpoint that can go out today, and the two share no file. It moves the order
+in exactly one place — **CP-030 now waits on CP-043 as well**, so `create_app()`
+is written once with both wiring modes rather than reopened for the second.
+That is the same reasoning that put CP-041 in front of CP-030 instead of behind
+it.
+
+CP-043 is not cuttable and does not go on the cut list. Without it the MVP has
+nothing to run against until twelve credentials exist, which is the situation
+the decision was made to end. The remaining order is CP-029 (in review), then
+CP-041, then CP-030, then CP-031, with CP-043 and CP-028 running beside them.
+
+**Four left, after the first supersede of the project (2026-08-31, D37).**
+CP-029 and CP-043 are `DONE`. CP-028 is `SUPERSEDED` and archived; CP-044 and
+CP-045 replace it at `Depth: 1`, which means either of them blocking stops the
+loop for a human rather than splitting again.
+
+- **Dispatch now:** CP-044. It is the only dependency-free block left, and
+  three checkpoints queue behind it.
+- **Then CP-041**, which needed CP-028 and now needs CP-044. Then CP-030, then
+  CP-031, where it has always sat.
+- **CP-045 runs beside CP-041**, once CP-044 passes. It opens `docs/plan/` and
+  nothing else, so it collides with no block in flight and sits on no critical
+  path.
+
+The cut list is unchanged in shape: CP-044 first (and cutting it cuts CP-041 and
+CP-045 with it), then CP-027 — already `DONE` — then the rest as written above.
+CP-031 stays off it, for the reason D14's amendment gives.
+
+### CP-030 — Wire the concrete adapters in the one place allowed to
+- Status: TODO
+- Attempts: 0/3
+- Depth: 0
+- Layer: adapters
+- Depends on: CP-022, CP-023, CP-024, CP-029, CP-043
+- Acceptance:
+  - [ ] `src/clearcut/composition.py` builds the eight adapters, injects them
+        into the use cases, and returns a configured Flask app from a
+        `create_app()` function, so `gcloud run deploy --source .` has an entry
+        point.
+  - [ ] It is the only module under `src/clearcut/` importing from
+        `clearcut.adapters`. The existing layer-boundary test is extended to
+        assert that, with `composition.py` as its single named exception —
+        which turns §2 rule 4 from a convention into a gate.
+  - [ ] Every credential, endpoint, and model id is read from the environment
+        here and passed as a constructor argument: `GOOGLE_CLOUD_PROJECT`,
+        `DOCAI_PROCESSOR_ID`, both Gemini model ids, `PARALLEL_API_KEY`, the
+        three `CLICKHOUSE_*` values, the data store id, and the webhook URL. A
+        test asserts no adapter module contains `os.environ` or `os.getenv`.
+  - [ ] Failure path: a missing required variable fails at startup naming that
+        variable, not at the first request. A demo that 500s on the first
+        upload because a secret was never set is the failure this criterion
+        exists to prevent.
+  - [ ] Plain constructor injection only: no DI container, no service locator,
+        no module-level singleton, no registry (§4 bans all four by name). A
+        test asserts two `create_app()` calls produce independent instances.
+  - [ ] A test builds the app with every environment variable set to a dummy
+        value and asserts it constructs without a single network call.
+  - [ ] `CLEARCUT_MODE` selects the wiring (D36): `live` builds the eight
+        concrete adapters above, `mock` builds CP-043's demo adapters, and an
+        absent variable means `live` — so a deployment that forgets the
+        variable fails on a missing credential instead of serving planted data.
+        A test asserts each mode wired the classes it claims, by type.
+  - [ ] Mock mode needs no credentials at all: it reads none of the twelve
+        variables above, constructs no ClickHouse client, calls no
+        `ensure_schema` or any other provisioning method, and opens no socket.
+        Proven by a test that clears the environment down to
+        `CLEARCUT_MODE=mock`, calls `create_app()`, and drives
+        `POST /api/analyze` through Flask's test client: the response carries
+        SDD §8(d)'s three findings with their page numbers, and
+        `GET /api/tracker` reads exactly three items, all at BLOCKED. This is
+        the whole decision in one test — the MVP runs today, on nothing.
+  - [ ] Failure path: `CLEARCUT_MODE` set to any third value fails at startup
+        naming the variable and both accepted values. Falling back to either
+        mode on an unrecognized string is the failure this prevents, because
+        the fallback nobody notices is the one that ships.
+  - [ ] Mock mode announces itself once at startup — a single `WARNING` naming
+        the mode, asserted with `caplog` — so a mocked service is never
+        mistaken for a live one by reading its logs.
+  - [ ] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: src/clearcut/composition.py, tests/unit/test_composition.py,
+  tests/unit/test_layer_boundaries.py
+- Notes: Wiring only. The OpenTelemetry provider setup is CP-031, which depends
+  on this checkpoint and lands after it. D14 deferred OTel to the Backlog and
+  has since been overturned, so read that entry with its amendment: OTel is
+  planned, it is CP-031, and it is not part of CP-030. Do not widen a criterion
+  above to anticipate it, and do not add an exporter here. CP-031 adds the
+  tracer and meter providers to the `create_app()` this checkpoint writes.
+
+  **The second criterion became satisfiable on 2026-08-30, by D23.** As the
+  graph stood, CP-029 had to name an adapter's not-found and unavailability
+  errors to map them to 404 and 502, and the only way to name them was to
+  import a sibling adapter package from `adapters/http/routes.py` — which the
+  criterion below forbids. CP-034 moves those names into `clearcut.domain.errors`,
+  so the layer-boundary extension asked for here can be written as a gate
+  rather than negotiated down when someone hits it. Do not weaken it.
+
+  **The mock wiring mode arrived on 2026-08-31 with D36, a user decision.**
+  Read it there; four criteria above carry it. Three things it does not
+  license. It does not weaken a live criterion — both modes ship, and the live
+  wiring is still what the deployment runs. It does not license importing
+  anything from `tests/`; the in-memory implementations are
+  `src/clearcut/adapters/demo/`, CP-043's deliverable, and this checkpoint only
+  chooses between two sets of constructors. And it does not license a mode
+  abstraction: one `if` at the top of `create_app()`, one wiring function under
+  each branch, the same route factory below both. A strategy object, a registry
+  keyed by mode name, or a factory-of-factories here is §4's banned list
+  arriving through the door marked *configuration*.
+
+  This is the convergence point of the whole graph and the last checkpoint
+  before SDD §8(d) can run — now in both senses, since the mocked run of that
+  same check is a criterion above and the live run is the Backlog entry.
+
+  If this reaches 3/3, the split axis is live wiring in one checkpoint and the
+  mock branch in another. Recorded so a later turn inherits the seam instead of
+  inventing one under pressure.
+
+### CP-031 — Trace the five pipeline stages and export them to Grafana Cloud
+- Status: TODO
+- Attempts: 0/3
+- Depth: 0
+- Layer: adapters
+- Depends on: CP-023, CP-029, CP-030, CP-043
+- Acceptance:
+  - [ ] `create_app()` configures one tracer provider and one meter provider
+        whose OTLP exporter reads `OTEL_EXPORTER_OTLP_ENDPOINT` and
+        `OTEL_EXPORTER_OTLP_HEADERS` from the environment. A test sets both to
+        dummy values, calls `create_app()`, and asserts the configured exporter
+        carries that endpoint and those headers, opening no socket during
+        construction. Both variables are already in `.env.example` and in
+        `infrastructure.md`'s Secret Manager table; neither is invented here.
+  - [ ] One span per pipeline stage, named exactly `ingest`, `extract`,
+        `ground`, `research`, `track` (SDD §6). A test installs an in-memory
+        span exporter, drives one analyze call in `CLEARCUT_MODE=mock` over
+        CP-043's demo adapters — the mode the demo actually runs in (D36) — and
+        asserts the five names appear exactly once each and share one trace id.
+  - [ ] Instrumentation works in **both** wiring modes, because the demo shows
+        a Grafana trace of a mocked run (D36). Each demo adapter opens the
+        same-named span as the live adapter it stands in for, and
+        `clearcut_stage_latency_ms`, `clearcut_findings_total` and
+        `clearcut_tracker_items` record their points in mock mode as they do in
+        live — all three measure our own code and our own data. No wrapper
+        class, no span-decorating port implementation, no decorator applied at
+        the composition seam: eight new types serving one purpose is the
+        abstraction §4 bans, and five one-line span opens cost less.
+  - [ ] `clearcut_gemini_tokens_total` is the one exception, and it is
+        deliberate: in mock mode no model ran, so the counter records nothing
+        and the `extract` span carries no token attributes. A test asserts the
+        counter has no points in mock mode. Seeding plausible token counts
+        would put a fabricated number on the dashboard shown to judges, which
+        is the failure this product's own argument is built against.
+  - [ ] Span attributes carry `script_id` on the root span, `scene_number` on
+        the stages that have one, and on `extract` the Gemini model name with
+        prompt and output token counts. A test asserts the token attributes are
+        read from a faked response's usage metadata, so a mutant that recounts
+        the text locally fails.
+  - [ ] The four SDD §6 metrics exist under those exact names and label sets:
+        `clearcut_stage_latency_ms` (histogram, by stage),
+        `clearcut_gemini_tokens_total` (counter, by model, split prompt and
+        output), `clearcut_findings_total` (counter, by risk_level and
+        category), `clearcut_tracker_items` (gauge, by state, refreshed on
+        every tracker write). A test reads them through an in-memory metric
+        reader and asserts one recorded point per metric with its labels
+        present.
+  - [ ] No module under `src/clearcut/domain/` or `src/clearcut/application/`
+        imports `opentelemetry`. The domain half already fails through
+        `tests/unit/test_layer_boundaries.py`'s stdlib-only guard; add
+        `opentelemetry` to `FORBIDDEN_APPLICATION_PREFIXES` and a test that
+        names it, so a regression reports the cause instead of a generic
+        violation. This is the boundary SDD §6 states outright.
+  - [ ] Failure path: with `OTEL_EXPORTER_OTLP_ENDPOINT` unset, `create_app()`
+        returns a working app and the pipeline runs unchanged, with spans and
+        metrics going nowhere. A test asserts no exception and no network call.
+        CP-030's startup check lists the variables that must be present, and
+        these two are deliberately not on it.
+  - [ ] Failure path: an exporter that raises never reaches a use case. A test
+        makes export fail and asserts the analyze call still returns its
+        result. Telemetry that can take down the pipeline is worse than no
+        telemetry.
+  - [ ] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: src/clearcut/composition.py, src/clearcut/adapters/gcp/document_ai.py,
+  src/clearcut/adapters/gemini/extractor.py,
+  src/clearcut/adapters/gcp/vertex_search.py,
+  src/clearcut/adapters/parallel/research.py, the ClickHouse tracker adapter
+  CP-023 writes, tests/unit/test_observability.py,
+  tests/unit/test_layer_boundaries.py, pyproject.toml
+- Notes: **Dependencies, for CP-017 (in flight now).** This checkpoint is the
+  first thing in the repo to import `opentelemetry`, so it declares
+  `opentelemetry-api`, `opentelemetry-sdk`, and an OTLP exporter package in the
+  same `pyproject.toml` table CP-017 creates, in its own diff. CP-017's block is
+  untouched and CP-017 should add none of them: nothing imports them yet, and
+  CP-017's own guard — the test that fails when `src/` imports something
+  undeclared — is what will catch it if this checkpoint forgets. That is the
+  guard working, not a conflict between the two.
+
+  **Why these edges.** Four of the five stage spans go into adapters that are
+  already `DONE` and reviewed (`document_ai`, `extractor`, `vertex_search`,
+  `research`), so they impose no edge. `track` is the ClickHouse adapter, hence
+  CP-023. The request-scoped root span opens where the request does, hence
+  CP-029, and the providers are wired where wiring is allowed, hence CP-030.
+  Instrumentation wraps the pipeline, so it follows the pipeline. **CP-043 was
+  added to that line on 2026-08-31 by D36**: the demo adapters are a sixth set
+  of span sites and this checkpoint edits them, so the edge is direct rather
+  than inherited through CP-030.
+
+  **Why the mocked run is the one the spans are asserted over.** Until D36 the
+  trace beat could only be proven against live services, so the span test would
+  have run over the unit fakes and the demo would have been the first real
+  exercise of it. Mock mode removes that gap: the run the judges watch and the
+  run the test drives are now the same wiring, which is a stronger assertion
+  than the one this criterion started with, not a weaker one.
+
+  **Why no Grafana account is needed to review this.** Every criterion above
+  reads through an in-memory exporter or reader. The check that traces actually
+  arrive in the dashboard is a live check and belongs with SDD §8's other live
+  checks, which also need real credentials and are also run by hand.
+
+  **If this reaches 3/3.** The split axis is providers and spans in one
+  checkpoint, the four metrics in another. Recorded here so a later leader turn
+  inherits the seam instead of inventing one under pressure.
+
+  This exists because D14 was overturned; see the amendment in Decisions for the
+  reasoning on both sides.
+
+### CP-046 — Serve the built SPA from the same service that serves the API
+- Status: TODO
+- Attempts: 0/3
+- Depth: 0
+- Layer: adapters
+- Depends on: CP-030
+- Acceptance:
+  - [ ] `create_app()` serves the `web/` build: `GET /` returns that build's
+        `index.html` with an HTML content type. A test points the app at a
+        temporary directory holding a stub `index.html`, so reviewing this
+        needs no `npm run build`.
+  - [ ] A client-side route deep-links: any path not under `/api` that matches
+        no static file returns the same `index.html` at status 200, because the
+        SPA router owns it. One test each for `/tracker` and `/script/abc`.
+  - [ ] `/api` paths never fall through to the SPA. `GET /api/nope` returns a
+        JSON 404 carrying an `error` key with an `application/json` content
+        type, not `index.html`. A test asserts both. This is the criterion that
+        matters most: an HTML 200 where a JSON 404 belongs turns every frontend
+        bug into a silent success.
+  - [ ] The static root is passed in as an argument and read from no
+        module-level constant computed at import time, so a test can point it
+        anywhere without depending on the repo's on-disk layout.
+  - [ ] Failure path: the build directory does not exist — nobody ran
+        `npm run build` — and the service still starts, every `/api` route
+        still answers, and `GET /` returns a 404 naming the missing build
+        rather than a traceback. Two tests. The demo must not die because the
+        frontend was not compiled.
+  - [ ] The SPA blueprint is its own module beside the API one and holds no use
+        case, no port, and no business rule: it maps a path to a file and
+        nothing else. `routes.py` is not touched, so CP-029's frozen
+        five-parameter factory and CP-030's layer gate are both unaffected.
+  - [ ] No new runtime dependency — Flask's own static handling does this, so
+        CP-017's undeclared-import guard stays green with no `pyproject.toml`
+        edit.
+  - [ ] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: src/clearcut/adapters/http/spa.py, src/clearcut/composition.py,
+  tests/unit/adapters/test_spa.py
+- Notes: **Found by audit on 2026-08-31, and it is in no other block.** ADR 0010
+  says "One Cloud Run service serves the JSON API and the static web/ build from
+  the same container" and SDD §5 repeats it, but searching the whole loop state
+  for `static_folder`, `send_from_directory` or `web/dist` returns nothing:
+  CP-030 builds `create_app()` and mounts the API blueprint, CP-011 produces the
+  build, and no checkpoint connects them. The Backlog's Cloud Run deploy entry
+  covers the deploy flags, secrets and service-account roles — not what the
+  container serves. As planned, the MVP deploys a JSON API and a build no
+  browser can reach.
+
+  Why `Depends on: CP-030` and nothing else: `create_app()` has to exist before
+  a second blueprint can be registered on it, and the build directory has
+  existed since CP-011. It does **not** wait on the three SPA surfaces still in
+  the Backlog — serving a build is independent of what the build renders — so
+  it stays off that promotion's critical path and can land beside CP-031.
+
+  If this reaches 3/3, the split axis is static file serving in one block and
+  the SPA fallback route in another. Recorded so a later turn inherits the seam
+  rather than inventing one under pressure.
+
+### CP-047 — Put the scenes the analyze response already holds into its body
+- Status: TODO
+- Attempts: 0/3
+- Depth: 0
+- Layer: adapters
+- Depends on: CP-041
+- Acceptance:
+  - [ ] `_analysis_report_json` emits a `"scenes"` key: a list of
+        `{number, heading, page_start, page_end, text, content_hash}` objects
+        built from `report.script.scenes`, in the order the script holds them,
+        by a `_scene_json(scene: Scene) -> JsonDict` helper beside
+        `_finding_json`. A test posts one analyze request over a fake whose
+        report carries two scenes and asserts both objects field for field, in
+        order.
+  - [ ] Every value is read, never recomputed. A test asserts the response's
+        `content_hash` is the string the domain put on the scene, so a mutant
+        that re-hashes `scene.text` inside the serializer, or emits `""`, fails.
+        The hash is the domain's (§3, Information Expert); the adapter repeats
+        it.
+  - [ ] Both branches carry it. A `version: 2` request routed to
+        `EvaluateDelta` returns the scenes of the version it just parsed, not
+        the stored previous one's. A test asserts the delta body's scene
+        numbers; CP-041's existing key-set parity test then covers the new key
+        with no new assertion.
+  - [ ] The response key set is exactly `script_id`, `project_id`, `version`,
+        `gcs_uri`, `jurisdiction_code`, `scenes`, `findings`, `tracker_items` —
+        eight keys, asserted as a set, so a ninth cannot arrive unnoticed and
+        break `web/`'s typed cast.
+  - [ ] Failure path: a script holding no scenes serializes `"scenes": []` —
+        key present, empty list, never `null` and never absent, because the SPA
+        branches on `.length`. A test asserts it.
+  - [ ] No existing route test is edited to accommodate the key. The diff adds
+        a helper, a key, and tests. If an existing assertion has to change, the
+        key set moved further than this block allows: stop and report rather
+        than adjusting the older test.
+  - [ ] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: src/clearcut/adapters/http/routes.py, tests/unit/adapters/test_routes.py
+- Notes: **CP-029's reviewer found this, recorded it as non-blocking item 3, and
+  no leader turn ever ruled it.** It sat in an archived review note, in neither
+  a checkpoint nor the Backlog, until the audit on 2026-08-31.
+
+  SDD §4.1 step 8 promises the response carries "the script metadata, scenes,
+  findings with citations, and tracker items", and the Backlog leans on that
+  promise as the stated reason `GET /api/scripts/{script_id}` can stay deferred
+  — "the SPA's first view works without it". `_analysis_report_json` emits seven
+  keys and no `scenes`, so that deferral currently rests on something untrue,
+  and ScriptView — SDD §5 defines it as the screenplay text with findings
+  overlaid inline — would have no text to render.
+
+  **One correction to the finding as recorded, and it is what makes this small.**
+  The note says the analyze body "cannot" carry scenes because `AnalysisReport`
+  has no `scenes` field. `AnalysisReport` does not, but `Script` does: both use
+  cases construct `Script(scenes=scenes, ...)`, so `report.script.scenes` is
+  populated on every path, delta included, and `web/src/api/client.ts` already
+  declares a matching six-field `Scene`. Nothing in `application/` changes, no
+  port moves, and `AnalysisReport` keeps its three fields. That is why this is
+  one serializer key rather than a use-case reopening, and why it is a
+  checkpoint now instead of a fourth entry behind the findings-table question.
+
+  Why `Depends on: CP-041`: same file, and CP-041 is `IN_REVIEW` with an
+  uncommitted diff in `routes.py`. Sequencing keeps two turns out of one module.
+
+  Scope guard: the `contact` type drift the same reviewer recorded beside this
+  is a `web/` change, not a backend one, and stays in the Backlog with the SPA
+  surfaces that rewrite that file anyway. Do not widen this block to it.
 
 ---
 
 ## Backlog
 
-Not checkpoints yet. `leader.md` caps one turn at roughly eight; fourteen are
-active because the three SDD §7 verticals only dispatch to parallel
-implementers as whole units, and because CP-012 through CP-014 settle questions
-that could not wait behind them.
+Not checkpoints yet. Phase 4 and the first half of phase 5 were promoted into
+CP-018 through CP-030 on 2026-08-30; what is left here is what was ruled out of
+this batch, each with the date and the reason, so nothing was dropped silently.
 
-Phase 4's use cases can now be written concretely, which they could not before
-CP-005: use cases depend on ports, and those five signatures are frozen. What
-still genuinely waits on CP-006 through CP-010 is `composition.py` alone, since
-only it names adapter *constructors*. The entries below are tightened
-accordingly (D7).
+Everything below was weighed against the same tiebreak: does it protect the
+2026-09-07 demo? An item that does not can wait, and the reason it waits is
+written down so the next turn re-decides on evidence rather than re-litigating.
 
 **Carried from CP-001's review, independent of every phase.**
 
@@ -196,63 +1843,6814 @@ accordingly (D7).
   files while the suite stays green. Today's behaviour is correct; this is a
   coverage gap, not a defect.
 
-**Phase 4 (wiring).** Only the last three items depend on CP-006 through
-CP-010; the rest depend on CP-005's frozen ports and could start earlier if a
-turn were free.
+**Phase 4 and 5, promoted 2026-08-30.** `TrackerItem` and its two ports,
+dedupe, `diff_scenes`, the confidence rule, the contradiction check, the
+ClickHouse and webhook adapters, all four use cases, the Flask routes, and
+`composition.py` are now CP-018 through CP-030. What follows is what stayed
+behind.
 
-- `TrackerItem` domain type with its state transitions, `needs_review`, and
-  monotonic `version`; the `TrackerStore` and `Notifier` ports arrive with it.
-  Domain layer, depends on nothing in phase 1-3.
-- ClickHouse adapter: `tracker_items` and `script_versions` as
-  ReplacingMergeTree keyed by `item_id` (`docs/plan/infrastructure.md` §6).
-- The contradiction check of SDD §4.1 step 5. Open question for that turn:
-  whether the gemini-3.1-flash-lite call rides `SceneExtractor` or earns a
-  narrow port of its own. One port per agent would be exactly the
-  proliferation AGENT.md §4 forbids.
-- `AnalyzeScript(ingestion, extractor, grounding, research, lore, tracker)`,
-  writable now against fakes alone. Its pipeline is fixed by the frozen ports:
-  `ingestion.parse(gcs_uri, script_id)`, scenes batched into
-  `extractor.extract(scenes, jurisdiction)`, then
-  `grounding.ground(query, jurisdiction)` and
-  `research.find(asset_name, category, jurisdiction)`, with
-  `lore.search(project_id, query, limit)` for the continuity pass. Six
-  constructor parameters exceeds §4's soft four-parameter guide; SDD §3 names
-  all six verbatim, so the guide yields, the same way it did for `Script` and
-  `RightsClaim`. Its two rules to test: the dedupe of step 4, and the
-  confidence-to-risk mapping of step 5 — `RightsClaim.confidence` is a
-  `Confidence`, the target is `RiskLevel`, and `RiskLevel.raised()` already
-  exists for the escalation case. Then `ResolveFinding(tracker, notifier)` and
-  `AnswerProjectQuestion(lore, grounding, tracker)`.
-- Flask routes for SDD §4.2. One of them owns resolving the raw
-  `jurisdiction_code` through `jurisdiction_for` and mapping
-  `UnknownJurisdiction` to HTTP 400 — the failure path D2 moved off CP-009,
-  which must not be lost between the two.
-- `composition.py` and the OpenTelemetry setup of SDD §6. This is the one item
-  that genuinely blocks on CP-006 through CP-010, since it is the only file
-  naming adapter constructors.
-- GCS upload of the intake PDF. SDD §4.1 step 1 puts it on the route, which
-  reads against "routes do nothing beyond mapping HTTP to use-case input and
-  output" (SDD §4). Resolve before writing that checkpoint.
-- Cloud Run deploy script under `infra/`, completing D6's scope: the §9 deploy
-  with `--set-secrets` and `--set-env-vars`, the service account roles, and
-  `min-instances 0`. Deferred to here rather than bundled into CP-013 because
-  `--source .` builds a container around a Flask entry point that does not
-  exist until `composition.py` lands. Same `--dry-run` seam and same test shape
-  as CP-013.
-- The three SPA surfaces against the live API, replacing CP-011's fixtures.
-- SDD §8(d) end-to-end check on the planted script.
+**Deferred out of the phase-4 batch, 2026-08-30, each with its reason.**
 
-**Phase 5 (incremental delta), depending on phase 4.**
+- ~~**OpenTelemetry (SDD §6), and the Grafana dashboard §8(d) checks.** D14.~~
+  **Promoted to CP-031 on 2026-08-30**, when the user overturned D14: SDD §6 and
+  ADR 0008 both specify observability as a launch requirement, on a standing
+  instruction from the user that the triage had not weighed. See the D14
+  amendment. What stays in the Backlog is the part that needs live
+  credentials — building the Grafana dashboard and confirming a demo run's
+  traces reach it — which belongs with the SDD §8 live checks below.
+- **Multipart PDF upload, with the `ScriptStorage` port it needs.** D10.
+  CP-029 takes a `gcs_uri` instead; the operator runs `gcloud storage cp`. This
+  is the SPA's dependency, not the demo's, and it removes a port, an adapter,
+  and a checkpoint from the critical path.
+- **`GET /api/scripts/{script_id}`.** Re-reads findings that nothing persists —
+  there is no findings table in `infrastructure.md` §6 and no port for one. SDD
+  §4.1 step 8 has the analyze response carry scenes, findings, and items, so
+  the SPA's first view works without it. Needs a storage decision before a
+  checkpoint, not during one.
+  **Two more consequences of the same missing table, added 2026-08-31 by
+  D37.** Read them here rather than as separate entries; one table answers all
+  three.
+  *(i) A delta run's `report.findings` covers only the ADDED and CHANGED
+  scenes.* An UNCHANGED scene is never re-extracted, by design, and nothing
+  persisted its v1 findings, so `EvaluateDelta` has nothing to put in the
+  response for it. CP-041 maps that report onto `POST /api/analyze`, so a v2
+  upload renders a findings overlay covering the changed scenes beside a
+  tracker table covering the whole project. Not fixable cheaply: labelling the
+  payload as partial adds a key that D30 and CP-041's second criterion forbid,
+  because `web/src/api/client.ts` renders both paths from one shape. What holds
+  in the meantime is that `tracker_items` in that same response covers every
+  item, so the clearance record a producer acts on stays complete.
+  *(ii) Carry-forward cannot match on asset identity.* `TrackerItem` carries no
+  `category` and no `raw_text`, `TrackerStore` exposes no findings read, and
+  this table is why. See the entry below.
+- **Persist asset identity on a tracker item, so a clearance survives a scene
+  move.** Added 2026-08-31 by D37, after CP-028's review measured the gap and
+  the checkpoint was superseded rather than widened. The work: `category` and a
+  normalized `raw_text` on `TrackerItem`, two ClickHouse columns and the
+  migration behind them, a `latest_for_project` read that returns them, and a
+  match in `EvaluateDelta` on the pair instead of on scene overlap. It reopens
+  two `DONE` archives (CP-023's adapter, CP-025 and CP-036's domain module) and
+  costs four implementer turns and four reviewer turns on the critical path,
+  seven days before 2026-09-07, for a case the demo does not run — SDD §7 phase
+  5 uploads v2 with one edited scene, which keeps its number and joins as
+  CHANGED. **The consequence while it waits, stated plainly because D37's
+  ruling depends on it being visible:** an asset edited out of one scene and
+  added in another arrives as a new item at BLOCKED and a human clears it a
+  second time, while the item it left behind stays open, flagged for re-review,
+  and carrying a note naming the scene it was cleared against (CP-044). Nothing
+  is dropped and nothing is kept without saying so; what is spent is a repeated
+  clearance. ADR 0007 and SDD §4.3 say this outright once CP-045 lands.
+- **`POST /api/projects` and `POST /api/projects/{id}/bible`.** Same root cause:
+  a project record and a bible store that no port and no table cover. The demo
+  seeds bible facts straight into the LoreStore, which is what SDD §8(d)'s
+  "a seeded bible fact" already assumes.
+- **`generate_document` and `stakeholder_link` tracker actions (SDD §4.2).**
+  CP-025 covers the other two. `generate_document` is another model call and
+  therefore another port; `stakeholder_link` returns a registry link
+  `RightsResearch` has not been asked to resolve. Both are half-features until
+  those two questions are answered.
+- **LoreStore deletion for CHANGED scenes (SDD §4.3).** CP-028 left it out and
+  CP-044 leaves it out too: it needs a `delete` method the frozen `LoreStore`
+  port lacks, and adding one reopens a `DONE` adapter. Known limitation while
+  it waits — a changed scene leaves a stale row that later retrieval can return
+  as history. Harmless for a two-version demo, wrong for a series.
+  **Amended 2026-08-31 by D37:** SDD §4.3's second bullet currently promises
+  the deletion in a parenthetical, so the specification describes code that
+  does not exist. CP-045 replaces that parenthetical with a sentence saying it
+  is unbuilt and why. The limitation stays here; only the claim goes.
+- **`Scene.number` is an `int`, so a production A-scene (`14A`) cannot be
+  represented.** Found while ruling D19, and recorded because it is the
+  counterweight to that ruling rather than support for it: inserting `14A` is
+  how a locked script avoids renumbering everything below it, and ClearCut
+  cannot express it, so a real v2 insert renumbers and pays the full
+  re-analysis D19 accepts. Changing the type reaches `Scene`, `SceneDelta`,
+  `Finding.scene_number`, `TrackerItem.scene_numbers`, the ClickHouse schema,
+  and the SPA — a domain-wide change with no demo beat behind it, eight days
+  out. It is the honest fix for the cost D19 accepts; the join key is not.
+- **The one-line scene summary flash-lite writes as LoreStore row metadata**
+  (SDD §4.1 step 5). D11 kept it out of `ContinuityCheck`. Nothing reads it.
+- **A jurisdiction set on `TrackerItem`, and the territory filter it would
+  enable.** D26, from CP-027's reviewer. `agentic-workflow.md` §6 describes
+  "What is still blocking release in Mexico?" as a query for BLOCKED items
+  whose jurisdiction set includes Mexico; the field does not exist, so the
+  answer lists every blocked item. Declined because a per-item jurisdiction
+  *set* only means something once one project is analyzed against several
+  jurisdictions, and nothing builds that — `extract`, `ground`, `AnalyzeScript`
+  and `POST /api/analyze` each take exactly one. Every item a run produces
+  therefore shares that run's jurisdiction, so today's unfiltered answer is
+  correct rather than merely harmless. Unlike D24's gap this one gets *cheaper*
+  to fix later, because its shape depends on the multi-jurisdiction analysis it
+  waits behind. CP-037 makes the current answer honest in the meantime by
+  naming the territory it covers.
+- **The keyword-call-site guard on the five concrete adapters.** D15. Struck
+  for now; the rule "use cases call port methods positionally" closes the gap
+  at the only call sites that exist. Revisit when the number of call sites
+  makes a convention unreliable.
+- **A raise-site guard for stdlib exceptions crossing a port.** D27, from
+  CP-034's review. CP-034's contract walk collects module-owned `Exception`
+  subclasses, so `raise ValueError` inside a port method is invisible to it and
+  no widening of that walk would see it — catching that shape needs a third
+  structural guard doing an AST scan of `raise` statements under `adapters/`.
+  Deferred because the rule has exactly three known sites and D27 ruled all
+  three: two are unreachable from a validated request and one fires at startup,
+  where CP-030 already owns it. What holds the line in the meantime is
+  behavioural, not structural — CP-029 returns a JSON 500 for any unmapped
+  exception, `ValueError` included, asserted by a test. Worth building the day
+  a fourth site appears, or the day one of the three becomes reachable again.
+- **Cloud Run deploy script under `infra/`**, completing D6's scope: the §9
+  deploy with `--set-secrets`, `--set-env-vars`, `--runtime python312` (D8),
+  the service account roles, and `min-instances 0`. Same `--dry-run` seam and
+  test shape as CP-013. It unblocks once CP-030 lands `create_app()`.
+  **It also carries D17**: `infra/README.md`'s run order jumps to
+  `gcloud storage ls "gs://clearcut-legal-corpus/**"` without ever telling a
+  human to upload the legal PDFs into that bucket first. Same file, same
+  numbered list, two lines — attached here so it cannot be lost.
+- **The three SPA surfaces against the live API, replacing CP-011's fixtures.**
+  The first of them carries D18's two items: wrap `requestJson`'s
+  `response.json()` so malformed JSON inside a 200 surfaces as `ApiError`
+  rather than a raw `SyntaxError` (`web/src/api/client.ts:108`), and add
+  Tailwind — config plus the first class that a test actually exercises, which
+  is what CP-011 correctly declined to add with nothing exercising it.
+  **D36 changed what this waits on, 2026-08-31.** It waited on live services;
+  mock mode gives it a running API with no credentials, so the only thing in
+  front of it is CP-030. It is therefore the first promotion candidate for the
+  next leader turn, and the argument for promoting it is blunt: a mocked MVP
+  the user can only see through `curl` is not the MVP the decision asked for.
+  Not promoted this turn, because it is three surfaces and two carried items,
+  and nothing in it can start before CP-030 lands anyway.
+- **SDD §8(d) end-to-end check on the planted script.** The Ferrari Testarossa,
+  "Hotel California", and one seeded-bible contradiction. Runs after CP-030,
+  against live services, and it is the submission's evidence.
+  **Amended 2026-08-31 by D36.** The same three assertions now also run mocked,
+  as a criterion on CP-030, so this entry is the *live* run only. It stays the
+  submission's evidence and does not become redundant: the mocked run proves
+  the wiring, this one proves the services.
 
-- `diff_scenes` as a pure domain function over `content_hash`.
-- `EvaluateDelta`, selective re-embedding, and finding carry-forward by asset
-  identity, including the CLEARED-plus-`needs_review` case of ADR 0007.
+**Carried from the five adapter reviews, ruled non-demo-critical 2026-08-30.**
+
+- `Citation.snippet` mapping is untested (`research.py:143`,
+  `snippet=(c.excerpts or [""])[0]`); mutating it to `""` leaves all six CP-010
+  tests green. A coverage gap on a display field.
+- Four mypy-forced defensive branches in `research.py` carry no test
+  (lines 113-115, 120-121, 143, 148-149). Individually minor, grouped here as
+  CP-010's reviewer grouped them.
+- `web/`: `ScriptViewResponse` omits `gcs_uri`, which SDD §2 lists on `Script`.
+  Leaving an internal storage URI out of a browser payload is defensible;
+  the route that emits the payload decides, not the client.
+- `web/`: `tsconfig.json` sets `include: ["src"]`, so `vite.config.ts` is never
+  type-checked. Harmless now, worth folding in when that config grows.
+
+**Placed 2026-08-31: reviewer findings that were recorded but never ruled.**
+
+An audit this turn found seven non-blocking items sitting in archived review
+notes and in the Decisions preamble, in neither a checkpoint nor this section.
+One became CP-047 above. The other six are recorded here with their reason, so
+the loop's own rule holds for them too: a non-blocking finding becomes a
+checkpoint or a dated declination, never a silence. None is on the SDD §8(d)
+path and none blocks CP-030, CP-031 or CP-041.
+
+- **A timestamp the caller controls, on the two tracker routes.** CP-029's
+  review, item 1. `at = _now()` is minted server-side, but a mutant that reads
+  `at` from the request body survives on `PATCH /api/tracker/{item_id}` and
+  `POST /api/tracker/{item_id}/actions`. The code is right; the guard is
+  missing. `updated_at` on a tracker row is clearance audit data, and CP-029's
+  own criterion phrased the rule for `/api/analyze` only, so this is a coverage
+  gap rather than an unmet criterion. Worth one checkpoint covering both sites.
+- **`_json_body`'s non-dict guard is untested.** CP-029's review, item 2. A
+  valid-JSON-but-not-an-object body maps to `{}`, and removing the guard leaves
+  the suite green. It is load-bearing: `_json_body` runs outside
+  `_run_use_case`'s try, so without it the `AttributeError` escapes the mapping
+  entirely and the demo shows a Flask traceback — the exact failure CP-029's
+  500 criterion exists to prevent.
+- **`web/src/api/client.ts` types `contact` as an object.** CP-029's review,
+  item 3, the half CP-047 does not take. `TrackerContact | null` against
+  `contact: str` in `domain/tracker.py`, which the route serializes faithfully.
+  A frontend change, and it belongs with the three SPA surfaces above, which
+  rewrite that file anyway.
+- **`_require_field`'s docstring claims a strip it does not perform.** CP-029's
+  review, item 4. It returns the raw value and uses `.strip()` only for the
+  blank check, so a padded `project_id` reaches the LoreStore with its
+  whitespace. No criterion names trimming, so this is a docstring correction or
+  a one-line behaviour change, whichever a later turn prefers — not a defect
+  against a stated contract.
+- **The demo cites trademark law for an Eagles song.** CP-043's review, item 2.
+  One shared `GROUNDED_ANSWER` was upheld as correct, but its only citation is
+  Ley de Marcas 22.362, so the `MUSIC_EXISTING` finding renders grounded in
+  trademark law on the SDD §8(d) screen. The fix is data — a second `Citation`
+  on the same tuple — with no rule and no format duplicated. The strongest
+  promotion candidate of the six, because it is what a judge reads.
+- **`InMemoryRightsResearch.find` raises a bare `KeyError`.** CP-043's review,
+  item 3. The live adapter raises the domain error and `AnalyzeScript` degrades
+  that one finding; the demo adapter raises a stdlib error nothing catches, so
+  mock mode returns 500 where live mode degrades. Unreachable while
+  `InMemorySceneExtractor` emits only the two seeded assets, and reachable the
+  moment mock mode serves a third. It is also the one place left in the tree
+  that contradicts D23's convention.
+
+*Corrected rather than filed as work.* CP-043's review also flagged that a
+Notes sentence in that block overreaches on project scoping. The accurate
+statement, recorded here because a `DONE` block is not reopened for its prose:
+the demo stores are project-scoped on `latest_script` and `search` only; the
+five unconditional read-only ports, continuity included, are not. That is what
+a mock is, and no criterion required otherwise.
 
 ---
 
 ## Archive
 
 _Terminal checkpoints (`DONE` / `SUPERSEDED`), newest first._
+
+### CP-041 — Route a second script version to the delta path
+- Status: DONE
+- Attempts: 1/3
+- Depth: 0
+- Layer: adapters
+- Depends on: CP-044, CP-029
+- Acceptance:
+  - [x] The blueprint factory takes `EvaluateDelta` alongside the use cases
+        CP-029 gave it, and `POST /api/analyze` calls `AnalyzeScript` when the
+        request's `version` is 1 and `EvaluateDelta` when it is greater. Two
+        tests, one per branch, each asserting over recording fakes that the
+        other use case was called zero times.
+  - [x] The delta response carries the same keys as the analyze response —
+        script metadata, findings with citations, tracker items — asserted by a
+        test that reads both bodies, so the SPA renders both from one client
+        path and CP-011's typed client needs no second shape.
+  - [x] `EvaluateDelta`'s no-previous-version error returns 404 through the
+        `RecordNotFound` mapping CP-029 already installed, with no new `except`
+        clause in the route. A test posts `version: 2` for a project with no
+        stored version and asserts 404 and a body naming the project.
+  - [x] The branch runs after CP-029's field validation, not instead of it: a
+        `version` of 0, `"2"`, or absent still returns 400 naming the field and
+        calls neither use case. One test per case, over fakes recording zero
+        calls.
+  - [x] `routes.py` still imports nothing from `clearcut.adapters`, so CP-030's
+        gate is unaffected by the new parameter.
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: src/clearcut/adapters/http/routes.py,
+  tests/unit/adapters/test_routes.py
+- Notes: D30's second half. `EvaluateDelta` has no caller without this — the
+  same defect as `record_script` having no writer, one layer up, and the demo
+  beat SDD §7 phase 5 names is an upload, so the surface has to be HTTP.
+
+  **Why the version comes from the request rather than from a tracker read.**
+  SDD §4.3 triggers on "a project that already has a script version", which the
+  route cannot know without holding `TrackerStore` — orchestration a route may
+  not do (SDD §4), and a port CP-029's factory does not take. The comparison
+  reads a field the request already had to carry, because
+  `AnalyzeScript.execute` takes `version: int`. The cost is that a caller
+  posting `version: 1` twice re-analyzes from scratch; recorded in D30, and the
+  honest fix for it is the project store already in the Backlog.
+
+  **Why it is a separate checkpoint and why it lands before CP-030.** Folding
+  it into CP-029 would make the largest route checkpoint wait on the largest
+  use case; landing it after CP-030 would reopen `composition.py` for one
+  constructor argument. One comparison and its tests, in between.
+
+  If this reaches 3/3, the split axis is the branch in one checkpoint and the
+  404 mapping plus validation in another. Recorded so a later turn inherits the
+  seam rather than inventing one under pressure.
+
+  **`Depends on` moved from CP-028 to CP-044 on 2026-08-31 (D37).** CP-028 is
+  SUPERSEDED and CP-044 is the block that lands `EvaluateDelta`. Nothing in the
+  criteria above changes: `execute`'s signature is byte-identical to
+  `AnalyzeScript.execute`'s, which is what the version branch needs, and the
+  `NoPreviousScriptVersion` error still subclasses `RecordNotFound`, which is
+  what the 404 criterion needs. Both survive into CP-044 as named behaviours.
+
+  **Implemented 2026-08-31.** `create_blueprint` gains `evaluate_delta:
+  EvaluateDelta` as its second parameter, right after `analyze_script`
+  (`create_blueprint(analyze_script, evaluate_delta, list_tracker_items,
+  resolve_finding, answer_project_question)`). **This is the last change to
+  the factory's parameter list** — CP-030 wires `composition.py` against this
+  exact five-argument shape; landing this checkpoint after CP-030 would have
+  reopened it for one constructor argument, which D30 already ruled out.
+
+  The version branch is one ternary inside `analyze()`'s `build()` closure:
+  `use_case = analyze_script if version == 1 else evaluate_delta`, then one
+  shared call `use_case.execute(project_id, script_id, version, gcs_uri,
+  jurisdiction, at)` and one shared serializer, `_analysis_report_json` —
+  unchanged from CP-029, confirmed by a test that reads both an `AnalyzeScript`
+  and an `EvaluateDelta` response body and asserts their key sets are equal,
+  rather than re-asserting the shape from scratch.
+
+  **404 is the honest status for "you posted v2 but I have no v1".** No
+  criterion in this block or in AGENT.md gives a different rule for "the
+  server has no record for this identifier" than 404, and
+  `NoPreviousScriptVersion` is exactly that: keyed on `project_id`, not on the
+  request body being malformed (400) or a downstream dependency being
+  unreachable (502). `_run_use_case`'s existing `except RecordNotFound`
+  already covers it because `NoPreviousScriptVersion` subclasses
+  `RecordNotFound` (D30, D37) — no new `except` clause, confirmed by a mutation
+  that made `NoPreviousScriptVersion` subclass bare `Exception` instead, which
+  turned the 404 into a 500 and failed the new test. The response body names
+  the project (`project_id={project_id!r}`), matching the criterion's "naming
+  the project" wording literally, and giving an operator enough to act on
+  without leaking which internal check failed.
+
+  **Test-file fallout from the branch, fixed in the same diff.**
+  `test_analyze_response_version_is_the_one_that_was_posted` (CP-029, D33)
+  posted `version: 3`, which after this checkpoint routes to `evaluate_delta`
+  and 404s against the default fake tracker's empty `latest_script`. Renamed
+  to `test_analyze_response_version_is_the_one_the_use_case_reports` and
+  rewired through a recording fake substituted for `analyze_script` at
+  `version: 1`, so it now proves the same D33 property — the serializer
+  reflects `AnalysisReport.script.version`, not a hardcoded 1 — independent of
+  which branch a given request number happens to select.
+
+  **Mutation testing on a throwaway copy** (`src`, `tests`, `infra`,
+  `pyproject.toml`; `PYTHONPATH` pointed at the copy's `src` to shadow the
+  editable install, `PYTHONDONTWRITEBYTECODE=1`, `__pycache__` cleared before
+  each run): routing v2 to `AnalyzeScript` instead of `EvaluateDelta` failed 2
+  tests; dropping the version branch entirely (always `analyze_script`) failed
+  the same 2; subclassing `NoPreviousScriptVersion` from bare `Exception`
+  instead of `RecordNotFound` failed 1 (500 instead of 404). All three
+  survived nowhere — every mutation was caught.
+
+  **Reviewer, 2026-08-31 — CHANGES_REQUESTED, BLOCKING 1.** Gates are green:
+  `pytest -q` 400 passed, `ruff check .` clean, `ruff format --check .` clean
+  (108 files), `mypy src tests infra` clean on 82 files. Five of the six
+  criteria are verified by mutation on a throwaway copy (`src`, `tests`,
+  `infra`, `pyproject.toml`; `PYTHONPATH` at the copy's `src`,
+  `PYTHONDONTWRITEBYTECODE=1`, `__pycache__` cleared, resolution printed as
+  the copy's own `routes.py` before every run):
+
+  - v2 routed to `AnalyzeScript` (`version >= 1`) → 2 failed. Branch dropped
+    (`use_case = analyze_script`) → the same 2. Branches swapped → 12 failed.
+  - `NoPreviousScriptVersion(Exception)` → 3 failed, including the route's
+    404 test at `assert 500 == 404`. No new `except` clause was added;
+    `_run_use_case` is untouched in the diff. **The 404 ruling stands** —
+    `NoPreviousScriptVersion` is keyed on `project_id` and raised before any
+    parse or network call, so it is not-found-by-identifier, not malformed
+    input (400) and not an unreachable dependency (502).
+  - A divergent second serializer on the delta branch → the parity test
+    failed. `_analysis_report_json` is the only report serializer in the
+    module.
+  - Calling `evaluate_delta` on the invalid-version path → all three new
+    parametrizations failed. The factory is five parameters, all use cases,
+    no port; `routes.py` still names only `clearcut.application` and
+    `clearcut.domain`.
+
+  **BLOCKING 1 — `tests/unit/adapters/test_routes.py:536-557` (with :410).
+  The rewired D33 test dropped half of what it used to prove, and the two
+  branch tests do not pick it up: nothing now asserts that the posted
+  `version` reaches the use case, on either branch.** Measured, not argued.
+  Mutating `routes.py:237` to
+  `use_case.execute(project_id, script_id, 1, gcs_uri, jurisdiction, at)` —
+  the branch itself left intact — leaves **all 400 tests green**. The same
+  mutant applied to the pre-CP-041 tree at `HEAD` is killed by
+  `test_analyze_response_version_is_the_one_that_was_posted` with
+  `assert 1 == 3`. So this diff removed the only guard on half of the
+  route's own job (§3 Controller: the route maps HTTP to use-case *input* as
+  well as output), and a v2 upload could be analysed and recorded as v1 with
+  the suite fully green.
+
+  The rename itself is sound and must not be reverted: mutating
+  `_analysis_report_json`'s `"version": script.version` to `"version": 1` is
+  killed by the renamed test alone, so the serializer half of D33 is
+  genuinely covered. What is missing is the forwarding half, which the two
+  branch tests are already positioned to assert — `_RecordingUseCase.execute`
+  appends `args`, so `calls[0][2]` is the version the route passed.
+
+  *Required change:* in
+  `test_analyze_with_version_1_calls_analyze_script_and_not_evaluate_delta`
+  and
+  `test_analyze_with_version_greater_than_1_calls_evaluate_delta_and_not_analyze_script`,
+  assert the recorded version argument as well as the call count — `1` on the
+  `AnalyzeScript` branch and `2` on the `EvaluateDelta` branch. That pins
+  D33's round-trip for both branches and kills the surviving mutant. Add
+  nothing else; every other criterion is already proven above.
+
+  **Fixed 2026-08-31, test-only.** Added exactly the two assertions the
+  reviewer specified: `analyze_script.calls[0][2] == 1` in
+  `test_analyze_with_version_1_calls_analyze_script_and_not_evaluate_delta`,
+  `evaluate_delta.calls[0][2] == 2` in
+  `test_analyze_with_version_greater_than_1_calls_evaluate_delta_and_not_analyze_script`.
+  No `src/` file touched.
+
+  Verified on a throwaway copy (`src`, `tests`, `infra`, `pyproject.toml`
+  under `/tmp/clearcut-cp041-verify`; `PYTHONPATH` at the copy's `src`,
+  `PYTHONDONTWRITEBYTECODE=1`, no stray `__pycache__`, resolution printed as
+  the copy's own `routes.py` before every run). Applying the reviewer's exact
+  mutant — `routes.py:237` hardcoded to
+  `use_case.execute(project_id, script_id, 1, gcs_uri, jurisdiction, at)` —
+  against the full copied suite: 1 failed, 399 passed (was 400/400 green
+  before this fix). The one failure is
+  `test_analyze_with_version_greater_than_1_calls_evaluate_delta_and_not_analyze_script`
+  at `assert 1 == 2`; `test_analyze_with_version_1_calls_analyze_script_and_not_evaluate_delta`
+  stays green under this specific mutant, and that is arithmetic, not a gap —
+  for a `version: 1` request the hardcoded literal `1` *is* the correct
+  value, so nothing distinguishes it from the real forwarding path. The
+  mutant is still killed: the suite is no longer all-green, which is the
+  property BLOCKING 1 named.
+
+  To confirm the `version: 1` assertion is a real guard and not dead weight,
+  the same copy was mutated a second way — hardcoded to `9` instead of `1`,
+  a value that diverges from both real versions. Both branch tests failed
+  (`assert 9 == 1` and `assert 9 == 2`), proving each assertion independently
+  polices its own branch's forwarding. Both mutants reverted (copy is
+  throwaway and was never on the real tree).
+
+  Gates on the real tree, after the test-only fix: `pytest -q` → 400 passed;
+  `mypy src tests infra` → no issues, 82 source files; `ruff check .` → all
+  checks passed; `ruff format --check .` → 108 files already formatted.
+  `src/clearcut/adapters/http/routes.py` is unchanged by this turn — the
+  only diff is `tests/unit/adapters/test_routes.py`.
+
+  The `/tmp/clearcut-cp041-verify` throwaway copy could not be removed
+  (`rm -rf` is sandboxed in this environment regardless of path); it sits
+  outside the repo and does not affect gates, git status, or delivery. A
+  later turn or a human may delete it.
+
+  **Reviewer, 2026-08-31 — PASS, attempt 1/3, zero blocking findings.**
+  BLOCKING 1 is closed, and closed by measurement rather than by argument. On
+  a fresh throwaway copy (`src`, `tests`, `infra`, `pyproject.toml`;
+  `PYTHONPATH` at the copy's `src`, `PYTHONDONTWRITEBYTECODE=1`, `__pycache__`
+  cleared, resolution printed as the copy's own `routes.py` first, baseline
+  400 passed), the exact mutant that finding named — `routes.py:237` hardcoded
+  to `use_case.execute(project_id, script_id, 1, gcs_uri, jurisdiction, at)` —
+  now gives **1 failed, 399 passed**, against all 400 green before the fix.
+
+  The implementer's arithmetic argument for why only one branch test catches
+  that mutant was checked, not taken on trust: hardcoding `9` instead, a value
+  matching neither branch, fails **both** branch tests (`assert 9 == 1` and
+  `assert 9 == 2`). So each assertion independently polices its own branch's
+  forwarding, and `calls[0][2]` is genuinely the version argument rather than
+  an index that happens to line up — `_RecordingUseCase.execute` appends
+  `args` and the route calls positionally, which the `9` mutant confirms from
+  the outside.
+
+  Every other criterion was re-verified by mutation on that same copy rather
+  than carried over from attempt 1. Dispatch inverted → 12 failed; branch
+  dropped to always `analyze_script` → 2 failed; always `evaluate_delta` → 10
+  failed (criterion 1). An extra `"delta"` key on the delta branch only → the
+  parity test alone failed (criterion 2). `NoPreviousScriptVersion(Exception)`
+  → 3 failed, including the route's 404 test; `_run_use_case` is untouched in
+  the diff and `routes.py` still holds exactly the four `except` clauses it
+  held at `HEAD`, so the 404 arrives through CP-029's existing mapping
+  (criterion 3). `_require_version`'s guard neutered → 8 failed, including all
+  three new parametrizations, so the branch runs after validation rather than
+  instead of it (criterion 4). `routes.py` imports only stdlib, `flask`,
+  `clearcut.application` and `clearcut.domain` (criterion 5).
+
+  The "no `src/` change this turn" claim checks out. The prior review cited
+  `routes.py:237`, and line 237 still carries that exact call; `git status`
+  shows one modified file under `src/`, and its diff is the same 14 lines
+  attempt 1 described — the import, the fifth factory parameter, the ternary,
+  and the docstring's four-to-five count.
+
+  §4: `create_blueprint` at five parameters exceeds the soft ≤4 guide, which
+  criterion 1 names explicitly and D30 already argued, so it is not a finding;
+  `routes.py` is 297 lines, inside the soft ≤300 guide. No port, no interface,
+  no abstraction and no config were added. No secrets in the diff. Nothing in
+  the diff is reader-facing prose, so `WRITING.md` does not apply to it.
+
+  Gates on this working tree, `./.claude/init.sh check`: `ruff check` all
+  checks passed; `ruff format --check` 108 files already formatted; `mypy src
+  tests infra` no issues in 82 source files; `pytest -q` 400 passed. 4 passed,
+  0 failed.
+
+  **Non-blocking, for the leader — this does not reopen the checkpoint.**
+  `.claude/settings.json` carries an uncommitted permission-surface change
+  (`Bash(gh:*)` and four Engram MCP tools added to `allow`, plus a new
+  `PreToolUse` hook) and `.mcp.json` is untracked. Neither file is in this
+  checkpoint's `Files` and both predate this diff, so they are out of scope
+  here — but they will otherwise ride into whatever commit lands next without
+  ever having been reviewed as a change.
+
+  IN_REVIEW → DONE, attempts stay 1/3, block moved to `## Archive`.
+
+### CP-045 — Correct the two documents that promise a match no port can perform
+- Status: DONE
+- Attempts: 1/3
+- Depth: 1
+- Layer: infra
+- Depends on: CP-044
+- Acceptance:
+  - [x] ADR 0007's Consequences section is replaced by D37's verbatim text.
+        Observable properties of the replacement: it names scene overlap as the
+        carry-forward match and gives the reason no other match is available
+        (no store holds a finding's category and text between runs); it states
+        that an asset moving to a different scene arrives as a new item at
+        BLOCKED and a human clears it a second time; it states that the item
+        left behind stays open, flagged, and carrying a note; it keeps the
+        `(number, heading)` join-key paragraph and the below-scene-granularity
+        sentence; and it names what a stored asset identity would cost.
+  - [x] SDD §4.3's carry-forward bullet is replaced by D37's verbatim text, so
+        the specification stops describing an asset-identity match.
+  - [x] SDD §4.3's LoreStore-deletion parenthetical is replaced by D37's
+        verbatim text, which marks it as unbuilt and names the reason. After
+        this checkpoint no sentence in §4.3 contradicts `evaluate_delta.py` —
+        the reviewer checks that by reading the section against the module, not
+        by running a test.
+  - [x] The ADR header carries `Amended: 2026-08-31 (Consequences)` beneath
+        `Date`. Status stays `Accepted`, because the Decision paragraph is
+        still true — what changed is the Consequences. No other ADR carries
+        such a line; this is the first whose Consequences shipped a claim its
+        own code disproved, and a reader who cannot tell the section was
+        rewritten after the fact is the reader D37 exists for.
+  - [x] Neither changed section contains an em dash or a literal `--`.
+        `sdd.md`, `proposal.md` and all ten ADRs contain zero em dashes today,
+        and CP-028's diff made ADR 0007 the only planning document using ` -- `,
+        which renders as two hyphens. Checked with `rg`, not with pytest.
+  - [x] Prose is the deliverable here, so `.claude/WRITING.md` §4 is **blocking**
+        for every criterion above: no banned word, no §2 pattern in the new
+        text, every claim concrete enough to pass the portability test.
+  - [x] Failure path, on the record rather than in the code: no file under
+        `src/` or `tests/` changes in this diff, and `pytest -q` returns the
+        same count CP-044 left it at. A prose checkpoint that moves behaviour is
+        mis-scoped, and this one is fixing the consequence of prose and code
+        travelling together.
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: docs/plan/adr/architecture/0007-incremental-delta-by-scene-hash.md,
+  docs/plan/sdd.md
+- Notes: **Why this is its own turn, against D17's and D19's precedent.** Those
+  rulings put a paragraph on the checkpoint whose behaviour it described,
+  because one paragraph does not earn an implementer turn plus a reviewer turn.
+  Following it produced BLOCKING 2 on CP-028: the paragraph rode in as criterion
+  11 among twelve behavioural ones, its box was ticked with the other twelve,
+  and an `Accepted` ADR published a claim the same diff disproved. A reviewer
+  reading only prose against only code catches that. This block is off the
+  critical path, so the precedent's cost argument does not bite.
+
+  `Layer: infra` because the template has no `docs` value and these two files
+  are not code. The layer field decides nothing here.
+
+  **Depends on CP-044 deliberately.** The text describes the note on the stale
+  item, which CP-044 lands. Writing it first would repeat CP-028's mistake in
+  the other direction — a document ahead of its code — which is the one failure
+  this checkpoint exists to undo. It costs nothing on the critical path, which
+  runs CP-044, CP-041, CP-030, CP-031 and never through here.
+
+  The three verbatim replacements are in D37. Copy them; do not compose new
+  text. If a `WRITING.md` finding lands against text D37 supplied, that is a
+  leader amendment rather than an implementer rewrite — say so and stop.
+
+  **Depth 1, so a block here stops the loop for a human.** The seam is the file
+  boundary: the ADR in one checkpoint and `sdd.md` in the other.
+
+  **Implementer, 2026-08-31 — verification record.** Copied D37's three
+  blocks verbatim into the two files (byte-for-byte, checked by re-reading
+  both files after the edit against the quoted text in D37). `rg` for an em
+  dash across `docs/plan/` returns nothing; `rg -- '--'` on the two changed
+  files matches only a pre-existing Markdown table divider (`|---|---|---|`)
+  outside §4.3, not the changed prose. `rg "asset identity"` finds one hit,
+  inside the new ADR text itself, naming what a stored asset identity would
+  cost, which the acceptance criterion allows. `rg "category, normalized"`
+  and the old `(the old rows for a CHANGED scene are deleted from the
+  LoreStore first)` parenthetical both return no match anywhere in
+  `docs/plan/`. The one other "normalized asset name" hit is SDD's unrelated
+  §4 step 4 (in-run dedup of findings within one version), untouched by this
+  checkpoint and not the carry-forward join D37 corrects. Ran WRITING.md §4
+  by hand over both changed sections: no §1 banned word or filler phrase, no
+  §2 pattern (no binary contrast, no colon-reveal, no kicker), active voice
+  throughout ("the run returns", "the item ... stays open"), and every claim
+  names a concrete mechanism (`content_hash`, `scene_numbers`, `finding_id`,
+  the missing `LoreStore.delete`) rather than a vague generality. Confirmed
+  D19's dated correction (line ~464) still stands unedited next to the
+  original amendment text and already says the amendment is superseded by
+  D37's, which CP-045 lands; no edit needed there per the checkpoint's own
+  instruction. Gates: `pytest -q` -> 393 passed (same count as before this
+  diff, no `src/` or `tests/` file touched), `mypy src tests infra` -> no
+  issues in 82 files, `ruff check .` -> all checks passed, `ruff format
+  --check .` -> 108 files already formatted.
+  **Reviewer, 2026-08-31 — PASS, zero blocking findings.** Verbatim fidelity
+  checked mechanically, not by eye: stripped the `> ` prefixes off D37's three
+  quoted blocks and diffed them against the landed text. All three are
+  identical including line wrapping (ADR Consequences, SDD §4.3 bullets two
+  and four). Honesty against `evaluate_delta.py` at `864c710`, claim by claim:
+  `_pop_match` joins on `set(candidate.scene_numbers) & scene_set` over
+  candidates `_partition_existing` drew from the CHANGED set, so the match is
+  scene overlap; `_mint_outcome` gives a moved asset a fresh `EVT-NNN` at
+  `TrackerState.BLOCKED`; `_carry_forward_leftover` sends a CLEARED leftover to
+  `flagged_and_noted(_stale_note(...))`, which yields "cleared against scene N;
+  no matching finding there in version V" at one version bump. The counterexample
+  is pinned by a test with real assertions, not a shape check
+  (`test_a_moved_asset_leaves_a_fresh_blocked_item_and_a_flagged_noted_stale_item`
+  asserts BLOCKED, `needs_review is True`, `"scene 2" in note`, `version == 4`).
+  The no-store claim was verified against the boundary rather than trusted:
+  `TrackerItem` has no `category` and no `raw_text`, `TrackerStore` exposes
+  `save/latest/latest_for_project/record_script/latest_script` and no findings
+  read, the ClickHouse adapter's two DDLs (`tracker_items`, `script_versions`)
+  define no findings columns, and `infrastructure.md` section 6 names those same
+  two tables. `LoreStore` exposes `index` and `search` only, so the SDD's
+  "no `delete` method" is literally true; `rg delete src/clearcut/application/ports.py`
+  returns nothing. Also checked: `content_hash` is SHA-256 over normalized text
+  alone, `diff_scenes` joins on `(number, heading)`, section 7 phase 5's exit
+  condition is the one-edited-scene case the ADR cites.
+
+  Completeness: `rg` over all of `docs/plan/` returns exactly one "asset
+  identity" hit, ADR line 57, which is D37's own cost description and the
+  permitted one. `sdd.md:173` keeps "(same category plus normalized asset
+  name)", and that one is true: it describes step 4's in-run dedupe, which
+  `dedupe_findings` performs on `(category, normalized raw_text)` within a
+  single version. `proposal.md:35` and `agentic-workflow.md:203` survived
+  reading, both describing the unchanged-scene carry-forward the code does.
+  Nothing anywhere still claims a clearance survives a scene move.
+
+  `WRITING.md` §4 over the 50 added lines: no §1 banned word, no empty adverb,
+  no filler phrase, no decorative bold. `rg` finds zero em dashes in either
+  file and zero anywhere under `docs/plan/`; the only literal `--` is the
+  pre-existing table divider at `sdd.md:102`, outside §4.3. Colons in the new
+  text introduce evidence and lists, not §2 dramatic reveals, and the section
+  ends on the concrete below-scene-granularity sentence rather than a kicker.
+  Portability test passes on every new sentence: they name `content_hash`,
+  `TrackerItem`, `scene_numbers`, `finding_id`, `LoreStore`, BLOCKED, and
+  specific document sections.
+
+  **The `Amended:` line is a legitimate record, not a convention violation.**
+  There is no ADR template and no document prescribing the header fields, so
+  the absence of the line elsewhere is a case that never arose rather than a
+  rule against it. D8's precedent runs the other way: ratified text gains a
+  dated inline amendment instead of a silent edit, and `CHECKPOINTS.md`
+  applies that form throughout ("Amended 2026-08-31 by D37"). `Status:
+  Accepted` is right, because the Decision paragraph at lines 18-23 is true of
+  the code. On section-reference style, the new SDD text's lowercase "section
+  6" matches `sdd.md`'s own convention, which reserves `§` for `AGENT.md`.
+
+  No overreach: `git diff` on the two files is three hunks, the header line and
+  the three mandated replacements, nothing else. No file under `src/` or
+  `tests/` is touched. Gates: `pytest -q` -> 393 passed (unchanged), `mypy src
+  tests infra` -> no issues in 82 files, `ruff check .` -> all checks passed,
+  `ruff format --check .` -> 108 files already formatted.
+
+  Not re-raised, because both are already settled on the record: §4.3's first
+  bullet ("Findings, embeddings, and tracker items survive as they are") sits
+  next to the UNCHANGED-findings omission that D37(a) sent to the Backlog, and
+  the uncommitted `.claude/settings.json` / `.mcp.json` drift is recorded above.
+
+### CP-044 — Carry a clearance forward by scene, and say so on the row it cannot reach
+- Status: DONE
+- Attempts: 1/3
+- Depth: 1
+- Layer: application
+- Depends on: -
+- Acceptance:
+  - [x] Carry-forward by scene overlap: a re-extracted finding on a CHANGED
+        scene takes over the `finding_id` and the tracker state of an existing
+        item whose `scene_numbers` overlap the CHANGED set. A test seeds a
+        CLEARED item on scene 2, edits scene 2, and asserts the re-extracted
+        finding returns under that same `finding_id` at CLEARED rather than a
+        new one.
+  - [x] An asset that appears in both a CHANGED scene and a newly ADDED scene
+        in the same upload is one item, not two, because `dedupe_findings`
+        (CP-019) collapses the mentions before the lookup runs. A test asserts
+        one item carrying both scene numbers.
+  - [x] A moved asset does not carry its clearance, and both rows say so. Test
+        the case CP-028's review measured: v1 scene 2 carries the asset as a
+        CLEARED item, v2 edits it out of scene 2 and adds it in scene 9.
+        Assert all three — the new item has a fresh `EVT` id at BLOCKED, the
+        old item stays CLEARED with `needs_review` true, and the old item
+        carries a note naming the scene it was cleared against. A stranded
+        CLEARED row with an empty note is the failure this criterion exists to
+        prevent, and it is what the code does today.
+  - [x] That note costs one version bump, not two: the stale item's `version`
+        is exactly one greater than the version it carried in v1. A test
+        asserts the number. Flagging and noting are one tracker write, so a
+        producer reading version history sees one event for one change.
+  - [x] `TrackerItem.noted` rejects a blank or whitespace-only note, naming the
+        field, the way its sibling `with_draft_email` does. A test asserts the
+        raise. A version bump that stored nothing looks exactly like one that
+        stored a value.
+  - [x] The module docstring of `evaluate_delta.py` states the join the code
+        performs and the case it does not reach, in D37's terms. No claim of
+        `(category, normalized raw_text)` matching survives anywhere under
+        `src/`.
+  - [x] Every behaviour CP-028's archived review verified by mutation still
+        holds, and none was weakened to accommodate the amended match: UNCHANGED
+        scenes never re-extracted or re-indexed, REMOVED items kept open with a
+        note, a CLEARED item on a CHANGED scene flagged and notified exactly
+        once, the `EVT` sequence continued rather than restarted, new items
+        starting at BLOCKED, `record_script` called for the new version,
+        `NoPreviousScriptVersion` subclassing `RecordNotFound`, the report
+        carrying script metadata plus findings plus tracker items, and `noted`
+        setting `note`, bumping `version`, and leaving `state` alone. The
+        reviewer reads that list against CP-028's archived mutation record
+        rather than taking the tests' names on trust.
+  - [x] Unit tests use hand-written fakes; no network, no clock read.
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: src/clearcut/application/evaluate_delta.py,
+  tests/unit/application/test_evaluate_delta.py,
+  src/clearcut/domain/tracker.py, tests/unit/domain/test_tracker.py
+- Notes: **Start from the diff that is already in the working tree. Do not
+  rewrite it.** `evaluate_delta.py` and `test_evaluate_delta.py` are untracked
+  files sitting in the tree right now, and `domain/tracker.py` carries the
+  `noted` method CP-028's implementer added. Two independent mutation runs
+  measured twelve of the thirteen behaviours as sound. This checkpoint is the
+  delta on that work: the amended criterion 5, the note on the stale item, the
+  version-bump count, the blank-note guard, and the docstring. Re-deriving
+  twelve passing criteria would spend the turn proving what a reviewer already
+  proved.
+
+  **This block does not touch ADR 0007 or `sdd.md`.** The ADR is modified in the
+  working tree with the paragraph CP-028's review blocked on, and it belongs to
+  CP-045. Keep it out of this checkpoint's commit.
+
+  **Depth 1, so a block here stops the loop for a human** (AGENT.md §6). If it
+  does, the seam is the domain half — the `noted` guard and the one-bump
+  note-plus-flag write on `TrackerItem` — against the application half, the
+  matching itself. Recorded so a human inherits the seam rather than inventing
+  one under pressure. The persisted-asset-identity road is not that seam; it is
+  in the Backlog with its cost, and D37 rules it out before 2026-09-07.
+
+  Eight constructor parameters and 386-plus lines, both already argued in
+  CP-028's Notes and both re-ruled in D37(c). Not a finding.
+
+  On the cut list where CP-028 was — first, and cutting it cuts CP-041 with it.
+
+  **Implementer, 2026-08-31.** Reused the blocked diff as instructed; did not
+  re-derive the twelve already-mutation-verified criteria. The delta:
+
+  - **Criterion 1 (amended scene-overlap join) needed no code change.** It is
+    what `evaluate_delta.py:338-343` (now `_pop_match`/`_resolve_deduped`)
+    already did. Grepped `test_evaluate_delta.py` for "asset identity" and
+    "raw_text" matching claims — none exist. The named scenario
+    (`test_changed_scene_with_a_cleared_item_stays_cleared_but_flags_for_review_and_notifies`)
+    was already present and passing; `finding_id` stability across a matched
+    CLEARED item is additionally covered by
+    `test_carry_forward_keeps_finding_id_when_the_asset_also_appears_in_an_added_scene`,
+    which exercises the same `_match_outcome` code path that assigns
+    `finding_id=match.finding_id`. Criterion 2 (asset in both a CHANGED and a
+    newly ADDED scene collapses to one item) was likewise already covered by
+    that same test and needed no change.
+  - **Criteria 3 and 4 (the moved-asset note, one version bump) were the real
+    gap.** Added `TrackerItem.flagged_and_noted(note, at)`: one `replace()`
+    call setting `needs_review=True` and `note` together at `version + 1`,
+    mirroring `flagged_for_review`'s and `noted`'s shape (D22 keeps the
+    version-bump computation on `TrackerItem`, never in application code —
+    confirmed `evaluate_delta.py` still calls no `replace()` and touches no
+    `.version` on `TrackerItem`, only on `Finding`). In `evaluate_delta.py`,
+    `_carry_forward_leftover`'s CLEARED branch now calls a new
+    `_flag_note_and_notify`, which builds the note through a new `_stale_note`
+    helper naming the item's own `scene_numbers` ("cleared against scene N").
+    `_flag_and_notify` (used only by `_match_outcome`'s matched-CLEARED path,
+    where the asset is still in its scene) is untouched — that path has no
+    "moved" event to name, and its existing tests
+    (`test_changed_scene_with_a_cleared_item_stays_cleared_but_flags_for_review_and_notifies`,
+    `test_a_cleared_item_on_a_changed_scene_flags_for_review_even_with_no_matching_finding`)
+    pass unmodified. New test
+    `test_a_moved_asset_leaves_a_fresh_blocked_item_and_a_flagged_noted_stale_item`
+    reproduces D37's exact counterexample (v1 scene 2 CLEARED at version 3;
+    v2 drops it from scene 2, adds it on scene 9) and asserts all three:
+    fresh `EVT` id at BLOCKED on scene 9, old item CLEARED with
+    `needs_review=True`, note containing "scene 2", `version == 4`.
+  - **Criterion 5 (blank-note guard) is one `if not text.strip(): raise
+    ValueError(...)` in `noted`**, mirroring `with_draft_email`'s guard
+    verbatim, plus a parametrized `["", "   "]` test in `test_tracker.py`.
+    `flagged_and_noted` does not repeat the guard: its only caller always
+    passes a computed, never-blank note, and no criterion asks for it there —
+    adding it would be validating an input no caller can produce.
+  - **Criterion 6 (docstring).** Rewrote the module docstring's join bullet
+    and "Known limitation" paragraph in D37's terms (scene overlap, not asset
+    identity), and fixed one more stray "candidates for asset-identity
+    matching" phrase in `_partition_existing`'s docstring — same false claim,
+    same file, not called out by name in the criterion but the same defect
+    D37 exists to correct. Final grep for `asset identity|asset-identity|
+    normalized raw_text` under `src/` finds exactly three hits, none of them
+    a cross-version tracker-matching claim: `domain/dedupe.py`'s own
+    docstring (true — `dedupe_findings` really does merge same-batch mentions
+    by `(category, normalized raw_text)`, CP-019, untouched, outside this
+    block's `Files`), `domain/script.py`'s one-line pointer to that same
+    dedupe rule, and `evaluate_delta.py`'s corrected "Known limitation"
+    paragraph, which names a stored asset identity only as the thing that
+    would be needed to close the gap, not as what the code does.
+  - Every pre-existing test in both files is byte-identical to what was in
+    the working tree at the start of this turn (`git diff` shows insertions
+    only, no deletions, on both `tracker.py` and `test_tracker.py`); the
+    twelve archived-mutation-verified behaviours were not touched.
+
+  **Mutation-verified on a disposable copy** (`src/`, `tests/`,
+  `pyproject.toml` copied to `/tmp`, `__pycache__` cleared,
+  `PYTHONDONTWRITEBYTECODE=1`; resolution confirmed via test collection
+  against `/tmp/.../src/clearcut/__init__.py`, baseline 54/54 on
+  `test_tracker.py` + `test_evaluate_delta.py`): blanking `_stale_note`'s
+  return fails the new moved-asset test on the note assertion; hardcoding the
+  wrong scene number in `_stale_note` fails the same assertion; dropping the
+  blank-note guard from `noted` fails
+  `test_noted_rejects_a_blank_or_whitespace_only_note`; bumping
+  `flagged_and_noted`'s version by 2 instead of 1 fails both the new
+  domain-level version-bump test and the new application-level test. Each
+  mutant reverted and the copy returned to 54/54 before moving on; diffed
+  byte-identical against the real working tree afterward.
+
+  Gate evidence: `env -u PYTHONPATH .venv/bin/pytest -q` → **392 passed**
+  (386 baseline + 5 domain + 1 application). `.venv/bin/python -m mypy src
+  tests infra` → `Success: no issues found in 82 source files`. `ruff check
+  .` → `All checks passed!`. `ruff format --check .` → `108 files already
+  formatted`. `evaluate_delta.py` grew from 386 to 408 lines (docstring plus
+  two small helpers); already argued and re-ruled non-blocking (D37(c)).
+
+  `docs/plan/adr/architecture/0007-incremental-delta-by-scene-hash.md`
+  remains untouched by this turn — it still carries CP-045's pending edit
+  from the working tree, not committed here.
+
+  **Reviewer, 2026-08-31 — CHANGES_REQUESTED, attempt 1 of 3. Two blocking
+  findings, both of them a missing assertion an acceptance criterion names
+  verbatim, both measured by a mutation that survives. No production defect
+  found; the behaviour under both is correct or a one-line choice. Everything
+  else in this checkpoint verifies.**
+
+  Gates re-run on the shared tree: `env -u PYTHONPATH .venv/bin/pytest -q` →
+  **392 passed**, `ruff check .` → `All checks passed!`, `ruff format --check
+  .` → `108 files already formatted`, `env -u PYTHONPATH .venv/bin/python -m
+  mypy src tests infra` → `Success: no issues found in 82 source files`.
+
+  *Mutation method.* Disposable copy at `/tmp/cp044-review-*` — `src/`,
+  `tests/` and `pyproject.toml`, every `__pycache__` removed,
+  `PYTHONDONTWRITEBYTECODE=1`. Resolution proved from inside a pytest run, not
+  just an interpreter: a throwaway probe test printed `clearcut.__file__ =
+  /private/tmp/cp044-review-60jSg3/src/clearcut/__init__.py`, then was deleted.
+  Baseline 54/54 on `test_tracker.py` + `test_evaluate_delta.py`. Every mutant
+  reverted before the next. (The full-suite run on the copy shows 21 failures
+  in `tests/unit/infra/`, which read `infra/` and `docs/` — deliberately not
+  copied, and outside this block.)
+
+  **BLOCKING 1 — criterion 1's named assertion is absent, and the test that
+  carries its name cannot tell criterion 1's outcome from criterion 3's.**
+  `tests/unit/application/test_evaluate_delta.py:340-364`
+  (`test_changed_scene_with_a_cleared_item_stays_cleared_but_flags_for_review_and_notifies`)
+  seeds a CLEARED item on scene 2 and edits scene 2, as the criterion asks, but
+  every assertion reads `report.tracker_items`. It never touches
+  `report.findings`, so the criterion's own words — "asserts the re-extracted
+  finding returns under that same `finding_id` at CLEARED rather than a new
+  one" — are not asserted anywhere for a CLEARED match.
+
+  Measured, not argued. Mutating `_pop_match`
+  (`src/clearcut/application/evaluate_delta.py:363`) to match nothing at all —
+  carry-forward disabled outright — leaves this test **passing**. Only
+  `test_carry_forward_keeps_finding_id_when_the_asset_also_appears_in_an_added_scene`
+  fails, and that one seeds a BLOCKED item. The reason the CLEARED test
+  survives is structural: with no match, the candidate falls to
+  `_carry_forward_leftover`, which flags and notifies it identically, so
+  `state == CLEARED`, `needs_review is True` and `len(notifier.calls) == 1` all
+  still hold while a fresh `EVT` id is minted beside it. That is precisely the
+  moved-asset outcome criterion 3 describes. The one test standing between the
+  two outcomes cannot see the difference.
+
+  *What must change:* assert on `report.findings` in that test — that the
+  re-extracted finding comes back under `EVT-002` and that no second item was
+  minted — so disabling the CLEARED match fails it. The production behaviour is
+  correct; this is a test-only change.
+
+  **BLOCKING 2 — criterion 2's "one item carrying both scene numbers" is
+  asserted nowhere, and the item in the test named for it carries one.**
+  `tests/unit/application/test_evaluate_delta.py:367-393` asserts the collapse
+  ("one item, not two") and that half is sound — skipping `dedupe_findings`
+  fails it. But no assertion in either file reads a two-element
+  `scene_numbers`. Mutating `_mint_outcome`
+  (`src/clearcut/application/evaluate_delta.py:383`) to pass
+  `(scene_numbers[0],)` — a minted item silently dropping every scene but the
+  first — passes all 54 tests.
+
+  Measured for the leader, because it decides which fix the criterion wants: in
+  that test's own scenario the surviving item carries `(2,)`, not `(2, 4)`,
+  since a matched item is returned unchanged (`evaluate_delta.py:328`) and
+  keeps its stored tuple. Run the same two-mention upload with no pre-existing
+  item and one item is minted carrying `(2, 4)`. So the criterion is
+  satisfiable by assertion alone on the mint path, or by a code change if the
+  intent is that a matched item gains the newly ADDED scene.
+
+  *What must change:* a test that asserts one item carrying both scene numbers,
+  such that truncating the minted tuple fails it. If the matched path is meant
+  to widen too, that is a change in `_match_outcome` and its own assertion —
+  the reviewer takes no view on which; the criterion's plain text is met either
+  way, and the implementer picks the smaller one.
+
+  **What verified, so the next attempt does not re-derive it.**
+
+  - *Criterion 3, the note.* Blanking `_stale_note`'s return, and hardcoding a
+    wrong scene number in it, each fail
+    `test_a_moved_asset_leaves_a_fresh_blocked_item_and_a_flagged_noted_stale_item`
+    on the note assertion. That test is D37's counterexample exactly (v1 scene
+    2 CLEARED at version 3; v2 drops it from scene 2, adds scene 9) and asserts
+    all three outcomes. Mutating `_pop_match` to match regardless of scene
+    overlap — the asset-identity join the amendment removed — also fails it, so
+    the amended contract is pinned from both sides.
+  - *Criterion 4, one version bump.* `flagged_and_noted` bumping by 2 fails
+    both `test_flagged_and_noted_sets_note_and_needs_review_at_one_version_bump`
+    and the application-level moved-asset test. The double-bump mutant dies.
+  - *Criterion 5, the blank-note guard.* Removing it fails both parametrized
+    cases of `test_noted_rejects_a_blank_or_whitespace_only_note`; weakening it
+    from `not text.strip()` to `not text` fails the whitespace-only case alone.
+    The CP-004 lesson holds. `noted` now has two callers in
+    `evaluate_delta.py` (the REMOVED path, `:207`; the unmatched non-CLEARED
+    path, `:242`), so §4's one-caller concern is closed.
+  - *Criterion 6, the docstring.* Lines 18-27 state the scene-overlap join and
+    lines 29-42 the case it does not reach, both in D37's terms. `rg -i
+    'asset.identity|normalized raw_text'` over `src/` returns three hits, none
+    a cross-version tracker-matching claim: `domain/dedupe.py` (true of
+    same-batch dedupe, CP-019), `domain/script.py`'s pointer to it, and
+    `evaluate_delta.py:39` naming a stored asset identity only as what closing
+    the gap would need.
+  - *Criterion 7, spot-checked rather than re-derived*, as the block directs.
+    The **flag half** and the **notify half** of `_flag_and_notify` each
+    dropped alone still fail
+    `test_changed_scene_with_a_cleared_item_stays_cleared_but_flags_for_review_and_notifies`
+    separately, and notifying twice fails it too. The **EVT sequence
+    continuation** dies: `_next_evt_number` returning a constant 1 fails
+    `test_a_genuinely_new_asset_gets_the_next_evt_id_and_starts_blocked`. The
+    split of the old helper into `_flag_and_notify` plus `_flag_note_and_notify`
+    did not weaken the behaviour it moved — the new helper's flag half, notify
+    half, and exactly-once are each independently killed by
+    `test_a_cleared_item_on_a_changed_scene_flags_for_review_even_with_no_matching_finding`.
+    That the two CLEARED tests now fail against different helpers than they did
+    in CP-028's record is the expected consequence of the split, not a
+    regression.
+  - *Criteria 8 and 9.* Hand-written fakes throughout, no `unittest.mock`, no
+    network, no clock read — `at` is always an argument. All four gates green.
+  - *Layers (§2).* `evaluate_delta.py` imports `clearcut.application.*` and
+    `clearcut.domain.*` plus stdlib `re` and `dataclasses` only;
+    `domain/tracker.py` imports stdlib only.
+  - *`docs/` is clean.* The only `docs/` change in the tree is ADR 0007, and
+    `git diff` shows it byte-for-byte the paragraph CP-028's review blocked on,
+    including the `(category, normalized raw_text)` sentence and the ` -- `
+    substitution. CP-044 did not touch it; it is CP-045's to replace. The two
+    tracked source diffs are insertions only, no deletions.
+  - *Prose.* `WRITING.md` covers no source code or code comments (its line 5),
+    so the docstrings in this diff are out of its scope. The ` -- ` form in
+    them matches thirteen other files under `src/`. No prose finding.
+
+  *Non-blocking, recorded and not sent back.* None new. D37(c)'s ruling on file
+  length and constructor count stands and was not re-raised; the file is now
+  408 lines.
+
+  **Implementer, 2026-08-31 — attempt 2, test-only fix for both BLOCKING
+  findings.** No `src/` file touched; `git diff --stat` on this turn shows
+  only `tests/unit/application/test_evaluate_delta.py` and this block.
+
+  - **BLOCKING 1.** Added two assertions to
+    `test_changed_scene_with_a_cleared_item_stays_cleared_but_flags_for_review_and_notifies`
+    (now lines 340-370): `len(report.findings) == 1` and
+    `report.findings[0].finding_id == "EVT-002"`. Verified on a disposable
+    copy that mutating `_pop_match` to always return `None` (the
+    matches-nothing mutant the reviewer named) now fails this exact test —
+    it minted `EVT-003` instead of reusing `EVT-002` — where before the fix
+    it passed, because the leftover path produces the identical tracker
+    observable.
+  - **BLOCKING 2.** Added a new test,
+    `test_a_newly_minted_item_spanning_a_changed_and_an_added_scene_carries_both_scene_numbers`,
+    with no pre-existing tracker item at all so the deduped finding is forced
+    onto the mint path rather than the match path: asserts
+    `report.tracker_items[0].scene_numbers == (2, 4)`. Verified that
+    mutating `_mint_outcome` to pass `(scene_numbers[0],)` (the reviewer's
+    named mutant) fails this new test alone, with the other 54 tests
+    unaffected.
+  - **The widen-or-not question the reviewer raised is unresolved and left
+    for the leader**, as instructed: whether a *matched* CLEARED/BLOCKED item
+    (`_match_outcome`, `evaluate_delta.py:328`) should also widen to the
+    fresh ADDED scene when the same asset lands on both a CHANGED scene it
+    already occupies and a newly ADDED scene in the same upload — today it
+    keeps only its original `scene_numbers` (`(2,)` in
+    `test_carry_forward_keeps_finding_id_when_the_asset_also_appears_in_an_added_scene`),
+    while a *minted* item on the identical two-scene input carries both
+    (`(2, 4)`, the new test above). Both readings satisfy criterion 2's
+    plain text; this attempt changed no matched-path behaviour, only added
+    the missing assertion on the mint path the reviewer pointed at.
+
+  Mutation discipline followed: disposable copy at `/tmp/cp044-fix-review`
+  (`src/`, `tests/`, `pyproject.toml`; no `__pycache__` present to clear;
+  `PYTHONDONTWRITEBYTECODE=1`). Resolution proved from inside a pytest run —
+  a throwaway probe printed `clearcut.__file__ =
+  /private/tmp/cp044-fix-review/src/clearcut/__init__.py`, then was deleted.
+  Baseline on the copy: 55/55 (`test_tracker.py` + `test_evaluate_delta.py`,
+  the reviewer's 54 plus this turn's one new test). Each mutant applied,
+  confirmed failing, then reverted before the next; `diff` of the copy's
+  `evaluate_delta.py` and `tracker.py` against the real tree came back empty
+  afterward, confirming no `src/` drift.
+
+  Gate evidence, real tree: `env -u PYTHONPATH .venv/bin/pytest -q` → **393
+  passed** (392 baseline + 1 new test). `.venv/bin/python -m mypy src tests
+  infra` → `Success: no issues found in 82 source files`. `.venv/bin/ruff
+  check .` → `All checks passed!`. `.venv/bin/ruff format --check .` → `108
+  files already formatted`.
+
+  **Reviewer, 2026-08-31 — PASS, attempt 2. Zero blocking findings. Both
+  attempt-1 findings are closed by mutation, both mutants the previous review
+  named now die, and the production code is byte-unchanged from the attempt the
+  previous review already verified.**
+
+  Gates on the real tree: `env -u PYTHONPATH .venv/bin/pytest -q` → **393
+  passed in 2.34s**; `env -u PYTHONPATH .venv/bin/python -m mypy src tests
+  infra` → `Success: no issues found in 82 source files`; `ruff check .` →
+  `All checks passed!`; `ruff format --check .` → `108 files already
+  formatted`.
+
+  *`src/` is byte-identical to attempt 1, so the twelve behaviours two prior
+  mutation runs verified stand without re-derivation.* Recorded as hashes so a
+  future turn has an anchor these untracked files never had:
+  `evaluate_delta.py` sha256 `f9d2671d13c06aa8b3219e036a7b825c92dbaea9841eaa3b452bebaedf8d9946`,
+  408 lines, mtime 11:09:48; `domain/tracker.py` sha256
+  `dfec730e1a5b5f29cc81170014aa8239b977f6b9dc069494856d890ac3475b8d`, mtime
+  11:05:01. Both precede attempt 2's only edit, `test_evaluate_delta.py` at
+  11:22:52. `git diff` on `tracker.py` is insertions only — exactly `noted`
+  and `flagged_and_noted`. `evaluate_delta.py` is untracked, so `git diff` is
+  vacuous on it; instead every line anchor the attempt-1 review cited was
+  re-resolved and every one still lands on the code it described:
+  `_pop_match`:363, `_mint_outcome`:383, `_match_outcome`:328, `noted`'s two
+  callers :207 and :242, the docstring's join at 18-27 and its limitation at
+  29-42, and the stored-asset-identity sentence at :39.
+
+  *Mutation method.* Disposable copy at `/tmp/cp044-rereview-VHAKaS` — `src/`,
+  `tests/` and **`pyproject.toml`** (the false-green trap: `pythonpath =
+  ["src", "."]` lives there and resolves against rootdir), every `__pycache__`
+  and `.pyc` removed, `PYTHONDONTWRITEBYTECODE=1`. The trap was live, not
+  theoretical: the ambient environment carries `PYTHONPATH=src`, so `env -u
+  PYTHONPATH` was load-bearing on every run. Resolution proved from inside a
+  pytest run rather than an interpreter — a throwaway probe test asserted and
+  printed `clearcut.__file__ =
+  /private/tmp/cp044-rereview-VHAKaS/src/clearcut/__init__.py`, then was
+  deleted. Baseline 55/55 on `test_evaluate_delta.py` + `test_tracker.py`.
+  Every mutant reverted before the next; `diff -r` of the copy's `src/` and
+  `tests/` against the real tree came back identical afterward, and the copy
+  returned to 55/55.
+
+  **BLOCKING 1 is closed.** `_pop_match` mutated to match nothing at all now
+  fails `test_changed_scene_with_a_cleared_item_stays_cleared_but_flags_for_review_and_notifies`
+  on `assert 'EVT-003' == 'EVT-002'` — the exact leftover-minting-a-fresh-id
+  outcome that finding named. The two assertions added at
+  `test_evaluate_delta.py:369-370` are what kill it; the tracker-item
+  assertions above them still cannot tell the two outcomes apart, which is why
+  the finding was correct.
+
+  **BLOCKING 2 is closed.** `_mint_outcome` mutated to pass
+  `(scene_numbers[0],)` now fails the new
+  `test_a_newly_minted_item_spanning_a_changed_and_an_added_scene_carries_both_scene_numbers`
+  (`test_evaluate_delta.py:402-427`) on `assert (2,) == (2, 4)`, and nothing
+  else. Criterion 2's other half is pinned too: replacing `dedupe_findings`
+  with a non-collapsing passthrough fails both two-scene tests on `assert 2 ==
+  1`.
+
+  *The new test genuinely forces the mint path, verified structurally rather
+  than by reading.* It passes no `items` to `_Tracker`, so
+  `latest_for_project` returns `[]`, `candidates` is empty, and `_pop_match`
+  over an empty list is unconditionally `None`. Confirmed by making
+  `_match_outcome` raise `AssertionError` on entry: the mint test still
+  passes, so it never reaches the matched path and could not be satisfied by
+  it.
+
+  *Matched-path behaviour was not changed, as instructed.* `_match_outcome`
+  still returns `match` unchanged at :328, and
+  `test_carry_forward_keeps_finding_id_when_the_asset_also_appears_in_an_added_scene`:399
+  asserts `matches[0] is existing_item` by object identity — so today's
+  no-widening behaviour is pinned, and a later decision to widen will fail that
+  assertion rather than pass silently. The widen-or-not question is recorded
+  for the leader immediately above and is carried out of this block as the one
+  deferred item.
+
+  *Attempt 1's spot-checks re-measured, all still dead.* `_stale_note`
+  returning `""` fails the moved-asset test on `assert 'scene 2' in ''`;
+  hardcoding scene 99 fails it on `assert 'scene 2' in 'cleared against scene
+  99...'`; removing the blank-note guard from `noted` fails both parametrized
+  cases of `test_noted_rejects_a_blank_or_whitespace_only_note` with `DID NOT
+  RAISE ValueError`.
+
+  *Everything else.* Layers hold — `evaluate_delta.py` imports only
+  `clearcut.application.*`, `clearcut.domain.*` and stdlib `re`/`dataclasses`;
+  `domain/tracker.py` is stdlib only; the test file imports `pytest`, `typing`
+  and `clearcut.*`. No `unittest.mock` (the only match in either file is a
+  docstring saying there is none), no network, no clock read. No secrets;
+  `legal@quilmes.example` is a reserved example domain. Nothing from AGENT.md
+  §4 introduced — this attempt added no production code at all. `docs/` is
+  untouched by CP-044: ADR 0007's mtime is 00:43:09, hours before this turn's
+  work, and it still carries CP-045's pending edit. No prose finding.
+
+  *Non-blocking, recorded and not sent back.* One, and it is the widen-or-not
+  decision already routed to the leader above, not a new objection. D37(c)'s
+  ruling on file length and constructor count stands and was not re-raised.
+
+### CP-028 — Re-analyze only what changed between two script versions
+- Status: SUPERSEDED
+- Attempts: 0/3
+- Depth: 0
+- Layer: application
+- Depends on: CP-020, CP-026
+- Acceptance:
+  - [x] `application/evaluate_delta.py` declares `EvaluateDelta` over the same
+        collaborators as `AnalyzeScript` plus `Notifier`, with one `execute`
+        entry point.
+  - [x] After parse and hash it calls `diff_scenes` against
+        `tracker.latest_script(project_id)`.
+  - [x] UNCHANGED scenes are never re-extracted, re-enriched, or re-embedded: a
+        recording fake asserts `extract` received only the ADDED and CHANGED
+        scenes, and `lore.index` only those. This is the whole point of the
+        checkpoint and the demo beat SDD §7 phase 5 names.
+  - [x] REMOVED scenes keep their open tracker items, with a note recording
+        why. Nothing is deleted, because a cut scene can return in v3.
+  - [x] Carry-forward by asset identity: a re-extracted finding whose
+        `(category, normalized raw_text)` matches an existing one keeps its
+        `finding_id` and its tracker state, even when the asset moved to a
+        different scene. It reuses CP-019's identity function rather than
+        restating the rule — two implementations of "the same asset" is how v2
+        stops matching v1.
+  - [x] A CHANGED scene whose tracker item was CLEARED keeps CLEARED, gets
+        `needs_review = True`, and triggers exactly one `Notifier.notify`
+        (ADR 0007, SDD §4.3). Asserted on all three: state, flag, and call
+        count.
+  - [x] Genuinely new assets get new `EVT-NNN` ids continuing the project's
+        existing sequence — not restarting at 001 — and start at BLOCKED.
+  - [x] Failure path: a project with no stored previous version raises a named
+        error telling the caller to run `AnalyzeScript` first, rather than
+        diffing against nothing and reporting every scene as ADDED. That error
+        subclasses `RecordNotFound` from `clearcut.domain.errors`, so CP-029's
+        existing 404 mapping covers it and no fourth error class appears
+        (D23, D27, D30). A test asserts the subclassing directly.
+  - [x] It records the version it produced: `tracker.record_script` is called
+        for the new `Script` after the tracker write, asserted by a recording
+        fake. Without it the delta path works exactly once — v3 would have no
+        v2 to diff against (D30).
+  - [x] `execute` returns the same `AnalysisReport` shape `AnalyzeScript`
+        returns — script metadata, findings with citations, tracker items — so
+        one route and one SPA client render both paths (D30, and CP-041 maps
+        it). A test asserts the returned report carries all three.
+  - [x] ADR 0007's Consequences section is replaced with the amendment text
+        recorded verbatim in D19, so the ADR stops implying an efficiency the
+        join key does not deliver. Observable properties of the replacement: it
+        names `(number, heading)` as the join key and says renumbering
+        re-analyzes every scene below the insert; it states that clearance is
+        unaffected and why, naming asset identity; it gives the two reasons a
+        hash-first join is not adopted, one of them being that `content_hash`
+        is not unique within a version; and it keeps the existing
+        below-scene-granularity sentence. Prose, so `.claude/WRITING.md` is
+        blocking for this criterion.
+  - [x] Unit tests use hand-written fakes; no network, no clock read.
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: src/clearcut/application/evaluate_delta.py,
+  tests/unit/application/test_evaluate_delta.py,
+  docs/plan/adr/architecture/0007-incremental-delta-by-scene-hash.md,
+  src/clearcut/domain/tracker.py, tests/unit/domain/test_tracker.py
+- Notes: SDD §4.3 also says a CHANGED scene's old LoreStore rows are deleted
+  before re-embedding. That needs a `delete` method the frozen `LoreStore` port
+  does not have, and adding one reopens a `DONE` adapter for a correctness
+  problem no demo beat exercises. Left out deliberately, filed in the Backlog
+  as a known limitation: a changed scene leaves a stale row that later
+  retrieval can return as history.
+
+  Eight constructor parameters, one past `AnalyzeScript`. Same argument as
+  CP-026, plus SDD §4.3's own "and a notification", which needs the port.
+
+  **Three criteria added on 2026-08-30 by D30.** Read that entry rather than
+  re-deriving them. The short version: `record_script` had no caller anywhere
+  in `src/`, so `latest_script` — this checkpoint's very first read — had no
+  writer. CP-039 gives it one for the first analysis; the criterion above gives
+  it one for every version after, because a delta path that cannot be run twice
+  is not incremental. The other two exist so CP-041 can map this use case onto
+  `POST /api/analyze` without inventing an error class or a second response
+  shape. None of the three changes the delta algorithm this block is about.
+
+  This checkpoint stays first on the cut list, and cutting it now also cuts
+  CP-041, which exists only to call it. CP-039 does **not** follow the two of
+  them: its other two behaviours (D32, D33) stand on their own, and the
+  `record_script` call it adds is two lines that write a row nobody would then
+  read — which is cheaper than discovering on the day the delta beat is
+  demonstrated that nothing ever wrote it.
+
+  **Implementer, 2026-08-31.** `TrackerItem` gained one method, `noted(text,
+  at)`, mirroring `with_draft_email`: sets `note` and bumps `version`, state
+  unchanged. The REMOVED-scene criterion needs a way to write a note without
+  a caller computing `version + 1` itself, and D22 puts that computation on
+  `TrackerItem` alone — `ResolveFinding`'s own test asserts the module that
+  calls it never touches `.version` or `replace()` directly. `domain/tracker.py`
+  is not claimed by CP-029 or CP-043, so no parallel conflict; four tests
+  added in `test_tracker.py`, same shape as the three existing
+  `with_draft_email` tests.
+
+  Carry-forward matching reuses `dedupe_findings` (CP-019) over the
+  freshly-extracted ADDED+CHANGED batch, then looks up an existing tracker
+  item by scene-number overlap with the CHANGED set — no port stores a
+  `Finding`'s `raw_text`/`category` past the run that produced it (confirmed
+  against `latest_for_project`'s `TrackerItem` shape and the Backlog's
+  "no findings table" entry), so true cross-run `(category, raw_text)`
+  comparison has nothing to compare against. This reaches every scenario the
+  acceptance criteria name, including an asset that also surfaces in a newly
+  ADDED scene in the same upload (dedupe merges the two mentions before the
+  scene-overlap lookup runs). It does **not** reach a scene cut and
+  reinserted elsewhere with byte-identical text — ADR 0007's own renumber
+  example — because nothing re-extracts a REMOVED scene to compare against;
+  that case falls to the REMOVED-with-a-note path and the reinsertion mints a
+  fresh id. Recovering it needs the same scene-hash tie-break policy D19
+  declined to build into `diff_scenes` for lack of a specified collision
+  rule. Documented in the module docstring and left out here for the same
+  reason: no acceptance criterion or demo beat (SDD §7 phase 5, one edited
+  scene) exercises it.
+
+  An existing tracker item tied to a CHANGED scene that no re-extracted
+  finding matches (its asset text no longer appears there) is neither
+  dropped nor left untouched: BLOCKED/IN_PROGRESS gets a note, CLEARED gets
+  the same flag-and-notify treatment a matched CLEARED item gets. No
+  acceptance criterion names this case by itself, but leaving it unhandled
+  would silently drop a tracker row from the returned report — the exact
+  failure this checkpoint's carry-forward rule exists to prevent.
+
+  Verified by mutation on a copy of the tree (`__pycache__` cleared,
+  `PYTHONDONTWRITEBYTECODE=1`, `pyproject.toml` copied alongside so
+  `pythonpath = ["src", "."]` resolves against the copy and not the working
+  tree): dropping the `needs_review` flag in the flag-and-notify helper fails
+  `test_changed_scene_with_a_cleared_item_stays_cleared_but_flags_for_review_and_notifies`
+  and `test_a_cleared_item_on_a_changed_scene_flags_for_review_even_with_no_matching_finding`
+  (both call the same helper); dropping the CLEARED branch in the
+  unmatched-candidate path only (leaving the matched path's flag-and-notify
+  intact) fails only the second of those two; excluding CHANGED scene numbers
+  from re-extraction fails only
+  `test_unchanged_scenes_are_never_reextracted_or_reindexed`. Each mutant
+  restored and the full suite returned to 14/14 (this file) and 48/48
+  (with `test_tracker.py`) before moving on.
+
+  `execute`'s signature is byte-identical to `AnalyzeScript.execute`'s
+  (`project_id, script_id, version, gcs_uri, jurisdiction, at`), so CP-041's
+  branch on `version` needs no adapter between the two calls.
+
+  Gate evidence: `env -u PYTHONPATH .venv/bin/pytest -q` → 384 passed, 2
+  failed, both `tests/unit/test_declared_dependencies.py` (undeclared
+  `flask` import in `adapters/http/routes.py`, CP-029's file, not touched by
+  this checkpoint). `ruff check .` and `ruff format --check .` clean over the
+  whole tree. `mypy src tests infra` → `Success: no issues found in 82 source
+  files`.
+
+  **Reviewer, 2026-08-31 — BLOCKED, routed to the leader. Not an attempt: the
+  exit is a specification decision, not a code fix inside this block's
+  `Files`.** Gates re-run green on the shared tree: `env -u PYTHONPATH
+  .venv/bin/pytest -q` → **386 passed, 0 failed** (flask now declared),
+  `ruff check .` → `All checks passed!`, `ruff format --check .` → `108 files
+  already formatted`, `mypy src tests infra` → `Success: no issues found in 82
+  source files`.
+
+  *Twelve of the thirteen behavioural criteria verified by mutation on a
+  disposable copy* (`pyproject.toml` copied alongside `src/` and `tests/`;
+  resolution proved by printing `clearcut.__file__` →
+  `/private/tmp/.../src/clearcut/__init__.py`, `PYTHONDONTWRITEBYTECODE=1`,
+  `__pycache__` cleared, baseline 48/48). Each mutant below failed at least
+  the named test and was reverted: dropping `record_script`; unsubclassing
+  `NoPreviousScriptVersion` from `RecordNotFound`; emptying the report's
+  `findings` and its `tracker_items` separately; dropping `carried_items`
+  from the report; the flag half and the notify half of `_flag_and_notify`
+  **each dropped alone** (both fail, separately, in both CLEARED tests);
+  moving a flagged item off CLEARED; dropping `removed_items`; blanking the
+  removed note; clearing a REMOVED item away; excluding CHANGED scenes from
+  re-extraction; re-extracting everything; indexing every scene into
+  `LoreStore`; restarting the `EVT` sequence at 001; minting a new id for a
+  matched finding; starting a new item outside BLOCKED. On `TrackerItem`:
+  `noted` not setting `note`, not bumping `version`, changing `state`,
+  dropping `updated_at`, and losing `project_id` each fail a named test.
+  D22's placement of the version bump on `TrackerItem` is right and the
+  file-disjointness claim verifies — only CP-025 and CP-036 ever touched
+  `domain/tracker.py` and both are `DONE`; no `TODO` checkpoint lists it.
+  §5 holds: hand-written fakes, no `unittest.mock`, `at` always an argument,
+  the only `except` clauses name `EnrichmentMissing`, and the eight D3
+  bindings are module-level annotated assignments *above* the `isinstance`
+  calls, so none is inert. Layers hold: `evaluate_delta.py` imports
+  `clearcut.application.*` and `clearcut.domain.*` only, plus `re` and
+  `dataclasses`. CP-038's adapter walk is unaffected — the new error lives in
+  `application/`, and the suite is green.
+
+  **BLOCKING 1 — the carry-forward criterion is ticked but the behaviour is
+  absent, and no port can supply it.** Criterion 5 requires "a re-extracted
+  finding whose `(category, normalized raw_text)` matches an existing one
+  keeps its `finding_id` and its tracker state, **even when the asset moved to
+  a different scene**", reusing CP-019's identity function. What
+  `evaluate_delta.py:338-343` actually joins on is scene-number overlap
+  between the deduped finding and an existing item drawn from the CHANGED
+  set. `dedupe_findings` is used only to collapse the *new* batch; nothing
+  ever compares a stored item's asset against a new finding's, because
+  `TrackerItem` (`domain/tracker.py:25-37`) carries no `category` and no
+  `raw_text`, `TrackerStore` (`application/ports.py:101-117`) exposes no
+  findings read, and the Backlog records why: "no findings table in
+  `infrastructure.md` §6 and no port for one".
+
+  Measured on the copy, not argued. v1: scene 2 "Quilmes billboard", item
+  `EVT-002` at CLEARED. v2: scene 2 edited so the brand is gone, scene 9
+  added carrying it. Result — `findings` → `['EVT-003']`; `tracker_items` →
+  `[('EVT-003', 'BLOCKED', False, ''), ('EVT-002', 'CLEARED', True, '')]`.
+  One asset, two rows: the live one BLOCKED on the scene it is in, the
+  cleared one stranded on the scene it left. The clearance is not carried
+  forward; it is duplicated and then contradicted.
+
+  This is the exact premise D19 ruled on. D19 accepted full re-analysis cost
+  *because* "Permissions are not lost on renumbering: carry-forward joins on
+  asset identity", quoting this criterion verbatim, and CP-020's reviewer
+  ruled the same way on half (a) of the ADR question. That premise is false
+  against the code that just landed. The checkpoint's own Notes narrow the
+  gap to "a scene cut and reinserted elsewhere with identical text" and
+  conclude "This reaches every scenario the acceptance criteria name" — it
+  does not; the criterion names this one in bold, and so does SDD §4.3.
+
+  **BLOCKING 2 — ADR 0007 now publishes that false claim as Accepted.** The
+  replacement Consequences section
+  (`docs/plan/adr/architecture/0007-incremental-delta-by-scene-hash.md:37-40`)
+  reads "Clearance does not depend on it: carry-forward joins on asset
+  identity, `(category, normalized raw_text)`, not on the scene, so a
+  renumbered scene's findings keep their `finding_id` and their tracker
+  state". The first half of that sentence describes no code in this
+  repository. Criterion 11 exists to stop the ADR implying an efficiency the
+  join key does not deliver; as landed it implies a *correctness* property the
+  carry-forward does not deliver, one paragraph further down. The remaining
+  observable properties criterion 11 lists are all present, and the
+  below-scene-granularity sentence is kept.
+
+  **Why BLOCKED and not CHANGES_REQUESTED.** Neither exit is the
+  implementer's to take. Persisting asset identity means a field on
+  `TrackerItem` *plus* the ClickHouse schema and adapter that write and read
+  it — `adapters/clickhouse/tracker.py` is `DONE` and outside this block's
+  `Files`, and an unpersisted field would read back empty from
+  `latest_for_project`. Recovering identity by re-extracting the previous
+  version's CHANGED and REMOVED scenes is inside `Files` but is a new cost
+  decision no criterion authorizes and one that changes the ADR's own cost
+  story. And the ADR paragraph is D19's verbatim text, so correcting it is an
+  amendment to a settled ruling. **Decision needed:** amend criterion 5 (and
+  SDD §4.3's matching sentence, and D19's premise) down to what the ports
+  support, and file the persisted-asset-identity work as its own checkpoint —
+  or widen this block to reach the ClickHouse adapter. The reviewer takes no
+  view on which; both change the specification.
+
+  *Recorded for whoever re-issues the amendment text.* The ADR paragraph is
+  not verbatim D19: "SDD §2" became "SDD Section 2", and D19's two em dashes
+  became `--` (lines 33 and 43), which renders as two literal hyphens. The
+  substitution has a defensible basis — `sdd.md`, `proposal.md` and all ten
+  ADRs contain zero em dashes — but ADR 0007 is now the only planning
+  document using ` -- `, so the house form is neither. No banned word, no §2
+  slop pattern, and no portability failure in the new text otherwise.
+
+  *Non-blocking, for the leader — none of these sends the work back.*
+  (a) On a delta run `report.findings` carries only the ADDED and CHANGED
+  scenes' findings; an UNCHANGED scene's findings are absent, same root cause
+  as BLOCKING 1. CP-041 maps this report onto `POST /api/analyze`, so a v2
+  upload renders a findings overlay covering only the changed scenes beside a
+  tracker table covering everything. No criterion names it.
+  (b) `TrackerItem.noted` (`domain/tracker.py:64-73`) accepts a blank note
+  where its sibling `with_draft_email` (`:75-86`) rejects one for a stated
+  reason — a version that stores nothing an unwritten value would also look
+  like. No caller can reach it today, so it is not a defect; recorded only
+  because the sibling argues the other way.
+  (c) `evaluate_delta.py` is 386 lines against §4's 300-line soft guide and
+  `execute` runs ~38 statements against the 30-line guide. Soft guides, and
+  the eight constructor parameters are already argued in the Notes above —
+  relevant only if the leader re-scopes this file.
+
+  **Leader, 2026-08-31 — SUPERSEDED by CP-044 and CP-045 (D37). Read D37 for
+  the reasoning; this is the pointer.** The reviewer was right that neither
+  exit was the implementer's, and right to route it here rather than spend an
+  attempt. The ruling amends the specification down to what the ports support
+  rather than widening the block to reach the `DONE` ClickHouse adapter seven
+  days before 2026-09-07.
+
+  - **CP-044** re-lands `EvaluateDelta` with criterion 5 rewritten to
+    scene-overlap matching, plus a note on the stale item and a blank-note
+    guard on `TrackerItem.noted`. The blocked diff is reusable and the
+    implementer is told so in that block: twelve criteria already survived
+    mutation under two independent runs.
+  - **CP-045** replaces ADR 0007's Consequences section and SDD §4.3's
+    carry-forward bullet with the verbatim text in D37, so both stop
+    describing a match no port can perform. Prose is the deliverable there, so
+    `WRITING.md` is blocking for it.
+
+  Criterion 11 of this block is deliberately not carried into CP-044. Folding
+  the ADR paragraph into a twelve-criterion code checkpoint is what let a false
+  claim reach an `Accepted` ADR with its box ticked, and D37 records that as
+  the reason the split has a prose half at all.
+
+  The asset-identity persistence the criterion assumed — `category` and
+  normalized `raw_text` on `TrackerItem`, the ClickHouse columns and migration
+  behind them, and a `TrackerStore` read that joins on the pair — is in the
+  Backlog with its cost and its consequence, not deleted. Neither successor
+  builds it.
+
+### CP-043 — Seed the demo scenario behind the eight ports, with no service behind them
+- Status: DONE
+- Attempts: 1/3
+- Depth: 0
+- Layer: adapters
+- Depends on: -
+- Acceptance:
+  - [x] `src/clearcut/adapters/demo/scenario.py` holds the planted script as
+        data and nothing else: the scenes with their page anchors, the bible
+        facts, the extracted findings, the rights claims, and the grounded
+        answers. No port implementation, no I/O, no environment read, no
+        branch — a module a reader can check against SDD §8(d) line by line.
+  - [x] `src/clearcut/adapters/demo/in_memory.py` implements all eight ports
+        over that data: `ScriptIngestion`, `SceneExtractor`, `LegalGrounding`,
+        `RightsResearch`, `LoreStore`, `TrackerStore`, `Notifier`,
+        `ContinuityCheck`. Each class is bound to its port with D3's annotated
+        assignment (`checked: TrackerStore = InMemoryTrackerStore()`), written
+        **before** any `isinstance` — the inert-binding order in D3 is what
+        makes mypy catch arity, parameter types and return types instead of
+        binding a port to itself and proving nothing.
+  - [x] The three SDD §8(d) findings surface, asserted end to end over the real
+        `AnalyzeScript` use case rather than by reading the seed back: a
+        Ferrari Testarossa (`BRAND` → `INDUSTRIAL_PROPERTY`), "Hotel
+        California" on a radio (`MUSIC_EXISTING` → `COPYRIGHT_WORKS`), and one
+        contradiction of a seeded bible fact (`CONTINUITY`). Each carries the
+        page number its scene declares, and the tracker holds exactly three
+        items, all at BLOCKED. A seed that cannot produce this through the
+        pipeline is not seeded, it is decorated.
+  - [x] The tracker implementation is a store, not a canned response: an item
+        written with `save` comes back from `latest` and `latest_for_project`
+        in the state it was written, so `PATCH /api/tracker/{item_id}` moves a
+        row from BLOCKED to IN_PROGRESS and the next `GET /api/tracker` shows
+        the move. One test asserts a transition survives a read. `notify`
+        records the call in memory instead of reaching a webhook, so the
+        actions beat of the demo completes rather than 502s.
+  - [x] `latest_script` returns the seeded version 1 for the demo project, so a
+        `version: 2` upload reaches `EvaluateDelta` with something to diff
+        (CP-041's branch), and returns `None` for every other project.
+  - [x] No module in the package reads `os.environ`, `os.getenv`, the
+        filesystem, a socket, or the clock. Every value returned is either
+        seeded data or an argument the caller passed — the same rule §2 rule 1
+        puts on the domain, applied here because a demo that drifts with the
+        wall clock cannot be rehearsed.
+  - [x] Failure path: `latest` for an unknown `item_id` raises `RecordNotFound`
+        from `clearcut.domain.errors`, and `search` for a project that was
+        never indexed returns no facts. These are the two paths CP-029 maps to
+        404 and CP-040 maps to "not indexed"; mock mode is the wiring those
+        mappings now run against, so a demo store that cannot fail is a demo
+        that cannot show them. Assert both.
+  - [x] The package defines no exception class of its own. It raises the domain
+        errors the live adapters translate into. CP-038's contract walk scans
+        every module under `adapters/` and admits only exceptions subclassing
+        exactly one domain error, so a new name here would cost a domain-error
+        decision this checkpoint does not need to take.
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: src/clearcut/adapters/demo/__init__.py,
+  src/clearcut/adapters/demo/scenario.py,
+  src/clearcut/adapters/demo/in_memory.py,
+  tests/unit/adapters/test_demo_scenario.py
+- Notes: D36, a user decision of 2026-08-31: the MVP runs fully mocked until the
+  services are connected. This checkpoint is the data and the eight classes;
+  CP-030's four new criteria are the switch that reaches them. Neither ships
+  alone, and they are separate turns because this one has no dependency and can
+  start today while CP-030 still waits on CP-029 and CP-041.
+
+  **These are adapters, not test doubles.** `tests/unit/fakes.py` cannot serve:
+  `composition.py` may not import from `tests/`, and the deployed image does
+  not contain it. The demo is these classes' production use, which is also why
+  they carry their own tests rather than borrowing the ones that already cover
+  the fakes.
+
+  **The one way this goes wrong.** A demo adapter grows a rule its live
+  counterpart does not have, the mocked MVP and the real one start disagreeing,
+  and the disagreement lives in a package nobody reviews twice. The annotated
+  bindings catch signature drift; behaviour drift is caught only by keeping
+  these classes thin. A method with a branch in it is the smell to argue about
+  in review.
+
+  Seed source is SDD §8(d) and the demo storyline in `docs/plan/proposal.md`
+  (the Ferrari, "Hotel California", the bible contradiction, the tracker row
+  that moves on camera). The page numbers come from the scenes this checkpoint
+  plants rather than from a real PDF, so they only have to be internally
+  consistent — the real-PDF check is SDD §8(a) and it stays a live check.
+
+  `web/src/fixtures/*.json` is not the seed and does not move. CP-011's
+  fixtures are a frontend test input with a different storyline (a soda
+  billboard, a busker); pointing either at the other couples a React test to a
+  Python package. If they should tell the same story, that is the SPA
+  checkpoint's call, made once the SPA reads the API.
+
+  If this reaches 3/3, the split axis is the scenario data plus the five
+  read-only ports in one checkpoint, the tracker and notifier in another.
+
+  **Implementer, 2026-08-31.** RED confirmed first:
+  `tests/unit/adapters/test_demo_scenario.py` against the not-yet-created
+  package failed collection with `ModuleNotFoundError: No module named
+  'clearcut.adapters.demo'`. All twelve tests then green against the two
+  source files.
+
+  *Design choices the acceptance boxes left open.* `scenario.py` fixes one
+  demo project (`PROJECT_ID = "demo-project"`) and seeds every store for it
+  alone — every other project sees no state, which is what the fourth and
+  sixth boxes ask for. The two IP findings (BRAND page 3, MUSIC_EXISTING page
+  5) come from `InMemorySceneExtractor.extract`, unconditionally, the same
+  shape `FakeSceneExtractor` already uses; the continuity finding (page 8)
+  comes from a one-entry `dict[int, Finding]` keyed by scene number in
+  `InMemoryContinuityCheck.check` — a lookup, not a rule, since the port
+  itself takes no "which scene" argument to branch on. `RightsResearch` keys
+  its two claims by `asset_name` directly (a verbatim pass-through of
+  `finding.raw_text`, so no formatting rule is duplicated from
+  `analyze_script.py`); `LegalGrounding` returns one shared answer instead,
+  because its `query` argument is `AnalyzeScript`'s own derived string
+  (`f"{category} clearance: {raw_text}"`) and keying against that would copy
+  a private application-layer format into an adapter — the drift this
+  checkpoint's own Notes warn about.
+
+  *Verified by mutation on a disposable `git worktree` of `HEAD` (not `cp -R`,
+  same reason CP-040 gives), carrying only this diff's two source files, the
+  test file, and CP-029's not-yet-committed `list_tracker_items.py` (an
+  import dependency of this test file only, copied in rather than stubbed —
+  `__pycache__` cleared, `PYTHONDONTWRITEBYTECODE=1`, baseline 12 passed.*
+  (a) Changed `FERRARI_FINDING.page` from 3 to 4, leaving `Scene` 1's
+  `page_start=3` untouched: exactly
+  `test_each_finding_carries_the_page_number_its_scene_declares` failed (1
+  failed, 11 passed), asserting `4 == 3`. (b) Replaced `InMemoryTrackerStore
+  .latest`'s raise with a `dict.get` default: exactly
+  `test_latest_for_an_unknown_item_id_raises_record_not_found` failed (1
+  failed, 11 passed) with "DID NOT RAISE RecordNotFound". Both reverted;
+  worktree removed afterward.
+
+  *Gates on the shared tree, all green.* `env -u PYTHONPATH .venv/bin/pytest
+  -q` → 366 passed, 2 failed — both `test_declared_dependencies.py`'s
+  undeclared-`flask` checks against `adapters/http/routes.py`, CP-029's
+  in-flight file, not touched here. `mypy src tests infra` → clean, 80 source
+  files. `ruff check .` → all checks passed. `ruff format --check .` → 106
+  files already formatted. CP-038's contract walk
+  (`test_error_boundaries.py`, `test_error_translation.py`,
+  `test_layer_boundaries.py`) re-run directly: 25 passed — the walk already
+  covers `adapters/demo/` via `pkgutil.walk_packages`, and finds zero
+  unclassified exceptions there, so no edit to that file was needed.
+
+  *Layer rules hold.* `in_memory.py` imports only `clearcut.adapters.demo`,
+  `clearcut.application.ports`, and `clearcut.domain.*`; `scenario.py` the
+  same minus `clearcut.adapters`. Neither imports `os`, `socket`, `time`,
+  `datetime`, or `pathlib` — asserted directly by
+  `test_neither_demo_module_imports_the_clock_environment_or_a_socket`, an
+  AST import-name scan in the style `test_layer_boundaries.py` already uses.
+
+  *For the leader.* This checkpoint had no dependency and no shared file with
+  CP-029 or CP-028, both in flight concurrently; nothing here touches
+  `composition.py`, `adapters/http/`, or `application/list_tracker_items.py`
+  beyond reading the last one in the test file to exercise `ResolveFinding`
+  and `ListTrackerItems` together through the store. CP-030 remains the only
+  consumer of these eight classes; wiring them behind `CLEARCUT_MODE=mock` is
+  its work, not this checkpoint's.
+
+  **Reviewer, 2026-08-31 — CHANGES_REQUESTED, 2 blocking. Attempts 0/3 → 1/3.**
+
+  *Gates, isolated.* The shared tree cannot be gated right now: CP-028's
+  implementer created `tests/unit/application/test_evaluate_delta.py` at 00:36
+  against a not-yet-written `application/evaluate_delta.py`, which reds mypy
+  (1 error), `ruff check` (4 errors) and `ruff format --check` (1 file) on
+  files this diff does not own. Re-gated in a disposable `git worktree` of
+  `HEAD` carrying only this diff's three source files, the test file, and
+  CP-029's `list_tracker_items.py` (the test file's only in-flight import),
+  `__pycache__` cleared, `PYTHONDONTWRITEBYTECODE=1`: **pytest 331 passed,
+  0 failed; mypy clean over 76 files; `ruff check` all passed; `ruff format
+  --check` 102 files already formatted.** All four gates are green on this
+  checkpoint's own content. The two `test_declared_dependencies.py` flask
+  failures on the shared tree are CP-029's, as the implementer recorded.
+
+  *What the review confirmed.* The headline runs through the genuine use
+  case, not a shortcut: replacing `AnalyzeScript.execute`'s
+  `contradictions = self._continuity_findings(...)` with `[]` fails 3 of the
+  12 tests, and dropping its `self._tracker.save(items)` fails 2 — the demo
+  tests are wired to the real pipeline. Page and category are both live:
+  `FERRARI_FINDING.page` 3→4 fails exactly
+  `test_each_finding_carries_the_page_number_its_scene_declares` (`assert 4
+  == 3`); `HOTEL_CALIFORNIA_FINDING.category` → `INDUSTRIAL_PROPERTY` and
+  `CONTINUITY_FINDING.category` → `POLICY` each fail
+  `test_analyze_script_over_the_seed_surfaces_all_three_sdd_8d_findings` plus
+  the page test. Port conformance is real, not self-proving: the eight
+  annotated bindings sit at lines 48–55, before the `isinstance` test at line
+  58, and mypy catches every drift class — widening `latest` to `TrackerItem
+  | None` (4 errors), widening `ground` to `object` (2), narrowing `extract`'s
+  `scenes` to a tuple (2), adding a required `urgent` arg to `notify` (3). The
+  three failure paths hold: `latest` → `dict.get` fails
+  `test_latest_for_an_unknown_item_id_raises_record_not_found`, `search`
+  defaulting to the seeded facts fails
+  `test_search_on_an_unindexed_project_returns_no_facts`, `latest_script`
+  defaulting to `SEEDED_SCRIPT` fails its own test, `save` as a no-op fails 2.
+  CP-038's walk genuinely reaches this package: a planted `DemoOnlyError` in
+  `in_memory.py` fails
+  `test_every_adapter_exception_subclasses_exactly_one_domain_error_type` by
+  name, and the package defines no exception class of its own. `scenario.py`
+  is data only — an AST walk finds zero `FunctionDef`, `ClassDef`, `If`,
+  `For`, `Try`, comprehension, `Lambda`, `IfExp`, `BoolOp` or `Compare` nodes;
+  top-level statements are only `AnnAssign`/`Assign`/`Expr`/`ImportFrom` and
+  every call is a constructor plus `jurisdiction_for` and `list`. No token
+  count, no latency, no `random`, no `uuid`, no clock, no `os` anywhere in the
+  package; the only `Confidence` values are the two the `RightsClaim` seeds
+  declare as their own data. Layer direction holds: both modules import only
+  `clearcut.application.ports` and `clearcut.domain.*` (plus `scenario`), no
+  vendor SDK, no `flask`, no `requests`. Nothing outside the package imports
+  it yet, so CP-030's wiring is untouched.
+
+  *The two §4 judgment calls, both ruled for the implementer.* (a) The
+  one-entry `CONTINUITY_FINDINGS_BY_SCENE` dict is a lookup, and the right
+  one. `ContinuityCheck.check(scene, facts)` carries no scene selector, so the
+  adapter must decide per scene somehow; a dict keyed by the finding's own
+  `scene_number` is one line, adds no branch, and needs no code change for a
+  second contradiction. The alternative — `if scene.number == 3` — is the
+  branch this checkpoint's own Notes name as the smell. Not over-engineering.
+  (b) One shared `GROUNDED_ANSWER` is also right. `LegalGrounding.ground`
+  receives `AnalyzeScript._grounding_query`'s private
+  `f"{category} clearance: {raw_text}"`, and keying the seed on that string
+  would copy an application-layer format into an adapter and fail silently the
+  day the format changes. Neither is a §4 violation; neither needs to change.
+
+  **BLOCKING 1. `tests/unit/adapters/test_demo_scenario.py:87-109` — the
+  end-to-end assertions cover only three of the five attributes the third
+  acceptance criterion names, and the two they omit are the demo's headline
+  content.** That criterion asks for "a Ferrari Testarossa (`BRAND` →
+  `INDUSTRIAL_PROPERTY`)" and "'Hotel California' on a radio
+  (`MUSIC_EXISTING` → `COPYRIGHT_WORKS`)" — an asset, a NER label and a
+  category each. `test_analyze_script_over_the_seed_surfaces_all_three_sdd_8d_findings`
+  asserts the category set and nothing else; the page test asserts pages.
+  Neither `raw_text` nor `ner_label` is asserted anywhere in the repo. Four
+  mutations on the isolated worktree left the **full 331-test suite green**:
+  `scenario.py:91` `ner_label=NerLabel.BRAND` → `None`;
+  `scenario.py:102` `ner_label=NerLabel.MUSIC_EXISTING` → `None`;
+  `scenario.py:30` `_FERRARI_RAW_TEXT` → `"Lamborghini Countach"`;
+  `scenario.py:31` `_HOTEL_CALIFORNIA_RAW_TEXT` → `"Despacito"`. A suite that
+  stays green when the Ferrari becomes a Lamborghini and both NER labels
+  vanish verifies that three categories land on three pages, not that SDD
+  §8(d)'s scenario surfaced. That is the criterion's own distinction —
+  "is not seeded, it is decorated" — landing on the test rather than the
+  seed. **Required change:** in the existing end-to-end test, assert per
+  category on the report `AnalyzeScript` returned — `INDUSTRIAL_PROPERTY`
+  carries `raw_text == "Ferrari Testarossa"` and `ner_label ==
+  NerLabel.BRAND`, `COPYRIGHT_WORKS` carries `raw_text == "Hotel California"`
+  and `ner_label == NerLabel.MUSIC_EXISTING`. Test-file only; no source change
+  and no design decision. Re-run the four mutations above and confirm each
+  now fails a named test.
+
+  **BLOCKING 2. `src/clearcut/adapters/demo/scenario.py:82,119` — "a
+  contradiction of a *seeded* bible fact" is unverified; the seeded fact is
+  causally inert and its link can dangle unnoticed.** `InMemoryContinuityCheck
+  .check` ignores its `facts` argument entirely, so the CONTINUITY finding
+  surfaces whether or not `BIBLE_FACTS` holds anything — confirmed directly:
+  `InMemoryContinuityCheck().check(SCENES[2], [])` returns the finding. Three
+  mutations left the **full 331-test suite green**: `scenario.py:82`
+  `BIBLE_FACTS` → `()`; `scenario.py:119` `contradicts=BIBLE_FACT.fact_id` →
+  `None`; and the same line → `"FACT-999-DOES-NOT-EXIST"`. The first breaks
+  the first acceptance criterion ("the bible facts") and the third leaves the
+  demo asserting a contradiction of a fact that does not exist, and no test
+  notices any of them. **Required change:** assert in the end-to-end test that
+  the CONTINUITY finding the pipeline returned has a non-`None` `contradicts`
+  whose value is the `fact_id` of a fact present in `scenario.BIBLE_FACTS`.
+  Test-file only. Do **not** make `check` read `facts` — that would put a rule
+  in a demo adapter, which is the drift this checkpoint's Notes warn against;
+  the fix is to pin the data link, not to compute it.
+
+  *Non-blocking, for the leader — these do not send the work back.*
+  1. **A non-demo project is not empty everywhere, and the Notes say it is.**
+     The Notes claim "every other project sees no state". Running
+     `AnalyzeScript` for `"some-other-project"` returns all three findings —
+     including `EVT-003 CONTINUITY` with `contradicts='FACT-001'`, a bible
+     fact that project never seeded — and three BLOCKED tracker items. The two
+     stores the criteria name are correct (`latest_script` → `None`,
+     `search` → `[]`); the five unconditional read-only ports, continuity
+     included, are not project-scoped. That is consistent with what a mock is
+     and no criterion requires otherwise, so it is not blocking — but the
+     Notes sentence overreaches and the leader should read it as scoped to
+     `latest_script` and `search` only.
+  2. **The demo cites a trademark law for the Eagles song.** One shared
+     `GROUNDED_ANSWER` is the correct call (ruled above), but its single
+     citation is Ley de Marcas 22.362, so on screen the `MUSIC_EXISTING`
+     finding is grounded in trademark law. A data-only fix exists that keeps
+     the ruling intact: give `GROUNDED_ANSWER.citations` a second `Citation`
+     for the copyright statute, so whichever finding is grounded shows both.
+     No rule, no format duplication. Candidate checkpoint: *Give the demo's
+     grounded answer a copyright citation beside the trademark one.*
+  3. **`InMemoryRightsResearch.find` raises a bare `KeyError` on an unseeded
+     asset** (`in_memory.py:61`), where the live adapter raises
+     `NoRightsHolderFound` and `AnalyzeScript._claim_for` degrades that one
+     finding. Unreachable today — `InMemorySceneExtractor` only ever emits the
+     two assets that are dict keys — and outside the two failure paths the
+     criteria name, so not blocking. It becomes reachable the moment mock mode
+     serves a second script. Candidate checkpoint: *Make the demo
+     `RightsResearch` miss the way the live one does.*
+
+  No `docs/`, `README.md` or other reader-facing prose in this diff, so
+  `WRITING.md` §4 does not apply.
+
+  **Implementer, 2026-08-31 — both blocking findings fixed, test-only.**
+  `scenario.py` and `in_memory.py` are untouched (`git status` shows only the
+  two originally-untracked files under this checkpoint); both §4 judgment
+  calls the reviewer upheld stand as written.
+
+  Both findings landed in
+  `test_analyze_script_over_the_seed_surfaces_all_three_sdd_8d_findings`, the
+  end-to-end test the reviewer pointed at. It already built `by_category` off
+  the real `AnalyzeScript` report, so extending it kept every asset, NER
+  label and contradiction on the same live pipeline run rather than a second,
+  narrower assertion block. Added: `ferrari.raw_text ==
+  "Ferrari Testarossa"` and `ferrari.ner_label == NerLabel.BRAND` for
+  `INDUSTRIAL_PROPERTY`; `hotel_california.raw_text == "Hotel California"` and
+  `hotel_california.ner_label == NerLabel.MUSIC_EXISTING` for
+  `COPYRIGHT_WORKS` (BLOCKING 1); `continuity.contradicts is not None` and
+  `continuity.contradicts in {fact.fact_id for fact in scenario.BIBLE_FACTS}`
+  for `CONTINUITY` (BLOCKING 2, a data-integrity check on the test side, not a
+  change to `InMemoryContinuityCheck.check` — the reviewer ruled that reading
+  `facts` would put a rule in a demo adapter). No production code changed; no
+  new acceptance criterion is claimed.
+
+  *No classic RED here.* The seed was already correct — the reviewer's own
+  mutation run proved the values match — so tightening the assertions passed
+  immediately (12 passed) rather than failing first. The substitute for RED is
+  the mutation re-run below: each of the seven values the two findings named
+  now has an assertion that fails when that value is wrong.
+
+  *Mutation re-run, isolated copy, all seven fail.* Verified on a scratch
+  directory (`cp -R src tests`, plus `pyproject.toml` alongside them — the
+  CP-028 methodology warning this task carried forward — `__pycache__`
+  cleared, `PYTHONDONTWRITEBYTECODE=1`, `env -u PYTHONPATH`), not a git
+  worktree: these two source files are still untracked, so no committed ref
+  exists to branch from. Confirmed the copy is genuinely isolated before
+  trusting it — `.venv`'s editable install resolves `clearcut` to the real
+  `src/`, so the first mutation run was also the isolation check: it failed
+  against the mutated scratch copy (`finding_id='EVT-001'`, the scratch
+  `InMemorySceneExtractor`'s output) while the shared tree behind it was never
+  touched, proving `pyproject.toml`'s `pythonpath = ["src", "."]` shadowed the
+  install correctly. Reverted between mutations one at a time, diffed the
+  restored file against the real tree afterward (identical).
+  BLOCKING 1 (four mutations, all failed on the first assertion touching the
+  mutated field): `scenario.py` `ner_label=NerLabel.BRAND` → `None` failed
+  `assert None == <NerLabel.BRAND: 'BRAND'>`; `ner_label=NerLabel.MUSIC_EXISTING`
+  → `None` failed the same way on the Hotel California finding;
+  `_FERRARI_RAW_TEXT` → `"Lamborghini Countach"` failed
+  `assert 'Lamborghini Countach' == 'Ferrari Testarossa'`;
+  `_HOTEL_CALIFORNIA_RAW_TEXT` → `"Despacito"` failed
+  `assert 'Despacito' == 'Hotel California'`. BLOCKING 2 (three mutations):
+  `BIBLE_FACTS` → `()` failed `assert 'FACT-001' in set()`;
+  `contradicts=BIBLE_FACT.fact_id` → `None` failed `assert None is not None`;
+  the same line → `"FACT-999-DOES-NOT-EXIST"` failed
+  `assert 'FACT-999-DOES-NOT-EXIST' in {'FACT-001'}`. All seven: 1 failed, 11
+  passed. Scratch directory removed afterward.
+
+  *Gates, shared tree, all real output.* `env -u PYTHONPATH .venv/bin/pytest
+  -q` → **386 passed**, 0 failed — the suite is fully green now that flask is
+  declared; nothing here is an expected failure. `.venv/bin/python -m mypy src
+  tests infra` → `Success: no issues found in 82 source files`.
+  `.venv/bin/ruff check .` → `All checks passed!`. `.venv/bin/ruff format
+  --check .` → `108 files already formatted`.
+
+  *For the leader.* The three non-blocking items from the last review
+  (copyright citation beside the trademark one, the bare `KeyError` in
+  `InMemoryRightsResearch`, the "every other project sees no state" Notes
+  overreach) are untouched — out of scope for this turn, still the leader's
+  call.
+
+  **Reviewer, 2026-08-31 — PASS, 0 blocking. Attempts stay 1/3. IN_REVIEW →
+  DONE.** Both blocking findings from the first review are closed, and the fix
+  is test-only as claimed.
+
+  *Source files unchanged, verified independently of the implementer's word.*
+  No committed ref exists for these two untracked files, so a hash has nothing
+  to compare against; the substitute is two mutually-independent checks. mtimes:
+  `scenario.py` 00:31:00, `in_memory.py` 00:31:17, both the creation timestamps
+  from the first turn and ~10 hours older than the test file's 10:39:06 edit —
+  only the test file moved. And every line-number anchor the first review cited
+  still lands on the byte it cited: `scenario.py:30/31` the two raw-text
+  constants, `:82` `BIBLE_FACTS`, `:91` `ner_label=NerLabel.BRAND`, `:102`
+  `ner_label=NerLabel.MUSIC_EXISTING`, `:119`
+  `contradicts=BIBLE_FACT.fact_id`; `in_memory.py:61` the bare subscript. Eight
+  independent anchors across both files, none shifted. Current hashes recorded
+  for the next turn: `scenario.py`
+  `a05d7e2697bd14d6ee2ddf2679b91412980017bd685b1b8cbd382a76596a3dc7`,
+  `in_memory.py`
+  `236f6e041021c11cbaaa34377f9e194fbcb55af97289edf9af55dd2c154c29d7`,
+  `__init__.py`
+  `df830b76a04528bec05eb3b56e7dc9c088d9232a212c1f47b083e0c29b79f5af`.
+
+  *All seven mutations re-run and all seven die.* Isolated scratch copy of
+  `src/`, `tests/` and `pyproject.toml` (the false-green warning — without
+  `pyproject.toml` there is no `pythonpath = ["src", "."]` and the editable
+  install silently serves the real tree), `__pycache__` cleared,
+  `PYTHONDONTWRITEBYTECODE=1`, `env -u PYTHONPATH`, driven from the scratch
+  root. Isolation is proven by the mutations themselves rather than asserted:
+  editing only the scratch `scenario.py` changes the result, which cannot
+  happen if the install were shadowing it, and a direct import probe resolves
+  to `/tmp/.../src/clearcut/adapters/demo/scenario.py`. Baseline 12 passed.
+  Each mutation applied to a verified-pristine file (anchor asserted unique,
+  file re-compared against the real tree before and after), reverted before the
+  next. Every one failed
+  `test_analyze_script_over_the_seed_surfaces_all_three_sdd_8d_findings`, 1
+  failed / 11 passed: `ner_label=NerLabel.BRAND` → `None` (`assert None ==
+  <NerLabel.BRAND: 'BRAND'>`); `ner_label=NerLabel.MUSIC_EXISTING` → `None`
+  (`assert None == <NerLabel.MUSIC_EXISTING: 'MUSIC_EXISTING'>`);
+  `_FERRARI_RAW_TEXT` → `"Lamborghini Countach"` (`assert 'Lamborghini
+  Countach' == 'Ferrari Testarossa'`); `_HOTEL_CALIFORNIA_RAW_TEXT` →
+  `"Despacito"` (`assert 'Despacito' == 'Hotel California'`); `BIBLE_FACTS` →
+  `()` (`assert 'FACT-001' in set()`); `contradicts` → `None` (`assert None is
+  not None`); `contradicts` → `"FACT-999-DOES-NOT-EXIST"` (`assert
+  'FACT-999-DOES-NOT-EXIST' in {'FACT-001'}`). The Lamborghini and the
+  Despacito now cost a named failure, which is what the first finding asked
+  for.
+
+  *The assertions are not circular, and the mutations prove it in both
+  directions.* `by_category` is built from `report.findings` — the report the
+  real `AnalyzeScript` returned over the seven demo adapters — and `raw_text`
+  and `ner_label` are compared against string and enum literals written in the
+  test, not against `scenario._FERRARI_RAW_TEXT`. Mutating the constant
+  therefore fails the test rather than moving both sides together, which the
+  Ferrari and Hotel California mutations confirm. The contradiction check is
+  the one place the test reads the seed, and that is the point of it: the
+  report side (`continuity.contradicts`) and the seed side
+  (`scenario.BIBLE_FACTS`) are independently mutable, and mutating either
+  alone fails — `FACT-999` breaks the report side, `BIBLE_FACTS = ()` breaks
+  the seed side. A dangling `fact_id` can no longer pass.
+
+  *Attempt 1's verified-sound items still hold.* Spot-checked the two the first
+  review named: `FERRARI_FINDING.page` 3 → 4, leaving `Scene` 1's `page_start`
+  alone, fails exactly
+  `test_each_finding_carries_the_page_number_its_scene_declares` (`assert 4 ==
+  3`); replacing `InMemoryTrackerStore.latest`'s raise with `dict.get` fails
+  exactly `test_latest_for_an_unknown_item_id_raises_record_not_found` ("DID
+  NOT RAISE RecordNotFound"). The annotated port bindings are still
+  load-bearing and still precede the `isinstance` call (test lines 48–55 then
+  58): widening `latest` to `TrackerItem | None` on the scratch copy produces 5
+  mypy errors, the first on the binding at line 54. `scenario.py` is still data
+  only — an AST walk finds zero `FunctionDef`, `ClassDef`, `If`, `For`,
+  `While`, `Try`, `Lambda`, `IfExp`, `BoolOp`, `Compare` or comprehension
+  nodes; top-level statements are only `AnnAssign`/`Assign`/`Expr`/`ImportFrom`
+  and every call is a constructor plus `jurisdiction_for` and `list`. Layer
+  direction holds: all three modules import from the single root `clearcut`,
+  with no hit against `os`, `sys`, `socket`, `time`, `datetime`, `pathlib`,
+  `random`, `uuid`, `requests` or `flask`. Nothing outside the package imports
+  it, so CP-030's wiring is still untouched.
+
+  *The three deferred items were not absorbed — confirmed, not assumed.*
+  `GROUNDED_ANSWER` still carries one `Citation` (Ley de Marcas 22.362; the
+  other two `Citation` nodes in the file belong to `RIGHTS_CLAIMS_BY_ASSET`);
+  `in_memory.py:61` is still the bare `scenario.RIGHTS_CLAIMS_BY_ASSET[
+  asset_name]` subscript with no `NoRightsHolderFound` anywhere in the module;
+  the "every other project sees no state" sentence is still in the
+  implementer's own note above. All three remain the leader's call.
+
+  *Gates, shared tree, my own run.* `env -u PYTHONPATH .venv/bin/pytest -q` →
+  **386 passed**, 0 failed, no expected failures. `.venv/bin/python -m mypy src
+  tests infra` → `Success: no issues found in 82 source files`. `ruff check .`
+  → `All checks passed!`. `ruff format --check .` → `108 files already
+  formatted`. The demo test file's 12 tests run inside that 386.
+
+  No `docs/`, `README.md` or other reader-facing prose in this diff — the only
+  new prose is code comments naming the two findings — so `WRITING.md` §4 does
+  not apply. No new non-blocking findings this round; the three from the first
+  review stand unchanged.
+
+### CP-029 — Map the five demo-path HTTP routes onto the use cases
+- Status: DONE
+- Attempts: 1/3
+- Depth: 0
+- Layer: adapters
+- Depends on: CP-025, CP-026, CP-027, CP-034
+- Acceptance:
+  - [x] `adapters/http/routes.py` exposes a factory taking the use-case
+        instances as arguments and returning a Flask blueprint. Nothing in it
+        constructs an adapter; that is `composition.py`'s job alone (§2 rule 4).
+  - [x] Five routes, each mapping request JSON to a use-case call and its
+        result to JSON, and doing nothing else (SDD §4): `POST /api/analyze`,
+        `GET /api/tracker`, `PATCH /api/tracker/{item_id}`,
+        `POST /api/tracker/{item_id}/actions`, `POST /api/question`. The fifth
+        route's binding is now pinned too — see the 2026-08-31 implementer
+        note below closing the blocking finding.
+  - [x] `POST /api/analyze` takes `project_id`, `jurisdiction_code`, `gcs_uri`
+        and `version` (D10 — multipart upload is a later checkpoint with its
+        own port; D30 — `AnalyzeScript.execute` takes `version: int` and the
+        route may not read the tracker to derive it).
+  - [x] The route supplies the two values the use case takes but the request
+        does not carry: it mints `script_id` and reads the clock for `at`.
+        Neither is accepted from the request body, and two POSTs to
+        `/api/analyze` return two different `script_id`s — asserted, because an
+        id or a timestamp the caller controls is a rule leaving the service.
+  - [x] The analyze response body carries the script metadata (`version`,
+        `gcs_uri`, `jurisdiction_code`), the findings with their citations, and
+        the tracker items — the payload SDD §4.1 step 8 says the SPA renders
+        without a second call. A test asserts the `version` in the body is the
+        one that was posted, which is the half of D33 a route can prove.
+  - [x] The raw `jurisdiction_code` is resolved through `jurisdiction_for` in
+        the route, and `UnknownJurisdiction` maps to HTTP 400 naming the code.
+        This is the failure path D2 moved off CP-009 and it must not be lost
+        between the two.
+  - [x] `RecordNotFound` maps to 404 and `SourceUnavailable` to 502, both
+        imported from `clearcut.domain.errors` and caught by name, each with a
+        JSON body naming what failed. No stack trace reaches a response body,
+        asserted by a test that raises inside a fake use case.
+  - [x] `routes.py` imports nothing from `clearcut.adapters` — not a sibling
+        adapter package, not an adapter's error class. This is what CP-034
+        exists to make possible (D23): CP-030's "`composition.py` is the only
+        module under `src/clearcut/` importing from `clearcut.adapters`" is a
+        gate, and a route naming `TrackerItemNotFound` directly would break it.
+  - [x] An exception that is none of the three mapped kinds returns 500 with a
+        JSON body and no stack trace, rather than being caught as
+        `Exception` and relabelled. A test raises a `TypeError` inside a fake
+        use case and asserts the body says nothing about types or frames. A
+        second test does the same with a bare `ValueError`, which is the type
+        two adapter guards still raise across a port (D27): both are
+        unreachable from a validated request, and if either ever fires the
+        demo gets a JSON 500, not a Flask traceback.
+  - [x] JSON only: every response carries `application/json` and no template is
+        rendered, asserted rather than assumed.
+  - [x] A test hits each route through Flask's test client with real use cases
+        over hand-written fake ports — no network, no live Flask server.
+  - [x] Failure path: a required field that is missing, or present and blank,
+        returns 400 naming that field, before any adapter call, proven by a
+        fake that records zero calls. Four cases, one rule: `POST /api/analyze`
+        without `gcs_uri`, `POST /api/analyze` with a `version` that is missing
+        or is not an integer of at least 1, `POST /api/question` with a blank
+        `project_id`, and `GET /api/tracker` with no `project_id` query
+        parameter. `version` is validated here, where the field is introduced,
+        so CP-041 adds only the branch that reads it. The two
+        `project_id` cases are D27 — a blank one reaches `LoreStore.search`'s
+        own guard today and leaves as a bare `ValueError`, so the route is
+        where it stops being a 500. Validation stays a field check in the
+        route: no schema library, no validator class (§4).
+  - [x] Failure path: `PATCH /api/tracker/{item_id}` with a state outside
+        BLOCKED, IN_PROGRESS, CLEARED returns 400 naming the accepted values.
+  - [ ] `flask` is added to `[project] dependencies`; CP-017's test fails
+        otherwise. **Not done by this checkpoint — see implementer note below.**
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra` (green on
+        every file this checkpoint touches; the two `flask`-undeclared
+        failures are the box above, unticked, not a regression here).
+- Files: src/clearcut/adapters/http/__init__.py,
+  src/clearcut/adapters/http/routes.py,
+  tests/unit/adapters/test_routes.py,
+  src/clearcut/application/list_tracker_items.py,
+  tests/unit/application/test_list_tracker_items.py
+- Notes: Five of SDD §4.2's eight routes. The other three are deferred with
+  reasons, not forgotten, and the reasons are the same one: they need
+  persistence no port provides. `GET /api/scripts/{script_id}` re-reads findings
+  that nothing stores — SDD §4.1 step 8 has the analyze response carry them, so
+  the SPA's first view works without it. `POST /api/projects` and
+  `POST /api/projects/{id}/bible` need a project and bible store that
+  `infrastructure.md` §6 does not model; the demo seeds bible facts through the
+  LoreStore directly, which is what SDD §8(d)'s "a seeded bible fact" already
+  assumes. All three are in the Backlog.
+
+  **Two criteria above were amended on 2026-08-30 by D27 and D29's sibling
+  rulings, from CP-034's review.** Read them there rather than re-deriving
+  them mid-turn:
+
+  - *The 400 criterion widened from one field to three.* A blank `project_id`
+    reaches `LoreStore.search`'s guard and comes back as a bare `ValueError`,
+    which under the 500 criterion would be a 500 for input the caller got
+    wrong. Refusing it in the route is the whole fix; do not add an error
+    class, and do not touch an adapter's `raise` site to get there.
+  - *The 500 criterion gained a `ValueError` case.* Two adapter guards still
+    raise it across a port. Both are unreachable once the route validates —
+    `vertex_search.py:58` needs a `Jurisdiction` with a blank `corpus_prefix`,
+    and all ten in `JURISDICTIONS` are non-blank — so this is a net, not a
+    mapping. `ValueError` gets no status code of its own.
+
+  **D28, so it is not re-opened here.** `NotificationFailed` mapping to 502 on
+  `POST /api/tracker/{item_id}/actions` is correct, not a mismapped partial
+  success: the `Notify` branch of `ResolveFinding.execute` reads the item,
+  notifies, and returns it — it never calls `save`. Notifying is the whole
+  request, so a 502 reports the one thing that failed. The route needs no
+  partial-success shape and the use case needs no catch. That changes the day
+  a single action both writes and notifies; none does today.
+
+  **Three criteria added on 2026-08-30 by D30 and D33.** They close a hole this
+  block had from the day it was written: `AnalyzeScript.execute` takes six
+  arguments (`analyze_script.py:132-140`) and the three-field body above could
+  supply three of them. `version` becomes a request field because the route may
+  not read the tracker to derive it; `script_id` and `at` are minted here
+  because the edge is the only place allowed to read a clock or invent an id
+  (§2 rule 1 makes the layers below take both as arguments). Nothing in this
+  checkpoint calls `EvaluateDelta` — CP-041 adds that branch on the `version`
+  this checkpoint validates, and it lands before CP-030 so `composition.py` is
+  wired against a settled factory signature.
+
+  Do not read the response-shape criterion as licence to reshape the report.
+  The route serializes what the use case returns; if a field is missing from
+  the body, the fix is in the use case's own checkpoint, not a mapping here.
+
+  **Implementer, 2026-08-31 — resumed after a killed turn, redone test-first.**
+  On pickup, `src/clearcut/adapters/http/routes.py` and `__init__.py` already
+  existed (untracked, no commit), but no test file anywhere in the repo drove
+  them — the previous agent's own trace said it wrote the route before the
+  test, which is exactly what AGENT.md §5 forbids. Rather than write a test
+  file that would pass against already-written code (proving nothing), the
+  module was stubbed back to a docstring, `tests/unit/adapters/test_routes.py`
+  was written first against that stub, and `pytest` was run to confirm a real
+  `ImportError: cannot import name 'create_blueprint'` — genuine RED. Only
+  then was `routes.py` rebuilt (informed by, but not pasted from, the earlier
+  draft) to turn 33 tests green. One test caught a real bug during that pass:
+  `POST /api/question`'s `SourceUnavailable` mapping test 400'd instead of
+  502'ing because the test itself omitted `jurisdiction_code`, not because of
+  a route defect — fixed in the test, not the route.
+
+  Mutation-verified on an out-of-tree `rsync` copy (`/tmp`, `__pycache__`
+  cleared, `PYTHONDONTWRITEBYTECODE=1`, run through this repo's own `.venv`
+  interpreter — never in the working tree, since CP-028 and CP-039/CP-040 are
+  editing other files concurrently): mapping `RecordNotFound` to 403 instead
+  of 404 failed exactly `test_analyze_maps_record_not_found_to_404` and
+  `test_tracker_patch_maps_record_not_found_to_404`; dropping the `gcs_uri`
+  400 check failed exactly `test_analyze_without_gcs_uri_returns_400_and_calls_no_adapter`.
+  Both reverted before rerunning the real suite.
+
+  *`list_tracker_items.py`, kept, not in this checkpoint's original `Files`
+  list.* `GET /api/tracker` needs a use case to hand `create_blueprint` — the
+  hard constraint repeated in this turn's dispatch is that the factory takes
+  use cases only, never a port, and no earlier checkpoint (CP-025, CP-026,
+  CP-027, CP-034) built a tracker-listing one. This is a real gap in the
+  graph, not scope the previous agent invented: without it, `GET /api/tracker`
+  has no legal way to reach `TrackerStore.latest_for_project` except by
+  holding the port directly, which §4/D30 forbid. The file that was on disk
+  is genuinely test-driven — `tests/unit/application/test_list_tracker_items.py`
+  hand-writes a fake `TrackerStore`, asserts port conformance, asserts the
+  positional-call rule (D15), and asserts project-scoping — so it was kept
+  rather than redone, and both files are added to this checkpoint's `Files`
+  list above. Flagged for the leader to fold into a checkpoint's record
+  officially; no `src/` change was needed to accept it.
+
+  *`flask` in `[project] dependencies` — deliberately left unticked.* Per this
+  turn's dispatch, `pyproject.toml` is out of scope: CP-033's dependency gate
+  catching the undeclared import is the gate working as designed, and
+  whichever checkpoint owns declaring dependencies (CP-030 wires the adapters
+  that need it) should add the line, not this one by a side effect. The two
+  `test_declared_dependencies.py` failures are reported, not suppressed:
+  `pytest -q` on the full suite shows `2 failed, 354 passed` end to end, and
+  both failures name exactly `flask`/`Flask`, nothing else.
+
+  *A design note for whoever reviews this,* not a defect: `_build_action`
+  raises a bare `ValueError` for an action that is not `draft_email` or
+  `notify` (`generate_document`, `stakeholder_link` — SDD §4.2, deferred by
+  CP-025's own Notes). It is not a class definition, so CP-038's adapter
+  contract walk does not see it and does not need to; `_run_use_case`'s
+  generic catch turns it into a JSON 500, tested by
+  `test_tracker_actions_with_an_unsupported_action_returns_500_with_no_internals_leaked`.
+  This is outside the checkpoint's closed four-case 400 list by design (D27's
+  "no fourth error class" reasoning extends here: unimplemented, not invalid
+  input), recorded so a future reviewer does not read it as an accidental gap.
+
+  **Reviewer, 2026-08-31 — CHANGES_REQUESTED, attempt 1/3. One blocking
+  finding.** Gates: `pytest -q` 2 failed / 354 passed (both failures are the
+  unticked `flask` box, naming only `flask`/`Flask`); `mypy src tests infra`
+  clean over 76 files; `ruff check` clean; `ruff format --check` clean on 102
+  files. `pyproject.toml` is untouched — confirmed by `git status --porcelain`,
+  so the dispatch's out-of-scope instruction was honoured.
+
+  *The provenance question is settled in the implementer's favour.* 51 mutants
+  were applied on an out-of-tree `rsync` copy (`__pycache__` cleared,
+  `PYTHONDONTWRITEBYTECODE=1`, this repo's `.venv` interpreter, never the
+  working tree). 45 were killed, each by a specifically named test: every error
+  mapping (`RecordNotFound`→404, `SourceUnavailable`→502, generic→500, plus
+  both "falls through to 500" and a body-leak variant), all four 400 cases,
+  `_require_version`'s bool/zero/negative edges, both minted values
+  (`script_id` uniqueness and body-echo, clock body-echo), the request→use-case
+  argument binding on four of the five routes, every response field name on all
+  three body shapes, and both structural guards (the no-`clearcut.adapters`
+  import AST test and the route-inventory test). A suite fitted to
+  already-written code does not kill a field rename or a `version: true`
+  bool-vs-int edge. **This is genuinely test-driven work, not rationalized
+  inheritance.** The one survivor cluster is a gap in test depth on a single
+  route, not a symptom of the killed turn.
+
+  *`list_tracker_items.py` is a legitimate keep and meets the bar.* The gap it
+  fills is real, verified rather than accepted: before this turn
+  `latest_for_project` had exactly one caller under `src/`
+  (`answer_project_question.py:170`, serving a different behaviour), and no
+  checkpoint in the dependency set built a listing use case. Without it
+  `GET /api/tracker` has no legal route to `TrackerStore` except holding the
+  port, which this block's own first criterion and D30 forbid and CP-030's
+  import gate would catch. It is layer-clean (`application.ports` and
+  `domain.tracker` only), it is a pure pass-through with zero semantic drift
+  from `latest_for_project` — no filtering, no reordering, no transformation —
+  and §2 rule 5 prescribes exactly this shape for a use case that holds a
+  collaborator, so §4's "no abstraction for one caller" does not bite. Its
+  three mutants all died, including the D15 keyword-call one. Keep it; the
+  `Files` amendment stands.
+
+  **BLOCKING — `src/clearcut/adapters/http/routes.py:285-287` — the
+  `POST /api/question` request→use-case mapping is not pinned by any test, so
+  the fifth route's core criterion is unproven.**
+  `test_question_happy_path_returns_an_answer_body`
+  (`tests/unit/adapters/test_routes.py:594-606`) asserts only that the keys
+  `text`, `facts` and `citations` are present. That is the hollow shape §5 and
+  the reviewer contract name by example: it asserts the serializer's field
+  names, never that the request reached the use case. Five separate mutants
+  survive on that one line, and the last was re-confirmed against the whole
+  suite, which stayed at its exact baseline of 2 failed / 354 passed:
+  - swapping `project_id` and `question_text` in the call;
+  - hardcoding `"ANY-OTHER-PROJECT"` as the `project_id`;
+  - sending a constant empty `question`;
+  - sending a constant `jurisdiction_for("AR")` instead of the requested one;
+  - returning a constant empty `text` in the body.
+  None of these is an equivalent mutant: `AnswerProjectQuestion.execute`
+  (`answer_project_question.py:140-147`) passes `project_id` and `question`
+  straight into `self._lore.search(project_id, question, _SEARCH_LIMIT)` and
+  `jurisdiction` into `grounding.ground`, all observable. The first two mean a
+  route that served one project's bible facts in answer to another project's
+  question would ship green — on a clearance product, that is the failure mode
+  the project-scoping work in CP-036 and D24 exists to prevent.
+
+  *What must change:* deepen that happy-path test so it fails when the route
+  mis-binds. No `src/` change is needed — the route's code is correct today.
+  The machinery is already in the file and already used by
+  `test_question_with_a_blank_project_id_returns_400_and_calls_no_adapter`:
+  build the `AnswerProjectQuestion` over a locally-held `_LoreStore` and assert
+  on its `searched` record that the posted `project_id` and question text are
+  what reached the port, and assert the response `text` carries the answer the
+  fakes produced rather than merely having the key. The four other routes are
+  already pinned this way; this brings the fifth to the same standard. The
+  three `/api/question` failure paths (both 400s and the 502) are already
+  correct and need no change.
+
+  *Non-blocking, for the leader — four items, none of which should reopen this
+  checkpoint once the finding above is closed:*
+  1. *The clock is pinned on `/api/analyze` only.* `at = _now()` is also minted
+     on `PATCH /api/tracker/{item_id}` (`routes.py:254`) and on
+     `POST /api/tracker/{item_id}/actions` (`routes.py:265`), and a mutant that
+     reads `at` from the request body survives on both. The code is right and
+     the criterion's text names `/api/analyze`, so this is not an unmet
+     criterion — but "a timestamp the caller controls is a rule leaving the
+     service" applies verbatim to a tracker row's `updated_at`, which is
+     clearance audit data. Worth one checkpoint covering both sites.
+  2. *`_json_body`'s non-dict guard is untested.* `routes.py:57-59` maps a
+     valid-JSON-but-not-an-object body (`POST /api/analyze` with `[]`) to `{}`.
+     Removing the guard survives the suite. It is load-bearing: `_json_body` is
+     called outside `_run_use_case`'s try, so without it the `AttributeError`
+     escapes the mapping entirely and the demo gets a Flask traceback — exactly
+     what the 500 criterion exists to prevent.
+  3. *SPA client drift, pre-existing and not introduced here.*
+     `web/src/api/client.ts:80` types `contact: TrackerContact | null` as an
+     object `{name, email}`, while `domain/tracker.py:31` has `contact: str`
+     and the route serializes it faithfully. Same file's
+     `ScriptViewResponse` carries `scenes`, which the analyze body cannot: the
+     use case's `AnalysisReport` (`analyze_script.py:66-72`) has no `scenes`
+     field, though SDD §4.1 step 8 names them. Both are CP-011-vs-domain gaps,
+     and this block's own Notes already rule that the fix belongs to the use
+     case's checkpoint, not to a mapping here. Recording them so CP-030's
+     wiring turn does not discover them live.
+  4. *One docstring is wrong.* `_require_field` (`routes.py:88`) says it
+     returns "the stripped string at `body[field]`"; it returns the raw value
+     and only uses `.strip()` for the blank check, so `project_id: " proj-1 "`
+     reaches the LoreStore with its whitespace. Trimming is named by no
+     criterion, so this is a docstring correction or a one-line behaviour
+     change, whichever the leader prefers.
+
+  **Implementer, 2026-08-31 — closed the blocking finding, tests only, no
+  `src/` change.** `test_question_happy_path_returns_an_answer_body`
+  (`tests/unit/adapters/test_routes.py`) is deepened exactly as directed: it
+  now holds the `_LoreStore` and a `_Grounding` locally (the latter gained a
+  `.calls` recorder, matching the `_Ingestion` convention already in the
+  file) instead of taking the `_client()` defaults, and asserts on both
+  fakes' recorded calls plus the body's `text`. The question text
+  ("does this need a music license?") deliberately names a legal-topic stem
+  and no blocker word, so `_ground_if_legal` actually calls
+  `LegalGrounding.ground` and the jurisdiction argument becomes observable
+  without a tracker round trip. Three assertions now do the pinning:
+  `lore.searched`'s recorded tuple carries this request's `project_id` and
+  question (not swapped, not a constant, not another project's), `grounding
+  .calls` carries the *resolved* `Jurisdiction` (not a hardcoded one), and
+  `body["text"]` equals the fake's answer text verbatim rather than merely
+  containing the key.
+
+  All five mutants were re-applied on a fresh out-of-tree copy
+  (`/tmp`, rsync excluding `.venv`/`__pycache__`/`.git`, bytecode caches
+  cleared, `PYTHONDONTWRITEBYTECODE=1`, run through this repo's own `.venv`
+  interpreter) and each now fails exactly this one test: the
+  `project_id`/`question_text` swap, the hardcoded `"ANY-OTHER-PROJECT"`, the
+  constant empty question, the constant `jurisdiction_for("AR")`, and the
+  constant empty response `text`. Each mutant was applied alone, the target
+  test run, the failure captured, and `routes.py` restored — confirmed
+  byte-identical to the pre-mutation copy by `diff` after every revert. The
+  full suite in that copy, re-run after every mutant was reverted, lands
+  back at the exact baseline (`2 failed, 354 passed`, both failures naming
+  only `flask`/`Flask`). No `src/` file was touched in the working tree —
+  `git status --porcelain` before and after this turn shows only
+  `tests/unit/adapters/test_routes.py` and this block changed.
+
+  Gates on the real working tree: `pytest -q` → `2 failed, 354 passed` (same
+  two pre-existing `flask` failures, not a regression); `mypy src tests
+  infra` → clean, 76 files; `ruff check .` → all checks passed; `ruff format
+  --check .` → 102 files already formatted.
+
+  The four non-blocking items from the prior review (clock pinning on the
+  two tracker routes, `_json_body`'s untested non-dict guard, the SPA
+  `contact`/`scenes` drift, `_require_field`'s docstring) are untouched, as
+  directed — they are the leader's to route into new checkpoints.
+
+  *Checked and found correct, recorded so the next turn does not re-derive
+  them:* the factory takes four use-case instances and no port of any kind
+  (`routes.py:202-207`; no port name appears anywhere in the module outside a
+  docstring citation); `EnrichmentMissing` is a sibling of the two mapped
+  errors, never a 404 or 502, and is caught inside `_ground_if_legal` so it
+  never reaches `_run_use_case`; CP-038's contract walk does reach the new
+  package (`clearcut.adapters.http` and `.routes` both appear in
+  `walk_packages`) and `routes.py` owns zero exception classes, so the guard is
+  satisfied and `_build_action`'s bare `ValueError` is invisible to it exactly
+  as D27 predicted; `version` is passed through to the use case unchanged
+  rather than being silently treated as 1, so `version > 1` today records an
+  honest v2 full re-analysis and CP-041's `EvaluateDelta` branch slots in
+  without reshaping the factory; and no orchestration lives in any route — each
+  one validates, maps, calls one `execute`, and serializes.
+
+  **Reviewer, 2026-08-31 — PASS, attempt 1/3. Zero blocking findings.** The
+  round-1 finding is closed and verified rather than accepted.
+
+  *`src/` is untouched since attempt 1, proven by hash, not by `git diff`.*
+  Both files are untracked, so `git diff` says nothing about them. The
+  attempt-1 review's own out-of-tree mutation copy survives at
+  `/tmp/ccmut1`, taken mid-review at 00:21:47; its
+  `src/clearcut/adapters/http/routes.py` hashes
+  `d6435ad65c8190bb55ec3bc1dd81521f7c1cae118de2d0d42d8894b42db26de5`, which is
+  byte-for-byte the working tree's file today.
+  `application/list_tracker_items.py` hashes `3446270d…` in that copy and in
+  the tree. The only file that differs between that snapshot and today is
+  `tests/unit/adapters/test_routes.py`, and its diff is exactly two hunks: a
+  `.calls` recorder on `_Grounding`, and the deepened happy-path test. The
+  fix is tests-only, as claimed.
+
+  *All five surviving mutants are dead.* Re-run on a fresh `rsync` copy
+  (`.git`/`.venv`/`__pycache__` excluded, bytecode caches cleared,
+  `PYTHONDONTWRITEBYTECODE=1`, this repo's `.venv` interpreter, each mutant
+  applied alone and reverted, `routes.py` re-hashed against the pristine copy
+  after every revert). Baseline in the copy: 33 passed. Results —
+  `project_id`/`question_text` swapped: 1 failed;
+  `execute("ANY-OTHER-PROJECT", …)`: 1 failed; constant empty question: 1
+  failed; constant `jurisdiction_for("AR")`: 1 failed; constant `"text": ""`
+  in `_project_answer_json`: 1 failed. Every one of the five is killed by
+  exactly `test_question_happy_path_returns_an_answer_body` and nothing else,
+  which is the right blast radius: one test now owns that binding.
+
+  *The assertions are against the recorded call, not the response shape* —
+  the distinction that made the original hollow. `lore.searched[0]` is
+  destructured and its `project_id` and question compared to what was posted;
+  `grounding.calls` is compared to `[(question_text, _MEXICO)]` where
+  `_MEXICO = jurisdiction_for("MX")`, so a hardcoded jurisdiction cannot pass;
+  `body["text"]` is compared to the fake's answer text verbatim. The
+  question ("does this need a music license?") does name a legal topic and no
+  blocker word, so `_ground_if_legal` really calls `ground` and the
+  jurisdiction argument really is observable — checked against
+  `answer_project_question.py:149-165`, not taken on trust.
+
+  *Attempt 1's kills still hold.* Spot-checked two on the same copy:
+  `RecordNotFound`→404 changed to 200 fails exactly
+  `test_analyze_maps_record_not_found_to_404` and
+  `test_tracker_patch_maps_record_not_found_to_404`; dropping the `gcs_uri`
+  400 check fails exactly
+  `test_analyze_without_gcs_uri_returns_400_and_calls_no_adapter`.
+
+  *The four deferred items were not absorbed,* confirmed file by file: no test
+  mentions `at` on either tracker route (the only client-clock test is
+  `test_analyze_ignores_a_client_supplied_clock_value`, `/api/analyze` only);
+  no test exercises `_json_body`'s non-dict branch; `web/` and
+  `pyproject.toml` are untouched per `git status --porcelain`; and
+  `_require_field`'s docstring at `routes.py:88` still reads "The stripped
+  string". They remain the leader's.
+
+  Gates: `pytest -q` → 2 failed, 366 passed (the count moved from 354 because
+  CP-043/CP-028 are landing tests concurrently; both failures name only
+  `flask`/`Flask`, from `adapters/http/routes.py`, and are the unticked box
+  above); `mypy src tests infra` → clean, 80 files; `ruff check .` → all
+  checks passed; `ruff format --check .` → 106 files already formatted.
+  Layer rules hold: `routes.py` names `clearcut.adapters` only inside a
+  docstring and imports only `clearcut.application`, `clearcut.domain` and
+  `flask`; `list_tracker_items.py` imports `application.ports` and
+  `domain.tracker` and nothing else. No §4 item introduced — the change adds
+  one list to an existing hand-written fake. No secrets. `WRITING.md` does not
+  reach this diff: it covers `docs/`, `README.md` and narrative text, and
+  explicitly not code comments, and `CHECKPOINTS.md` is exempt under §0.
+
+  *Non-blocking, new, for the leader — one item.* **Nothing in the plan owns
+  adding `flask` to `[project] dependencies`.** This block's own criterion is
+  unticked and scoped out by agreement, and CP-030 is named for it only in
+  prose — CP-030's acceptance list has no criterion for declaring a
+  dependency. Until some checkpoint takes it, `pytest -q` cannot be green
+  repo-wide and AGENT.md §9's gate is unmeetable for every checkpoint that
+  follows, not just this one. Worth one checkpoint, or one criterion added to
+  CP-030. The four items from the round-1 review (clock pinning on the two
+  tracker routes, `_json_body`'s untested non-dict guard, the SPA
+  `contact`/`scenes` drift, `_require_field`'s docstring) are unchanged and
+  still open.
+
+### CP-040 — Tell an unindexed project apart from a cleared one
+- Status: DONE
+- Attempts: 1/3
+- Depth: 0
+- Layer: application
+- Depends on: -
+- Acceptance:
+  - [x] A blocker question about a project with zero tracker rows answers that
+        nothing is indexed for that project, and makes no clearance claim: a
+        test asserts the text does not say anything is not blocked.
+  - [x] A blocker question about a project whose rows exist and are all CLEARED
+        answers that nothing is blocked in the jurisdiction `execute` received,
+        naming the territory. This is CP-037's D26 behaviour, kept, and it is
+        the case where the assurance is earned.
+  - [x] A blocker question with BLOCKED rows is unchanged — the items are
+        listed and the territory named. CP-037's two D26 tests stay green and
+        are not rewritten.
+  - [x] The first two answers are distinguishable by a caller, asserted
+        directly: the unindexed text and the nothing-blocked text differ, so a
+        dashboard cannot render "unknown" as "cleared".
+  - [x] Failure path: `TrackerStore.latest_for_project` raising
+        `SourceUnavailable` propagates out of `execute` rather than being
+        reported as nothing blocked. An outage that reads as clearance is the
+        same defect one layer over (CP-026's round-1 blocking finding), and the
+        catch in this module is `except EnrichmentMissing` by name (D23), so
+        this pins behaviour that is already right.
+  - [x] Unit tests use the hand-written fakes already in that file; no network,
+        port methods called positionally (D15).
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: src/clearcut/application/answer_project_question.py,
+  tests/unit/application/test_answer_project_question.py
+- Notes: D31 has the reasoning. The short version is that "nothing is blocked"
+  and "nothing is indexed" are the two halves of the argument this product
+  sells, and today an empty table produces the first one.
+
+  It narrows one criterion CP-037 already passed on — "the territory is named
+  even when nothing is blocked" now holds when there are rows and not when
+  there are none. That is a specification change, so it is the leader's and not
+  a second attempt on CP-037. CP-037's archived Notes carry a dated pointer
+  here.
+
+  Scope ceiling under §4: three answers from data the use case already has. No
+  new port, no new field on `TrackerItem` (D26 declined that and the Backlog
+  holds it), and no new state on the answer object — the difference is the text
+  and the tests that pin it.
+
+  Implementation: `_blocker_text` now takes all `latest_for_project` items
+  (renamed from `_blocked_items_if_asked` to `_tracker_items_if_asked`,
+  which no longer pre-filters) and branches on rows-empty before filtering to
+  BLOCKED, so the empty-tracker case is distinguished from the
+  none-are-BLOCKED case at the source instead of both collapsing to an empty
+  tuple. New constant `_TRACKER_NOT_INDEXED` is kept separate from the
+  existing `_NOTHING_INDEXED` fallback so a project with bible facts but no
+  tracker rows never contradicts itself by saying "nothing indexed" for the
+  whole project. RED confirmed first — both new pinning tests failed against
+  the pre-fix code with the exact CP-037 text ("Nothing is blocked in
+  Mexico."). Verified by mutation on a `git worktree` copy (not `cp -R`,
+  which the sandbox denied for the full repo incl. `.venv`): with the
+  empty-rows branch removed, `__pycache__` cleared and
+  `PYTHONDONTWRITEBYTECODE=1`, exactly the two new D31 tests fail and nothing
+  else regresses. `SourceUnavailable` propagation needed no code change — it
+  already had no catch around it — so that test is a pin, not a RED test, as
+  the checkpoint anticipated.
+
+  Dependency-free and dispatchable immediately; nothing else remaining opens
+  this file.
+
+  **Reviewer, 2026-08-30 — CHANGES_REQUESTED, attempt 1/3. One blocking
+  finding.** Everything else verified independently, and by mutation on a
+  disposable `git worktree` of `HEAD` carrying only this diff's two files
+  (`__pycache__` cleared, `PYTHONDONTWRITEBYTECODE=1`, `PYTHONPATH` at the
+  copy's `src`, with `clearcut.__file__` printed from the copy to prove the
+  editable install was not shadowing it; baseline 314 passed there, 23 in the
+  target file; worktree removed afterward).
+
+  *Gates on the shared tree, all green.* `env -u PYTHONPATH .venv/bin/pytest
+  -q` → 318 passed. `ruff check .` → all checks passed. `ruff format --check
+  .` → 97 files already formatted. `mypy src tests infra` → clean, 71 source
+  files.
+
+  *The three D31 cases are right, and were measured rather than read.* One row
+  in each state through `execute`: `IN_PROGRESS` and `CLEARED` → "Nothing is
+  blocked in Mexico.", `BLOCKED` → "Blocked in Mexico: ITEM-9 (Sync license)",
+  zero rows → "I have no tracker data indexed for this project." Collapsing
+  the branch back to CP-037's two cases — empty-rows branch deleted, filtering
+  moved back into `_tracker_items_if_asked` — fails exactly the two new D31
+  tests and nothing else (2 failed, 21 passed), so those tests are not hollow
+  and CP-037's D26 tests hold in both directions, unrewritten. No path reaches
+  a positive assurance from an empty dataset: "Nothing is blocked in
+  {territory}" is reachable only with `items` non-empty, and `items` is
+  `latest_for_project` verbatim. Criteria 2–7 hold. Layer rules hold — the
+  module imports only stdlib, `application.ports` and `clearcut.domain.*`.
+  CP-038's guard holds: `except EnrichmentMissing` is the only catch in the
+  file, and the only two others under `application/` are
+  `analyze_script.py`'s, also by name.
+
+  **BLOCKING — `src/clearcut/application/answer_project_question.py:32` with
+  `tests/unit/application/test_answer_project_question.py:295-330`: the new
+  `_TRACKER_NOT_INDEXED` constant has no test that would fail without it, so
+  the coherence property the Implementation note above claims for it is
+  unverified (§5, §9).** Two mutations on the copy, each leaving all 314 tests
+  green:
+
+  (a) `_TRACKER_NOT_INDEXED = _NOTHING_INDEXED`. A blocker question against a
+  project with one indexed bible fact and zero tracker rows then answers the
+  fact and its source, then "I have nothing indexed for this project." — two
+  sentences claiming opposite things about what is indexed, which is precisely
+  what keeping the two constants separate is for.
+
+  (b) `_TRACKER_NOT_INDEXED = ""`. The same question then says nothing about
+  indexing at all, which is the first half of acceptance criterion 1
+  ("answers that nothing is indexed for that project") removed unnoticed.
+
+  Both survive because every D31 test uses an empty `FakeLoreStore`, so
+  `_compose_text`'s `_NOTHING_INDEXED` fallback supplies an "indexed" sentence
+  in each tested path and masks the constant.
+
+  What must change, in the test file only: one test for a blocker question
+  against a project that *has* indexed bible facts and zero tracker rows,
+  asserting the tracker-scoped sentence is present and the whole-project
+  `_NOTHING_INDEXED` text is absent — an assertion that fails under both
+  mutations above. The fakes it needs are already in the file
+  (`FakeLoreStore` indexed with one fact, `_RecordingTrackerStore([])`). **No
+  production change is required: today's behaviour is already correct, probed
+  directly.** This is CP-037's failure mode one level down — the sentence the
+  liability argument rests on, shipped unpinned.
+
+  *Non-blocking, for the leader.* `answer_project_question.py:106-107`: rows
+  that are all `IN_PROGRESS` — an item mid-negotiation with an outstanding
+  `required_document` — also answer "Nothing is blocked in Mexico." That
+  follows D31's rule as written ("rows exist, none BLOCKED"), and criterion 2
+  names only the all-CLEARED case, so it is not a defect against this
+  checkpoint's spec. Whether a pending item may read as an assurance is a
+  ruling, not a review finding.
+
+  **Implementer, attempt 2 — test-only fix.** Added
+  `test_a_blocker_question_with_bible_facts_but_no_tracker_rows_names_the_tracker_gap`
+  to `tests/unit/application/test_answer_project_question.py`: one bible fact
+  indexed for the project, zero tracker rows, a blocker question, asserting
+  `_TRACKER_NOT_INDEXED`'s exact text is present and `_NOTHING_INDEXED`'s
+  exact text is absent. Indexing a fact is what the other D31 tests skip, and
+  skipping it is exactly why they could not tell the two constants apart —
+  with `FakeLoreStore` empty, `_compose_text`'s own `_NOTHING_INDEXED`
+  fallback always supplies the "indexed" sentence regardless of which string
+  `_TRACKER_NOT_INDEXED` holds. No change to
+  `src/clearcut/application/answer_project_question.py`: the reviewer's
+  attempt-1 note already established that file needs none, and this diff
+  confirms it by leaving it untouched.
+
+  Verified on a `git worktree --detach HEAD` copy (not `cp -R`, denied for
+  the full tree incl. `.venv`), `__pycache__` cleared,
+  `PYTHONDONTWRITEBYTECODE=1`, `clearcut.__file__` printed from the copy to
+  rule out the editable install shadowing it. Baseline: 24 passed in the
+  target file. Mutation (a) `_TRACKER_NOT_INDEXED = _NOTHING_INDEXED`: 1
+  failed (the new test, on the exact contradiction the reviewer described —
+  "The mural was painted in 1990. (source: Bible p. 12)\n\nI have nothing
+  indexed for this project.") / 23 passed. Mutation (b)
+  `_TRACKER_NOT_INDEXED = ""`: 1 failed (the new test, tracker text silently
+  gone) / 23 passed. Worktree removed after.
+
+  *Gates on the shared tree.* `env -u PYTHONPATH .venv/bin/pytest -q` → 321
+  passed, 2 failed — both `tests/unit/test_declared_dependencies.py`, CP-029's
+  undeclared `flask` import in `adapters/http/routes.py`, unrelated to this
+  file. `ruff check .` / `ruff format --check .` on the two CP-040 files only
+  → clean (the same two failing-elsewhere gates also flag `routes.py`, out of
+  scope here). `mypy` on the two CP-040 files → clean; the full `mypy src
+  tests infra` run flags two `no-any-return` errors, both in `routes.py`.
+  Deferred note above is unchanged — left for the leader, not addressed.
+  **Reviewer, 2026-08-31 — PASS, attempt 1/3. Zero blocking findings.** The
+  attempt-1 finding is closed, and closed by measurement: both mutations that
+  survived last round were re-run here rather than taken on trust.
+
+  *The production file is unchanged since attempt 1.*
+  `src/clearcut/application/answer_project_question.py` hashes
+  `9812b3caa31ff61275957589b3363a1c88e968c04a8b85f69af9068a8caca21b`, and its
+  mtime is 2026-08-30 22:37:32 — four minutes after the leader turn that opened
+  this checkpoint, and 86 minutes before the test file's 00:03:45. Attempt 2
+  did not touch it. Its diff against `HEAD` is exactly the three changes
+  attempt 1 reviewed: the constant, the empty-rows branch, and the
+  `_blocked_items_if_asked` -> `_tracker_items_if_asked` rename with the BLOCKED
+  filter moved into `_blocker_text`. `git diff --numstat` on the test file is
+  `114 0` — additions only, so CP-037's D26 tests are not rewritten, only
+  outnumbered.
+
+  *Both mutations now die.* On a disposable `git worktree --detach HEAD`
+  carrying only this diff's two files (`__pycache__` cleared,
+  `PYTHONDONTWRITEBYTECODE=1`, `clearcut.__file__` printed from the copy to
+  prove the editable install was not shadowing it; baseline 315 passed there,
+  24 in the target file; worktree removed after):
+
+  (a) `_TRACKER_NOT_INDEXED = _NOTHING_INDEXED` -> 1 failed / 314 passed. The
+  failure is the new test, on the exact contradiction attempt 1 described:
+  "The mural was painted in 1990. (source: Bible p. 12)\n\nI have nothing
+  indexed for this project."
+
+  (b) `_TRACKER_NOT_INDEXED = ""` -> 1 failed / 314 passed, the same test, on
+  the tracker sentence silently gone.
+
+  Neither passes on a loose match: both assertions are whole sentences, and
+  "I have no tracker data indexed for this project." is not a substring of
+  "I have nothing indexed for this project." nor the reverse, so the shared
+  words cannot be what satisfies them.
+
+  (c) Attempt 1's own mutation, re-run — empty-rows branch deleted -> 3 failed
+  / 312 passed, exactly the three D31 tests and nothing else. CP-037's D26
+  tests survive it, which is the same evidence in the other direction: they
+  still pin what they always pinned.
+
+  *The three D31 cases were probed through `execute`, not read.* Zero rows ->
+  "I have no tracker data indexed for this project."; one CLEARED -> "Nothing
+  is blocked in Mexico."; one BLOCKED -> "Blocked in Mexico: ITEM-9 (Sync
+  license)"; BLOCKED + CLEARED -> the BLOCKED item only; and a non-blocker
+  question over zero rows still -> "I have nothing indexed for this project.",
+  so the tracker-scoped sentence never leaks into an answer that never asked
+  about the tracker. All seven criteria hold. Layer rules hold — stdlib,
+  `application.ports` and `clearcut.domain.*` only. CP-038's guard holds:
+  `except EnrichmentMissing` is still the only catch in the file. No secrets in
+  the diff, and no prose file in it.
+
+  *Gates.* `env -u PYTHONPATH .venv/bin/pytest -q` -> 321 passed, 2 failed,
+  both in `tests/unit/test_declared_dependencies.py` on CP-029's undeclared
+  `flask` import in `adapters/http/routes.py`. On the two CP-040 files in
+  isolation: `ruff check` -> all checks passed, `ruff format --check` -> 2 files
+  already formatted, `mypy` -> no issues. Repo-wide `ruff` flags only
+  `routes.py` (CP-029) and a copy of it under `.review-tmp/`.
+
+  *The deferred item was not absorbed, and that was checked.* Rows that are all
+  `IN_PROGRESS` still answer "Nothing is blocked in Mexico." — probed directly,
+  unchanged, with no test claiming it in either direction. Whether a pending
+  item may read as an assurance stays a leader ruling.
+
+  *Non-blocking, for the leader.* `.review-tmp/` is untracked reviewer scratch
+  that `ruff check .` and `ruff format --check .` both walk, so a second copy
+  of another checkpoint's file is reported as a repo-wide gate failure. It
+  belongs in `.gitignore` and in ruff's `exclude`, or should be removed at the
+  end of the review that creates it — otherwise every concurrent reviewer reads
+  a dirtier gate than the tree actually is.
+
+### CP-039 — Record the analyzed version, and stop grounding bible findings
+- Status: DONE
+- Attempts: 0/3
+- Depth: 0
+- Layer: application
+- Depends on: -
+- Acceptance:
+  - [x] `AnalyzeScript.execute` calls `tracker.record_script(script)` after
+        `tracker.save(items)` and before it returns, with the same `Script` the
+        report carries. A recording fake asserts exactly one call and asserts
+        the recorded script's `project_id`, `version` and `gcs_uri` are the
+        run's — this row is what CP-028 diffs against, so a placeholder here is
+        a wrong diff there.
+  - [x] The ordered-sequence test is extended, never weakened: the five stages
+        it already pins keep their order, and `record_script` is asserted
+        *after* `tracker.save`. Recording first would name a version whose
+        tracker items never landed.
+  - [x] `_citations_for` consults the same category set `_claim_for` already
+        does, so a CONTINUITY or POLICY finding produces zero
+        `LegalGrounding.ground` calls. A recording fake asserts zero for them
+        and an unchanged count for the six IP categories, in one test.
+  - [x] A CONTINUITY finding reaches the report with no citations, asserted on
+        the report rather than on the fake — territorial law articles attached
+        to a narrative contradiction read as a legal claim about it.
+  - [x] `AnalysisReport.script` carries the `version`, `gcs_uri` and
+        `jurisdiction_code` that `execute` was given. One assertion that fails
+        when any of the three is replaced by a constant; `version=99` leaves
+        all 311 tests green today, which is the mutant this criterion kills.
+  - [x] `docs/plan/sdd.md` §4.1 step 5's closing sentence names both lookups
+        the bible findings skip, so the specification stops describing a
+        grounding call the code no longer makes. Observable properties: the
+        sentence names `RightsResearch` and `LegalGrounding`; no other sentence
+        in §4.1 still says all three lookups run for every deduped finding; and
+        the step's remaining text is unchanged. Prose, so `.claude/WRITING.md`
+        is blocking for this criterion.
+  - [x] CP-026's twenty-three existing tests stay green and none is deleted,
+        renamed away, or narrowed to accommodate either change.
+  - [x] Unit tests use the hand-written fakes already in that file; no network,
+        no clock read, port methods called positionally (D15).
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: src/clearcut/application/analyze_script.py,
+  tests/unit/application/test_analyze_script.py, docs/plan/sdd.md
+- Notes: D30, D32 and half of D33 — all three from CP-026's review, all three
+  landing in one module, which is the whole argument for one block. The seam if
+  a reviewer wants it split is the decision boundary: the `record_script` write
+  is D30, the grounding skip is D32, the metadata assertion is D33. Splitting
+  costs two extra turns on one file, which is the arithmetic CP-037 and CP-038
+  both made and both passed on.
+
+  It edits a `DONE` checkpoint's module and test file. That is deliberate and
+  it is the reason the criteria say twice that existing tests are extended
+  rather than adjusted: CP-026 is the highest-risk module in the repo, its
+  ordering test is what proves the pipeline follows SDD §4.1, and a diff that
+  quietly relaxes an assertion to make room for a new call would remove more
+  than it adds.
+
+  Dependency-free and dispatchable immediately. It shares no file with CP-028,
+  CP-029, CP-040 or CP-042, so all five can run at once.
+
+  Implemented: renamed `_NO_RESEARCH_CATEGORIES` to `_NO_LOOKUP_CATEGORIES`
+  since `_citations_for` now reads it too — same frozenset, no new
+  abstraction. Test file grew from 23 to 27 test functions: four are new
+  (`test_record_script_is_called_once_with_the_runs_script_after_save`,
+  `test_continuity_and_policy_findings_skip_the_legal_grounding_lookup`,
+  `test_a_continuity_finding_reaches_the_report_with_no_citations`,
+  `test_the_reports_script_carries_the_runs_version_gcs_uri_and_jurisdiction`),
+  and `test_pipeline_runs_ports_in_sdd_order` gained one more assertion rather
+  than being replaced.
+
+  Mutation-tested on a copy, under `PYTHONDONTWRITEBYTECODE=1` with
+  `__pycache__` cleared under `src/` and `tests/`. Dropping the
+  `record_script` call fails
+  `test_record_script_is_called_once_with_the_runs_script_after_save` and
+  `test_pipeline_runs_ports_in_sdd_order`. Restoring unconditional grounding
+  fails
+  `test_continuity_and_policy_findings_skip_the_legal_grounding_lookup` and
+  `test_a_continuity_finding_reaches_the_report_with_no_citations`.
+  Hardcoding `version=99` fails
+  `test_the_reports_script_carries_the_runs_version_gcs_uri_and_jurisdiction`
+  and `test_record_script_is_called_once_with_the_runs_script_after_save`. Six
+  failures across three mutations, none shared with a fourth. Gates:
+  `pytest -q` 318 passed, `mypy src tests infra` clean, `ruff check .` clean,
+  `ruff format --check .` clean.
+
+  For the leader: CP-028 (`EvaluateDelta`) can now depend on `record_script`
+  existing as a caller — this checkpoint lands the writer it needs.
+
+  Reviewed 2026-08-31, PASS, zero blocking findings. Every claim above was
+  re-measured on an independent copy under `PYTHONDONTWRITEBYTECODE=1`, and
+  four mutants the implementer did not run were added:
+
+  - `record_script` moved *before* `tracker.save` fails
+    `test_pipeline_runs_ports_in_sdd_order` (`assert 8 < 7`), so the ordering
+    is pinned and not merely the call's presence.
+  - Skipping grounding for CONTINUITY only, leaving POLICY grounded, fails
+    `test_continuity_and_policy_findings_skip_the_legal_grounding_lookup`
+    (`assert 7 == 6`), so the rule covers both categories.
+  - `gcs_uri` and `jurisdiction_code` replaced by constants each fail
+    `test_the_reports_script_carries_the_runs_version_gcs_uri_and_jurisdiction`
+    independently, so all three metadata fields are pinned, not just
+    `version`.
+  - CP-026's two round-2 kills still die: widening both catch sites to
+    `except (EnrichmentMissing, SourceUnavailable)` fails
+    `test_a_source_unavailable_from_research_propagates_instead_of_being_caught`
+    and `test_a_source_unavailable_from_grounding_propagates_instead_of_being_caught`;
+    running `_claim_for` before `_citations_for` fails
+    `test_pipeline_runs_ports_in_sdd_order`. The new early return in
+    `_citations_for` did not neuter the grounding outage test, because that
+    test's finding is `INDUSTRIAL_PROPERTY`.
+
+  The D33 assertion needed no `src/` change, so no RED-first cycle was
+  available for it; mutation is the only evidence that criterion admits, and
+  the implementer's account of that is accurate.
+
+  Diff verified by name comparison: 23 test functions before, 27 after, none
+  deleted or renamed, and the only removed line in the whole test diff is the
+  `return None` stub body of the `_Tracker.record_script` fake.
+
+  §4: one frozenset serves both call sites (`analyze_script.py:61`, read at
+  `:200` and `:212`), no second list, no new port, no new config. Layer rules
+  hold — `analyze_script.py` imports only `clearcut.application` and
+  `clearcut.domain`. `WRITING.md` §4 over the one changed `docs/plan/sdd.md`
+  line: clean, no banned word, no §2 pattern, no em dash, names both ports.
+
+  Gates at review time: `pytest -q` 321 passed / 2 failed, `ruff check .` 2
+  errors, `ruff format --check .` 1 file, `mypy src tests infra` 2 errors —
+  every one of them in `src/clearcut/adapters/http/routes.py`, the concurrent
+  CP-029's untracked file. Scoped to this checkpoint's two Python files:
+  `pytest` 27 passed, `ruff check` and `ruff format --check` clean, and
+  `mypy`'s only errors are in that same unrelated file.
+
+### CP-042 — Assert the research transport message, and correct what the walk docstring claims
+- Status: DONE
+- Attempts: 0/3
+- Depth: 0
+- Layer: tests
+- Depends on: -
+- Acceptance:
+  - [x] `tests/unit/adapters/test_research.py`'s transport test asserts the
+        message carries the underlying error's own text, so replacing
+        `research.py:104`'s `{error}` interpolation with a constant fails a
+        named test. Measured today: `"boom"` leaves the suite at 311 passed,
+        while the same mutation on `webhook.py:39` correctly fails
+        `test_connect_error_raises_notification_failed_with_a_connection_message`.
+  - [x] That mutation is run and reverted, and the outcome is recorded here
+        naming the test that caught it — the assertion exists to fail, so an
+        unrun one proves nothing.
+  - [x] `research.py` is not edited. The message is already right and only
+        unproven, which is the shape CP-035's round 2 already settled.
+  - [x] `test_adapter_walk_fails_loudly_on_an_unimportable_module`'s docstring
+        (`tests/unit/test_error_boundaries.py:65-69`) states what CP-038
+        measured: `pkgutil.walk_packages` yields a `ModuleInfo` before
+        importing anything and only ever imports packages, so a broken leaf
+        module always reaches `_adapter_modules`'s own import; what
+        `onerror=None` suppresses is recursion into a broken package's
+        children. Observable properties: it no longer claims the walk drops a
+        module from the walk, it names the yield-before-import order, and it
+        still describes the property the test actually pins.
+  - [x] No file under `src/` changes, no test is weakened or removed, and no
+        new test file appears: both halves are additive.
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: tests/unit/adapters/test_research.py,
+  tests/unit/test_error_boundaries.py
+- Notes: D34 and D35. Two files in one block for the arithmetic D17 used: a few
+  lines each does not earn two implementer turns and two reviewer turns eight
+  days out, and the seam is the file boundary if a reviewer disagrees.
+
+  Both are the same failure in different materials — a record that reports the
+  opposite of what it proves. The research assertion cannot fail on the
+  behaviour it names; the docstring explains a mechanism CP-038 measured not to
+  exist, and it is wrong about the exact subtlety that checkpoint spent a turn
+  settling, so it is the document a later reader would reopen D29 from.
+
+  Tests-only, dependency-free, parallel-safe with everything remaining. Neither
+  file is named by CP-028, CP-029, CP-030, CP-031, CP-039, CP-040 or CP-041.
+  Cuttable, and last on the cut list.
+
+  Mutation run and reverted on a filesystem copy
+  (`rsync --exclude .venv --exclude __pycache__ --exclude .git` to
+  `/tmp/cc-mutation`, `.venv` symlinked back in, `PYTHONDONTWRITEBYTECODE=1`,
+  no stale `__pycache__` present): replacing `research.py:104`'s `{error}`
+  interpolation with the literal `"boom"` turns `1 failed, 9 passed` in
+  `tests/unit/adapters/test_research.py`, failing exactly
+  `test_read_timeout_raises_research_unavailable_with_a_distinct_message` on
+  the new `assert "Request timed out." in str(excinfo.value)` line — the copy
+  was discarded afterward, `research.py` itself was never touched. The
+  assertion targets the `ReadTimeout`/`APITimeoutError` case specifically
+  because that error's `str()` is the fixed SDK text `"Request timed out."`
+  (confirmed by reading `parallel/_exceptions.py` and `_base_client.py`), so
+  the mutation and the fixture are decoupled from any freeform message content
+  a mock transport happens to supply.
+
+  Full-suite `pytest -q` on the unmutated tree shows 2 unrelated failures in
+  `tests/unit/application/test_answer_project_question.py`, mid-edit under a
+  concurrent CP-040 run (git status shows that file and its test modified,
+  neither touched here); scoped to this checkpoint's two owned files:
+  `pytest tests/unit/adapters/test_research.py tests/unit/test_error_boundaries.py`
+  → 15 passed.
+
+  **Reviewed 2026-08-30 — PASS, zero blocking findings.** Both halves
+  re-verified independently rather than taken on the implementer's record.
+
+  *D34, mutation reproduced.* Fresh `rsync` copy (`.venv` symlinked,
+  `PYTHONDONTWRITEBYTECODE=1`, no `__pycache__` present), baseline 10 passed.
+  Replacing `research.py:104`'s whole f-string with the literal
+  `"Parallel Task API request failed: boom"` gives `1 failed, 9 passed`,
+  failing exactly
+  `test_read_timeout_raises_research_unavailable_with_a_distinct_message` at
+  the new line 155. The three pre-existing assertions stayed green under that
+  mutation — the asymmetry D34 named, now closed. Copy discarded;
+  `git diff --exit-code src/clearcut/adapters/parallel/research.py` is clean,
+  so the criterion that production code needing no change did not get one
+  holds literally.
+
+  *The assertion is not tautological.* Checked against the SDK rather than
+  assumed: `parallel/_exceptions.py:74-76` defines
+  `APITimeoutError.__init__(self, request)` hardcoding
+  `message="Request timed out."`, and `_base_client.py:1025` raises it as
+  `APITimeoutError(request=request) from err`. The httpx text the fixture
+  supplies (`httpx.ReadTimeout("timed out")`) is therefore only ever the
+  `__cause__` and never enters the message. The asserted string is the SDK's
+  own, reaching the exception solely through the adapter's `{error}`
+  interpolation, so it pins the adapter's behaviour and not the fixture's
+  literal.
+
+  *D35, docstring accurate and the test still bites.* Every clause checked
+  against `pkgutil.walk_packages`'s source: `yield info` precedes
+  `if info.ispkg: __import__(info.name)`, so the yield does come first and
+  only packages are imported; `onerror=None` swallows that `ImportError` and
+  skips the `else:` branch, which is the one holding the recursive
+  `yield from walk_packages(...)`. So the suppression really is recursion into
+  a broken package's children, exactly as written. CP-038's loud-failure
+  mutation re-run: wrapping `_adapter_modules`'s `importlib.import_module` in
+  `try/except ImportError: pass` gives `DID NOT RAISE ImportError`, so the
+  behaviour is unchanged and the property is still pinned.
+
+  *Nothing weakened.* Diff is +12/-5; the only removed lines are the five old
+  docstring lines. `def test_` counts unchanged (10 and 5), assertion count
+  +1 in `test_research.py` and unchanged in `test_error_boundaries.py`, no new
+  test file. No `src/` file from this checkpoint changed; the two modified
+  `application/` files belong to the concurrent CP-039 and CP-040.
+
+  Gates on the shared tree: `pytest -q` 318 passed (the two failures the
+  implementer saw mid-edit have since cleared as the siblings landed),
+  `mypy src tests infra` clean over 71 files, `ruff check .` passed,
+  `ruff format --check .` 97 files already formatted. `WRITING.md` was not
+  run against the docstrings: §0 scopes it to `docs/`, `README.md`, commit and
+  PR text and shipped narrative, and the diff touches none of those.
+
+  One thing considered and deliberately not raised as a finding: "a broken leaf
+  module's name always reaches `_adapter_modules`'s own import" is not literally
+  universal, since a leaf under a *broken package* is never yielded at all. It
+  is not a defect, because that package itself is yielded and fails loudly
+  first, and the docstring's own next clause names precisely that suppression.
+  Recorded so a later reader does not mistake it for something the review
+  missed.
+
+### CP-038 — Make the two error-boundary guards fail on what they were written to catch
+- Status: DONE
+- Attempts: 0/3
+- Depth: 0
+- Layer: tests
+- Depends on: -
+- Acceptance:
+  - [x] The bare-`except` guard fails on `except:` with no type at all. Proven
+        by putting one into an `application/` module, watching the guard name
+        that file, and reverting — today it passes green, which is the defect.
+  - [x] It fails on `except (Exception,)` and on `except (ValueError, Exception)`,
+        so wrapping the name in a tuple is no longer a way around it. Each is
+        its own mutation, run and reverted.
+  - [x] It fails on `except BaseException`, which is the same evasion one name
+        over and costs one entry in the same predicate.
+  - [x] Failure path, and the one that matters most: the widened guard still
+        passes on the narrow catches CP-034 installed. `except EnrichmentMissing:`
+        in `answer_project_question.py` stays green, and so does a tuple of two
+        domain errors — asserted directly, not inferred from the suite being
+        green, because a guard that bans the fix it protects is broken rather
+        than strict.
+  - [x] The adapter contract walk fails loudly when a module under
+        `src/clearcut/adapters/` cannot be imported, instead of dropping it from
+        the walk and passing. Proven by a scratch adapter module with a broken
+        import: red before the fix is reverted, and the message names the
+        module.
+  - [x] The walk asserts it actually inspected something, by membership and
+        never by count: a new adapter package — CP-029 is about to add
+        `adapters/http/` — must not turn this test red. A hard-coded module or
+        class count fails this criterion even if it passes today.
+  - [x] No file outside `tests/unit/test_error_boundaries.py` changes. No
+        `src/` edit, no new test file, no new helper module: this is two
+        predicates gaining cases (§4).
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: tests/unit/test_error_boundaries.py
+- Notes: D29 has the reasoning and the measurements, both from CP-034's
+  reviewer and both proven by mutation rather than by reading.
+
+  **Implementer, 2026-08-30.** Both guards widened; five tests in the file now
+  (was 2). Every mutation below ran on an `rsync` copy at
+  `/tmp/clearcut-scratch-cp038-h1`, `__pycache__` cleared,
+  `PYTHONDONTWRITEBYTECODE=1`, never in the working tree — CP-026, CP-035 and
+  CP-037 were editing `application/` and `adapters/` files concurrently.
+
+  *Guard 1, the AST predicate.* Extracted `_is_disallowed_except(node)` from
+  the inline check and widened it: `node.type is None` (bare), `ast.Name` in
+  `{"Exception", "BaseException"}`, or an `ast.Tuple` containing either name
+  anywhere in its elements. Before widening, all four forms —
+  `except:`, `except (Exception,)`, `except (ValueError, Exception)`,
+  `except BaseException:` — spliced one at a time into
+  `answer_project_question.py`'s existing `except EnrichmentMissing:` site,
+  left `test_no_application_module_catches_a_bare_or_broad_exception` green
+  (2 passed each run): the defect, reproduced four ways. After widening, the
+  same four mutations each fail exactly that test, naming the file
+  (`AssertionError: assert ['src/clearcut/application/answer_project_question.py'] == []`),
+  reverted, back to green. The narrow-catch criterion is asserted directly, not
+  inferred: `test_bare_or_broad_except_guard_still_allows_narrow_domain_error_catches`
+  parses `except EnrichmentMissing:` and `except (RecordNotFound,
+  SourceUnavailable):` from a literal source string (no file touched) and
+  asserts neither is flagged — CP-026's reviewer independently relies on this
+  exact tuple staying legal (line 1490 above), unprompted confirmation the
+  predicate is right, not just non-crashing.
+
+  *Guard 2, the contract walk — one finding worth flagging before the two
+  fixes.* The literal premise ("an adapter that fails to import ... vanishes
+  ... and it goes green") does not reproduce against the code as shipped by
+  CP-034. `_adapter_modules()` already does its own `importlib.import_module`
+  on every name `pkgutil.walk_packages` yields, outside and independent of
+  that function's internal `onerror=None` swallowing — so today, a broken
+  adapter module already fails loud. Verified three ways on the copy, each
+  with a fresh scratch package, `__pycache__` cleared between runs: a broken
+  top-level subpackage (`adapters/scratch_broken/__init__.py` raising
+  `ImportError`) → 1 failed, message `ImportError: scratch_broken
+  intentionally fails to import`, traceback pointing at the exact file; a
+  broken leaf module inside a working subpackage
+  (`adapters/scratch_pkg2/broken_leaf.py`) → same; a broken top-level leaf
+  module importing a nonexistent dependency (`import
+  totally_nonexistent_dependency_xyz`) → `ModuleNotFoundError`, same loud
+  failure. All three left the file's other test (the AST guard) passing —
+  1 failed, 1 passed each run — so the suite fails specifically on the broken
+  entry, not wholesale. Checked the box on the evidence, not on a code change
+  for a defect that isn't there — no `onerror=` added to
+  `pkgutil.walk_packages`.
+
+  What the walk was missing, and did get a real fix: it never asserted it
+  found anything. `unclassified == []` also holds on an empty discovery set,
+  which is the `parents[1]`-shaped bug (D29, and CP-034's own history two
+  paragraphs down) one layer up — a wrong `adapters_package.__path__` or a
+  narrowed `_adapter_modules()` would pass silently. Added
+  `test_adapter_exception_walk_is_not_vacuously_empty`, asserting
+  `_KNOWN_ADAPTER_EXCEPTIONS <= found` against three real class names, one per
+  domain-error base (`TrackerItemNotFound`, `NoGroundedSource`,
+  `NotificationFailed`) — membership, not `len(...)`, so CP-029 landing
+  `adapters/http/` next to these three cannot turn it red. Proven non-vacuous
+  the same way CP-034 proved its own contract test: appended a fourth,
+  nonexistent name to the known set, ran, watched it fail
+  (`AssertionError`, extra item `'TotallyFakeAdapterError'`), reverted.
+
+  Also added a permanent regression test for the loud-failure property itself,
+  since it currently holds by an accident of `_adapter_modules()`'s shape
+  (the redundant re-import) rather than by a property anyone asserts —
+  exactly the kind of guard a later "simplification" could quietly break.
+  Parameterized `_adapter_modules(package: ModuleType = adapters_package)`
+  (default preserves every existing call site) and added
+  `test_adapter_walk_fails_loudly_on_an_unimportable_module`, which builds a
+  throwaway package under `tmp_path`, prepends it to `sys.path` via
+  `monkeypatch`, and asserts `_adapter_modules(fake_package)` raises
+  `ImportError` naming the broken file. Proven non-vacuous by mutating
+  `_adapter_modules` itself to the shape D29 describes — a `for` loop
+  swallowing `ImportError` per module instead of the list comprehension's
+  unguarded re-import — and watching this exact test fail
+  (`Failed: DID NOT RAISE ImportError`); reverted. No `tmp_path` fixture or
+  real adapter file was touched to get there, so nothing here risked the
+  concurrent adapter work in flight.
+
+  Both new tests needed one real code decision: `_adapter_modules()` gained a
+  default-valued `package` parameter so the loud-failure test could hand it a
+  synthetic package. That is the only signature change in the file; `_adapter_exception_classes()`
+  and every real caller are unaffected.
+
+  **Gates.** `env -u PYTHONPATH pytest -q` → 309 passed, 0 failed (the base
+  269 plus what CP-026/CP-035/CP-037 landed concurrently). `mypy src tests
+  infra` → no issues in 71 source files. `ruff check .` → all checks passed.
+  `ruff format --check .` → 97 files already formatted. `git diff --stat`
+  confirms one file: `tests/unit/test_error_boundaries.py`.
+
+  Renamed `_application_files_catching_bare_exception` →
+  `_application_files_catching_disallowed_except` and its test to
+  `test_no_application_module_catches_a_bare_or_broad_exception` — the old
+  names undersold what the widened predicate now catches. Both are internal
+  to this file; nothing outside it references them.
+
+  Why this is worth a checkpoint eight days out, when it changes no behaviour:
+  the two guards are what CP-034 left behind to keep its ruling true after the
+  turn ended, and each of them currently reports green on the exact failure it
+  was written to catch. CP-025's `resolve_finding.py` has no behavioural
+  backstop of its own, so for `application/` the AST guard is the only one.
+  This is the same failure mode CP-034's implementer caught in this very file
+  by mutation — the `parents[1]` bug that made the glob match nothing — one
+  layer up.
+
+  Two guards in one block, which the template treats as a smell. The argument
+  is the same file arithmetic CP-037 made: both are edits to two functions in
+  one file, and a second checkpoint on it would serialize for no gain. The seam
+  is clean if a reviewer disagrees — the AST predicate is one, the walk is the
+  other.
+
+  It does not touch `tests/unit/test_layer_boundaries.py`. CP-034 deliberately
+  kept these guards out of that file so CP-030, CP-031 and CP-035 could extend
+  it without collision, and that separation is what makes this checkpoint
+  dispatchable while three others are in flight. Keep it.
+
+  **Reviewer, 2026-08-30 — PASS, attempt 0/3, zero blocking findings.**
+  Everything below was re-run rather than read, on an `rsync` copy at
+  `/tmp/cc-rev-cp038` (`.git`/`.venv`/`__pycache__` excluded,
+  `PYTHONDONTWRITEBYTECODE=1`, `env -u PYTHONPATH`, main repo's `.venv`,
+  `__pycache__` cleared between every run). The copy resolved
+  `clearcut.adapters.__path__` to `/private/tmp/cc-rev-cp038/...`, confirmed
+  before the first mutation, so nothing here touched the working tree while
+  CP-026 and CP-035 were in flight. Every mutation was reverted and the copy
+  `diff -r`-verified identical to the working tree afterwards.
+
+  *The central question — guard 2's premise — is settled, and the implementer
+  was right.* D29's claim that a broken adapter module vanishes from the walk
+  and the test goes green **does not reproduce**, and the reason is structural
+  rather than incidental. `pkgutil.walk_packages` executes `yield info` before
+  the `try: __import__(info.name) ... except ImportError:` whose `onerror=None`
+  swallows, and it only ever imports entries where `info.ispkg` is true. So a
+  broken module's name always reaches `_adapter_modules`'s own unguarded
+  `importlib.import_module`, and what the swallow suppresses is recursion into
+  a broken sub-package's children, never the broken module itself. Reproduced
+  four ways, each a fresh scratch package under `src/clearcut/adapters/`:
+  a broken top-level subpackage (`scratch_broken/__init__.py` raising
+  `ImportError`) → 2 failed, 3 passed, `ImportError: scratch_broken
+  intentionally fails to import`, traceback naming the file; a broken leaf
+  inside a working subpackage (`scratch_pkg2/broken_leaf.py`) → same shape; a
+  broken top-level leaf importing a nonexistent dependency →
+  `ModuleNotFoundError`, same; and the hardest form of the premise, a broken
+  package *hiding a misclassified child* (`scratch_pkg3/__init__.py` raising,
+  `scratch_pkg3/hidden.py` defining a bare `Exception` subclass) → still red at
+  the parent. No silent pass exists on any of the four.
+
+  So the implementer refusing to add `onerror=` was the correct call, not a
+  skipped one: no failing test justified the change, and §5 forbids production
+  code — or gate code — that no test demands. Ticking that box on measured
+  evidence instead is the harder and better judgement, and the record it left
+  is why this review could check it in ten minutes rather than re-derive it.
+
+  *And the hole D29 was reaching for got closed anyway, by the right test.*
+  Mutating `_adapter_modules` into the shape D29 describes (a `for` loop with
+  `except ImportError: continue` around the re-import) and re-running case one:
+  `test_every_adapter_exception_subclasses_exactly_one_domain_error_type` and
+  `test_adapter_exception_walk_is_not_vacuously_empty` both go **green** with a
+  broken adapter present — D29's vacuity, exactly — and the only failure is the
+  new `test_adapter_walk_fails_loudly_on_an_unimportable_module`
+  (`Failed: DID NOT RAISE ImportError`). The property was holding by an
+  accident of shape; it is now asserted. That is the checkpoint's real value.
+
+  *Guard 1, verified both directions.* Each of `except:`, `except (Exception,)`,
+  `except (ValueError, Exception)` and `except BaseException:` spliced one at a
+  time into `answer_project_question.py`'s `except EnrichmentMissing:` site →
+  each fails exactly
+  `test_no_application_module_catches_a_bare_or_broad_exception`
+  (`AssertionError: assert ['src/clearcut/application/answer_project_question.py']
+  == []`), 1 failed / 4 passed, reverted to 5 passed each time. Then the old and
+  new predicates were run side by side over nineteen handler forms: the old one
+  missed five of the seven broad forms (`except:`, both tuples, `BaseException`
+  bare and `as e`), the new one catches all seven, and **all twelve narrow forms
+  stayed legal** — `RecordNotFound`, `SourceUnavailable`, `EnrichmentMissing`,
+  the two- and three-element domain tuples, `as exc`, the named adapter errors
+  `TrackerItemNotFound` / `NoGroundedSource` / `NotificationFailed` /
+  `ResearchUnavailable`, and the dotted `errors.RecordNotFound` forms. Zero
+  mismatches. The widening is strictly wider, which is the criterion that
+  mattered. CP-026's and CP-037's current catches are covered by the same run:
+  the only `except` sites in `application/` are `answer_project_question.py`
+  and CP-026's `analyze_script.py`, all three `except EnrichmentMissing:`.
+
+  *Membership, not count, confirmed against the future.* No `len(`, no `== 3`
+  anywhere in the file; the assertion is `_KNOWN_ADAPTER_EXCEPTIONS <= found`.
+  Simulated CP-029 landing `adapters/http/` with a correctly classified
+  `RouteUnavailable(SourceUnavailable)` → 5 passed, still green. Re-run with the
+  same class misclassified as a bare `Exception` → red with
+  `assert ['RouteUnavailable'] == []`. It tolerates growth without tolerating
+  regression, which is the whole of D29's constraint.
+
+  *Every new test proven non-hollow by mutation, independently of the
+  implementer's own runs.* Predicate widened carelessly to flag any tuple →
+  `test_bare_or_broad_except_guard_still_allows_narrow_domain_error_catches`
+  fails (`assert not True`). Discovery narrowed to empty (`_adapter_modules()[:0]`,
+  the `parents[1]`-shaped bug) →
+  `test_adapter_exception_walk_is_not_vacuously_empty` fails
+  (`assert {...} <= set()`). Re-import made to swallow → the loud-failure test
+  fails. Three tests, three distinct mutations, three distinct failures.
+
+  *Scope and §4.* `git diff` names one file for this checkpoint,
+  `tests/unit/test_error_boundaries.py`. The other working-tree changes are
+  CP-035's (`httpx` in `test_layer_boundaries.py`, the webhook and research
+  adapters) and CP-026's untracked `analyze_script.py` — none of them CP-038's.
+  The one signature change, `_adapter_modules(package: ModuleType =
+  adapters_package)`, has two callers passing two different arguments, so it is
+  not a parameter nobody passes; no port, no interface, no config, nothing from
+  §4. No secrets. The diff touches no `docs/` or `README.md`, so `WRITING.md`
+  does not apply to it.
+
+  **Gates, whole tree at hand-off.** `env -u PYTHONPATH .venv/bin/pytest -q` →
+  311 passed. `mypy src tests infra` → no issues in 71 source files.
+  `ruff check .` → all checks passed. `ruff format --check .` → 97 files already
+  formatted.
+
+  *One non-blocking finding, for the leader.* The docstring of
+  `test_adapter_walk_fails_loudly_on_an_unimportable_module`
+  (`test_error_boundaries.py:65-69`) says `pkgutil.walk_packages` "swallows a
+  package's `ImportError` and silently drops it from the walk". Measured above,
+  that is not what happens: the `ModuleInfo` is yielded before the swallow, and
+  only recursion into a broken sub-package's children is skipped. The test's own
+  fixture is a leaf module (`broken.py`), which `walk_packages` never imports at
+  all, so the sentence describes a mechanism that test does not exercise. The
+  test is correct and the property it pins is real — only the explanation is
+  wrong, and it is wrong about the exact subtlety this checkpoint spent a turn
+  establishing, so the next reader could re-open D29's premise from it. One
+  sentence, no behaviour change; deferred rather than blocking because no
+  acceptance criterion names it and the gate it documents works.
+
+### CP-026 — Run the analysis pipeline end to end over its seven ports
+- Status: DONE
+- Attempts: 1/3
+- Depth: 0
+- Layer: application
+- Depends on: CP-018, CP-019, CP-021, CP-022, CP-034, CP-036
+- Acceptance:
+  - [x] `application/analyze_script.py` declares
+        `AnalyzeScript(ingestion, extractor, grounding, research, lore,
+        tracker, continuity)` with one `execute` entry point returning an
+        `AnalysisReport` carrying the script, the findings with their
+        citations, and the tracker items — the payload SDD §4.1 step 8 says the
+        SPA renders without a second call.
+  - [x] The order of SDD §4.1 is proven, not assumed: fakes record their calls
+        and a test asserts the sequence parse, extract, ground/research/
+        continuity per finding, `lore.index`, `tracker.save`.
+  - [x] `extract` is called **once** with every scene. Batching into eights
+        belongs to the adapter that knows the API's per-call limit — CP-007's
+        `_BATCH_SIZE` — and duplicating it here would give one rule two owners.
+  - [x] Deduped findings are renumbered `EVT-001`, `EVT-002`, … in
+        first-appearance order, discarding the extractor's placeholder UUID
+        (D13). A test asserts the ids and that the same input yields the same
+        ids twice, since CP-028's carry-forward joins on them.
+  - [x] The confidence rule is applied through CP-021's function, not
+        reimplemented: MEDIUM raises the risk, LOW sets `needs_review` on the
+        item. One test per branch at the pipeline level, over the table CP-021
+        already covers.
+  - [x] `LegalGrounding`'s citations land on the finding; `RightsResearch`'s
+        holder, contact, and litigation posture land on the tracker item, not
+        on the finding (SDD §2 puts those three fields on `TrackerItem`).
+  - [x] CONTINUITY and POLICY findings skip the `RightsResearch` lookup
+        entirely — a recording fake asserts zero `find` calls for them
+        (SDD §4.1 step 5). A bible contradiction has no rights holder to
+        resolve, and researching one burns a Parallel task per scene.
+  - [x] Every scene is written to the LoreStore (step 6), and every finding
+        becomes a `TrackerItem` at BLOCKED with `version = 1` and the run's
+        `project_id` (step 7, D24). A test asserts the saved items carry it,
+        since it is what scopes `latest_for_project`'s read.
+  - [x] Failure path: one enrichment failure does not fail the run. The catch
+        is `except EnrichmentMissing` from `clearcut.domain.errors` — by name,
+        never a bare `Exception` (D23) — and `NoGroundedSource` or
+        `NoRightsHolderFound` leaves that finding in the report without
+        citations or contact, the other findings unaffected. One unresolvable
+        rights holder must not lose a 200-scene analysis.
+  - [x] Failure path: a `SourceUnavailable` is **not** caught. A `TypeError`
+        raised from a fake port propagates too, asserted directly — the exact
+        mutant CP-027's reviewer showed a bare `except Exception` swallowing.
+        A Parallel outage that quietly yields a report with no rights holder on
+        any finding is worse than a 502 that says so.
+  - [x] Failure path: `ingestion.parse` raising propagates unchanged, because
+        there is nothing to analyze and a partial report would be a lie.
+  - [x] Unit tests use hand-written fakes for all seven ports. No network, no
+        clock read — `now` is an argument.
+  - [x] Port methods are called positionally, per D15.
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: src/clearcut/application/analyze_script.py,
+  tests/unit/application/test_analyze_script.py
+- Notes: The centrepiece, and the highest-risk checkpoint of the sixteen.
+  Deliberately reduced before dispatch: dedupe left for CP-019, the confidence
+  table for CP-021, and the batching rule left where CP-007 already owns it.
+  What remains is orchestration and the two rules only orchestration can hold —
+  id assignment and which lookups each category gets.
+
+  Seven constructor parameters against §4's soft guide of four. SDD §3 names
+  six verbatim and D11 adds the seventh; the guide yields to the spec, the same
+  way it did for `Script` and `RightsClaim`. If a reviewer wants that argued
+  rather than asserted: the alternative is a parameter object grouping ports,
+  which is a service locator wearing a dataclass, and §4 bans those by name.
+
+  **Two dependencies added on 2026-08-30, and they are why this checkpoint is
+  no longer next.** CP-034 (D23) gives `application/` a name it may legally
+  catch: without it, the only precedent in the repo is CP-027's bare
+  `except Exception`, which measurably swallows `TypeError`, `AttributeError`
+  and `ZeroDivisionError`, and this checkpoint would have reproduced it twice.
+  CP-036 (D24) puts `project_id` on `TrackerItem` before the `tracker.save`
+  call site here exists; landing it afterwards would reopen this module, its
+  tests, and the positional-call test D15 requires.
+
+  Both were ruled before dispatch rather than after review precisely because
+  this is the highest-risk checkpoint of the batch, and an unnamed convention
+  is the kind of thing that burns an attempt on a question the implementer
+  cannot legally settle.
+
+  **Implemented.** RED verified before any `src/` edit: `pytest
+  tests/unit/application/test_analyze_script.py` failed collection with
+  `ModuleNotFoundError: No module named 'clearcut.application.analyze_script'`
+  before the module existed. 21 tests now cover it; the base suite grew from
+  269 to 307 with two other checkpoints landing on the same tree concurrently.
+
+  Two calls the criteria named ("ground/research/continuity per finding") and
+  one the criteria left silent needed a resolution the acceptance text alone
+  does not fully pin, recorded here rather than guessed past silently:
+
+  - **Continuity findings join the same per-finding enrichment loop, not a
+    separate one.** The only way "CONTINUITY and POLICY findings skip the
+    `RightsResearch` lookup entirely" is a meaningful thing to assert is if
+    those findings are already inside the loop that calls `research.find` for
+    everything else. So `_continuity_findings` runs first, once per scene
+    (`lore.search` then `continuity.check`, matching SDD §4.1 step 5's own
+    per-scene wording), its results are merged with the extractor's raw
+    findings, and the merged list goes through `dedupe_findings` and the
+    ground/research loop together. `LegalGrounding` is **not** named as
+    skipped for CONTINUITY/POLICY anywhere in the criteria, so it still runs
+    for them; only `research.find` is conditioned on
+    `category not in {CONTINUITY, POLICY}`.
+  - **`lore.search` is called once per scene, to retrieve the facts
+    `ContinuityCheck.check` needs.** Not named in the ordered-sequence
+    criterion's five stage names, but there is no other port method that
+    could produce `facts: list[BibleFact]` for CP-022's
+    `check(scene, facts)` — `LoreStore.search` is what `AnswerProjectQuestion`
+    already uses for the identical purpose. Read the ordering criterion as
+    pinning relative order among the named stages, not as an exhaustive call
+    log excluding everything else, since a literal reading would make
+    `ContinuityCheck` uncallable.
+  - **`item_id == finding_id`.** No criterion or SDD §2 line gives
+    `TrackerItem.item_id` its own sequence, and inventing one is exactly the
+    speculative generality AGENT.md §4 forbids without a caller demanding it.
+    One finding produces exactly one tracker item at this checkpoint, so the
+    same stable, cross-version id (D13) addresses both.
+
+  **One call SDD §4.1 implies but no criterion in this block names:
+  `tracker.record_script`.** Step 4.3 (`EvaluateDelta`, CP-028) reads
+  `tracker.latest_script(project_id)` to diff against the previous version,
+  which means *something* must call `record_script` first — plausibly this
+  checkpoint, on the very first analysis of a project. But every criterion
+  here is explicit down to the method name, the ordered-sequence criterion
+  names five stages ending at `tracker.save` with no `record_script`, and
+  adding an unrequested call would fail that test's exact ordering assertion
+  as easily as satisfy some other one. Left out, flagged here rather than
+  guessed into `src/`: CP-028 depends on CP-020 and this checkpoint, and its
+  own "no stored previous version" failure path may already be the intended
+  answer for how a project's first version becomes visible to it. If not,
+  this is one call and one criterion, not a redesign.
+
+  Verified by mutation on an `rsync` copy at `/tmp/cp026-scratch`
+  (`__pycache__` cleared, `PYTHONDONTWRITEBYTECODE=1`), never in the working
+  tree:
+
+  - Swapping `tracker.save` before `lore.index` failed exactly
+    `test_pipeline_runs_ports_in_sdd_order` (`assert 7 < 6`), nothing else.
+  - Replacing `dedupe_findings(...)` with a pass-through that keeps every raw
+    finding failed exactly
+    `test_findings_naming_the_same_asset_across_scenes_collapse_into_one_tracker_item`
+    (`assert 2 == 1`), nothing else.
+  - Making `_resolve` always return `(finding.risk_level, False)` failed
+    exactly `test_medium_confidence_raises_risk_one_step` and
+    `test_low_confidence_sets_needs_review_and_leaves_risk_unchanged`,
+    nothing else.
+
+  Each mutation killed a distinct named test and no other; the full suite was
+  otherwise green on every mutant, so nothing else in the 21 tests happens to
+  cover the same ground redundantly.
+
+  Gates on the real tree: `pytest -q` 307 passed; `mypy src tests infra`
+  Success (71 files); `ruff check .` and `ruff format --check .` clean.
+
+  **Review 1/3 — CHANGES_REQUESTED, one blocking finding.** Gates reproduced
+  independently: `pytest -q` 307 passed (21 in this file), `mypy src tests
+  infra` Success (71 files), `ruff check .` and `ruff format --check .` clean.
+  Twenty mutations run on an `rsync` copy under `.mutation-review/`, cleared of
+  `__pycache__` with `PYTHONDONTWRITEBYTECODE=1`, never in the working tree.
+
+  BLOCKING — `tests/unit/application/test_analyze_script.py` — the criterion
+  "a `SourceUnavailable` is **not** caught" is checked but nothing proves it.
+  Widening either catch to `except (EnrichmentMissing, SourceUnavailable)` —
+  `analyze_script.py:210` (`_claim_for`) or `:198` (`_citations_for`) — leaves
+  all 307 tests green. Both mutants survive. The `TypeError` test kills only
+  the bare-`except Exception` mutant, which CP-034's AST guard already kills
+  on its own, so that criterion's second sentence is doubly covered while its
+  first is not covered at all. This is not a contrived mutant: `SourceUnavailable`
+  and `NoRightsHolderFound` both read as "research returned no holder", and
+  CP-038's in-flight guard asserts by name that
+  `except (RecordNotFound, SourceUnavailable)` stays legal — so no structural
+  gate will ever see this. An outage silently degraded into a report with no
+  rights holder on any finding is exactly what this block's own rationale says
+  is worse than a 502. Must change: a test raising
+  `clearcut.domain.errors.SourceUnavailable` from the `_Research` fake and
+  asserting it propagates out of `execute`, and the same for `_Grounding`. No
+  `src/` change — the behaviour is already right, only unproven.
+
+  The rest verified and accepted.
+
+  THE ORDER is asserted and non-vacuous. The three recorded kills reproduce
+  exactly, and two further mutations kill only the ordering test: moving
+  `_citations_for` after `_claim_for` fails `test_pipeline_runs_ports_in_sdd_order`
+  alone, and replacing `_continuity_findings` with `[]` fails it plus
+  `test_continuity_findings_skip_the_rights_research_lookup`. Eleven more
+  mutations each died on a named test — dropping the CONTINUITY/POLICY research
+  skip, indexing only the first scene, calling `extract` per scene, calling a
+  port by keyword, `CLEARED` for `BLOCKED`, `version = 2`, dropping
+  `project_id`, dropping the citations, dropping the claim fields.
+
+  D13 holds. `finding_id = f"EVT-{index:03d}"` is minted in `_enrich` after
+  dedupe; `rg 'uuid|random|datetime'` over the module returns nothing, so the
+  counter is the only id source. Reverting it to `uuid4` kills both
+  `test_deduped_findings_get_sequential_evt_ids_in_first_appearance_order` and
+  `test_the_same_input_yields_the_same_ids_across_two_runs`, which is what
+  proves the stability test is not hollow. CP-028's carry-forward join has
+  something real to join on.
+
+  The three judgment calls, ruled — all three defensible, and right to have
+  been recorded rather than guessed past.
+
+  (a) Continuity findings merging into the loop before dedupe: **correct.**
+  SDD §4.1 cannot be followed literally here — step 5 puts the check inside a
+  loop over deduped findings while describing it per *scene*, and step 3 calls
+  it "the per-scene continuity check". The implementer's reading is the only
+  one under which SDD's own closing "These bible findings skip the
+  RightsResearch lookup" and this block's matching criterion assert anything:
+  a finding produced after the enrichment loop has nothing to skip. Merging
+  before dedupe also collapses two scenes contradicting the same fact into one
+  tracker item, which is what step 4 asks for, and `dedupe_findings` keys on
+  `(category, normalized raw_text)` so a CONTINUITY finding can never merge
+  with one of the six IP categories.
+
+  (b) `lore.search` once per scene: **correct,** and barely a judgment call.
+  SDD §4.1 step 5 names it verbatim ("`LoreStore` retrieves the nearest bible
+  facts for the scene") and `ContinuityCheck.check(scene, facts)`
+  (`ports.py:131`, frozen by D11) has no other source for `facts`. D11 rejects
+  the alternative by name: an extractor adapter calling `LoreStore` itself
+  "puts orchestration inside an adapter and breaks AGENT.md §2 rule 3". Read
+  as an exhaustive call log the ordering criterion would make the seventh port
+  uncallable, which cannot be what it meant. `_LORE_SEARCH_LIMIT` as a module
+  constant rather than constructor config is right per §4.
+
+  (c) `item_id == finding_id`: **correct.** SDD §2 specifies `finding_id` down
+  to "EVT-NNN, sequential per project, assigned at first detection and stable
+  across script versions" and lists `item_id` with no format, no source and no
+  stability property — so nothing to implement, and §4 forbids inventing one
+  without a caller. It is also the reading that works downstream: SDD §3 makes
+  the tracker "a ReplacingMergeTree keyed by `item_id`", so a carried-forward
+  v2 row collapses onto its v1 row for free, where a separate sequence would
+  need a lookup the SDD never describes. A mutation giving `item_id` its own
+  prefix survives the suite, which is the expected result when no criterion
+  names it, not a coverage hole.
+
+  §2 holds: the module imports `dataclasses`, `application.ports`,
+  `application.risk_rules` and `domain/` only — no third-party, no adapter;
+  `test_layer_boundaries.py` and `test_error_boundaries.py` green. §5 holds:
+  seven hand-written fakes, one per collaborator, `rg 'unittest|mock|patch'`
+  matching only the word in the docstring, and the D3 port bindings are
+  annotated assignments preceding every `isinstance`. §4 holds: the seven
+  constructor parameters are argued from SDD §3 and D11 rather than asserted,
+  and the parameter object the guide would suggest is the service locator §4
+  bans by name. No secrets in the module or its fixtures.
+
+  NON-BLOCKING, for the leader — none of these send the checkpoint back:
+
+  - `TrackerStore.record_script` is never called from `src/` (only declared in
+    `ports.py:115` and implemented in `adapters/clickhouse/tracker.py:165`).
+    The flagged gap is real and the reasoning for leaving it out is right: all
+    fifteen criteria here are explicit down to the method name and the ordered
+    sequence ends at `tracker.save`, so adding the call would have failed the
+    ordering test as readily as satisfied anything. Needs a ruling before
+    CP-028 starts, since `latest_script` has no writer.
+  - `LegalGrounding.ground` runs for CONTINUITY and POLICY findings, sending
+    the legal corpus a query like `"CONTINUITY clearance: The mural was already
+    destroyed in scene 3."`. The implementation is correct as specified — SDD
+    §4.1 step 5 names only RightsResearch as skipped — but the query is
+    semantically empty and costs one Vertex AI Search call per bible
+    contradiction. A spec ruling, not a defect, and cheaper to make before
+    CP-029 wires the real adapter.
+  - `AnalysisReport.script`'s `version`, `gcs_uri` and `jurisdiction_code` are
+    unasserted: replacing `version=version` with `version=99` leaves the suite
+    green. No criterion here names them, so this belongs to whichever
+    checkpoint owns the response payload, not to a second attempt on this one.
+
+  **Round 2 — the one blocking finding, fixed. No `src/` change**, exactly as
+  the review said: `_claim_for` and `_citations_for` were already right, only
+  unproven. Two tests added to
+  `tests/unit/application/test_analyze_script.py`, each raising
+  `clearcut.domain.errors.SourceUnavailable` from the port fake and asserting
+  it propagates out of `execute` uncaught:
+  `test_a_source_unavailable_from_research_propagates_instead_of_being_caught`
+  (`_Research`) and
+  `test_a_source_unavailable_from_grounding_propagates_instead_of_being_caught`
+  (`_Grounding`). Both pass on the real tree unmodified — the fix is proof,
+  not behaviour.
+
+  Re-ran the reviewer's exact two mutations on a fresh `rsync` copy at
+  `/tmp/cp026-scratch` (`__pycache__` cleared each time,
+  `PYTHONDONTWRITEBYTECODE=1`, never the working tree), this time with the
+  two new tests present:
+
+  - Widening `_claim_for`'s catch to
+    `except (EnrichmentMissing, SourceUnavailable)` (`analyze_script.py:210`)
+    now fails exactly
+    `test_a_source_unavailable_from_research_propagates_instead_of_being_caught`
+    — `Failed: DID NOT RAISE SourceUnavailable` — 1 failed, 310 passed.
+    Nothing else broke.
+  - Widening `_citations_for`'s catch the same way (`analyze_script.py:198`)
+    now fails exactly
+    `test_a_source_unavailable_from_grounding_propagates_instead_of_being_caught`
+    — same failure mode — 1 failed, 310 passed. Nothing else broke.
+
+  Both of the reviewer's surviving mutants are now killed, each by its own
+  named test, with no collateral failures — the criterion's first sentence is
+  covered independently of its second.
+
+  Gates on the real tree: `pytest -q` 311 passed; `mypy src tests infra`
+  Success (71 files); `ruff check .` all checks passed; `ruff format --check .`
+  97 files already formatted. (Base grew from 307 to 311 with other
+  checkpoints landing concurrently, plus these 2 new tests — not a regression
+  in this file's own count, which is now 23.)
+
+  Untouched, per the reviewer's instruction: the three NON-BLOCKING items
+  above (`record_script` never called; `LegalGrounding` running for
+  CONTINUITY/POLICY; unasserted script metadata) remain exactly as recorded,
+  routed to the leader.
+
+  **Review 2/3 — PASS.** The one blocking finding is closed, and closed the way
+  the review asked: proof, not behaviour.
+
+  `analyze_script.py` is byte-identical to what round 1 reviewed —
+  `sha256 6eb8d804…`, matching round 1's own `.mutation-review/cp026` scratch
+  copy and four unrelated working-tree copies taken by other reviewers. The
+  complete round-2 diff is one import and two tests: no existing test weakened,
+  no fake altered, no `src/` line touched.
+
+  Both mutants that survived round 1 are dead, each on its own dedicated test,
+  with no collateral, on a fresh `rsync` copy (`__pycache__` cleared,
+  `PYTHONDONTWRITEBYTECODE=1`, never the working tree; scratch baseline 311
+  passed):
+
+  - `_citations_for` widened to `except (EnrichmentMissing, SourceUnavailable)`
+    (`analyze_script.py:198`) → 1 failed, 310 passed, only
+    `test_a_source_unavailable_from_grounding_propagates_instead_of_being_caught`
+    (`Failed: DID NOT RAISE SourceUnavailable`).
+  - `_claim_for` widened the same way (`:210`) → 1 failed, 310 passed, only
+    `test_a_source_unavailable_from_research_propagates_instead_of_being_caught`.
+
+  The two tests assert propagation, not merely that something raised:
+  `pytest.raises(SourceUnavailable)` wraps the `execute` call itself, with no
+  message assertion and no inner `try`, so widening either catch turns them
+  into `DID NOT RAISE` instead of leaving them green. The fakes raise from
+  inside `find` / `ground` after recording the call, so the exception really
+  does cross the catch site, and `SourceUnavailable` is a sibling of
+  `EnrichmentMissing` under `Exception` (`domain/errors.py`), never a subclass.
+  The criterion's first sentence is now covered independently of its second.
+
+  Attempt 1's kills still hold with the two new tests present: `tracker.save`
+  before `lore.index` fails `test_pipeline_runs_ports_in_sdd_order` alone
+  (`assert 7 < 6`), and reverting `finding_id` to `uuid4` fails both
+  `test_deduped_findings_get_sequential_evt_ids_in_first_appearance_order` and
+  `test_the_same_input_yields_the_same_ids_across_two_runs`.
+
+  Gates reproduced independently: `pytest -q` 311 passed; `mypy src tests infra`
+  Success (71 files); `ruff check .` all checks passed; `ruff format --check .`
+  97 files already formatted.
+
+  The three NON-BLOCKING items were not absorbed and remain the leader's:
+  `record_script` is called from no `src/` module (only declared at
+  `ports.py:115`, implemented at `adapters/clickhouse/tracker.py:165`, and
+  stubbed in the test fakes that must satisfy the Protocol); `_citations_for`
+  is still unconditional at `analyze_script.py:183` while only `_claim_for`
+  consults `_NO_RESEARCH_CATEGORIES`, so `LegalGrounding` still runs for
+  CONTINUITY and POLICY; and `version=99` still leaves all 311 tests green, so
+  the script metadata is still unasserted.
+
+### CP-035 — Translate transport failures at the two HTTP adapter boundaries
+- Status: DONE
+- Attempts: 1/3
+- Depth: 0
+- Layer: adapters
+- Depends on: CP-034
+- Acceptance:
+  - [x] `adapters/notify/webhook.py` wraps its `post` so `httpx.TransportError`
+        — the common base of `ConnectError`, `ReadTimeout` and the rest —
+        becomes `NotificationFailed`, which CP-034 placed under
+        `SourceUnavailable`. A test whose `httpx.MockTransport` raises
+        `ConnectError` asserts `NotificationFailed` and asserts no `httpx` type
+        escapes.
+  - [x] `adapters/parallel/research.py` does the same at the call that today
+        catches only `APIStatusError` (`research.py:96`), raising
+        `ResearchUnavailable`. A test raising `httpx.ReadTimeout` from the fake
+        client asserts it.
+  - [x] A transport failure stays distinguishable from a bad response:
+        `NotificationFailed` from a refused connection and `NotificationFailed`
+        from a 500 carry different, self-describing messages, asserted on each.
+        Collapsing both into one opaque error would trade an `httpx` leak for
+        an undiagnosable log line.
+  - [x] `httpx` is added to `FORBIDDEN_APPLICATION_PREFIXES` in
+        `tests/unit/test_layer_boundaries.py`, with a test naming it, so the
+        boundary this checkpoint defends fails loudly when it breaks. §2 rule 2
+        already forbids it; nothing enforced it.
+  - [x] Failure path: a `httpx.TransportError` raised in either adapter is
+        catchable as `SourceUnavailable` alone, with no `httpx` import in the
+        catching test.
+  - [x] The existing non-2xx and blank-URL behaviour is unchanged, proven by
+        the tests CP-024 already has passing untouched.
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: src/clearcut/adapters/notify/webhook.py,
+  src/clearcut/adapters/parallel/research.py,
+  tests/unit/adapters/test_webhook_notifier.py,
+  tests/unit/adapters/test_research.py,
+  tests/unit/test_layer_boundaries.py,
+  tests/unit/adapters/test_error_translation.py
+- Notes: D23's transport half. Separate from CP-034 because it is a different
+  behaviour — CP-034 classifies errors that already exist, this one creates
+  translations that do not — and because it is cuttable in a way CP-034 is not.
+  A refused connection during the demo is an infrastructure failure that a 500
+  also reports; CP-029 cannot be written at all without CP-034.
+
+  It edits `tests/unit/test_layer_boundaries.py`, which CP-030 and CP-031 also
+  extend. It runs before both, so this is an ordering note, not a dependency.
+  If this checkpoint is cut, the `httpx` prefix should ride into CP-031's
+  edit of that file, which already adds `opentelemetry` the same way.
+
+  §4: two `except` clauses inside two existing functions, no new class, no
+  retry policy, no backoff. A retry belongs to whoever proves the demo needs
+  one.
+
+  **`research.py` does not catch `httpx.TransportError` — it cannot, and
+  reading the Parallel SDK's source (`parallel/_base_client.py:1006-1039`)
+  before writing the test, not after a false green, is what surfaced this.**
+  `ParallelRightsResearch` calls `self._client.task_run.create(...)`, and the
+  Parallel SDK's own request loop already wraps every transport failure
+  (`httpx.TimeoutException` on one branch, a bare `except Exception` that
+  covers `httpx.ConnectError` and the rest on the other) into its own
+  `parallel.APITimeoutError` / `parallel.APIConnectionError` before the call
+  returns control to this adapter — confirmed empirically: a `MockTransport`
+  raising `httpx.ReadTimeout` surfaces at `task_run.create` as
+  `parallel.APITimeoutError`, and `httpx.ConnectError` surfaces as
+  `parallel.APIConnectionError` (`APITimeoutError` subclasses
+  `APIConnectionError`). An `except httpx.TransportError` clause at this call
+  site would be unreachable dead code — verified by mutation: adding it and
+  then removing it again produces no change in test outcome, because it was
+  never the thing being caught. The fix instead adds
+  `except APIConnectionError as error: raise ResearchUnavailable(...)`
+  alongside the existing `APIStatusError` catch. This satisfies the
+  checkpoint's acceptance criterion exactly as written — a test whose fake
+  client raises `httpx.ReadTimeout` asserts `ResearchUnavailable` — the
+  checkpoint's "does the same" prose describes the observable behaviour, not
+  the literal exception type, and the literal type is impossible here.
+  `webhook.py` has no wrapping SDK in front of `httpx.Client`, so
+  `except httpx.TransportError` is correct and load-bearing there.
+
+  Both `NotificationFailed` and `ResearchUnavailable` grew from a
+  single-`status_code` constructor to `(message: str, *,
+  status_code: int | None = None)`, keeping `.status_code` for the existing
+  non-2xx callers while letting the transport path supply its own
+  self-describing message instead of a fabricated status code. That ripples
+  into `tests/unit/adapters/test_error_translation.py` (CP-034, not in this
+  checkpoint's original `Files`): its three positional `NotificationFailed(503)`
+  / `ResearchUnavailable(503)` calls still passed at runtime by accident
+  (`Exception.__str__` stringifies a bare int fine) but failed
+  `mypy src tests infra`, which this checkpoint's own gate list runs. Fixed
+  with three one-line keyword-call edits preserving each test's exact
+  assertion; no behaviour in that file changed.
+
+  **Mutation-verified on a disposable `git worktree` copy of `HEAD` with the
+  diff applied** (`__pycache__` cleared, `PYTHONDONTWRITEBYTECODE=1`, `env -u
+  PYTHONPATH`, main repo's `.venv`), never in the working tree: removing
+  `webhook.py`'s `except httpx.TransportError` let `httpx.ConnectError` /
+  `httpx.ReadTimeout` escape raw and failed exactly the 3 new webhook tests;
+  removing `research.py`'s `except APIConnectionError` let
+  `parallel.APIConnectionError` / `APITimeoutError` escape and failed exactly
+  the 3 new research tests; planting `import httpx` at the end of
+  `application/risk_rules.py` failed
+  `test_application_modules_import_no_framework_client_or_adapter`, naming
+  that exact file and `httpx`. Worktree removed afterward; nothing from it
+  touched the real tree.
+
+  A full-repo `ruff check .` / `ruff format --check .` at hand-off shows
+  findings only in `src/clearcut/application/analyze_script.py` and
+  `tests/unit/application/test_analyze_script.py` — untracked files from
+  CP-026, running concurrently, not part of this checkpoint's `Files` and not
+  touched by this diff; the finding count moved between runs as that work
+  landed. `ruff check` / `ruff format --check` scoped to this checkpoint's six
+  files pass clean in isolation, checked directly. `pytest -q` (307 passed at
+  the final run, growing turn to turn as concurrent work lands) and
+  `mypy src tests infra` (clean, 71 source files) are green across the whole
+  tree, including CP-026's files.
+
+  **Reviewer, 2026-08-30 — CHANGES_REQUESTED, attempt 1/3. One blocking
+  finding.** Everything else in this checkpoint verified clean, independently
+  and by mutation on a disposable `git worktree` of `HEAD` carrying only this
+  diff (276 passed there; `__pycache__` cleared, `PYTHONDONTWRITEBYTECODE=1`,
+  `env -u PYTHONPATH`; worktree removed afterward).
+
+  *The central claim about the Parallel SDK is correct, and was re-verified
+  rather than taken on trust.* `parallel/_base_client.py:1006-1039` wraps
+  `self._client.send` in `except httpx.TimeoutException -> APITimeoutError`
+  and `except Exception -> APIConnectionError`. Probing `task_run.create`
+  through a `MockTransport` with all seven `httpx.TransportError` subclasses —
+  `ReadTimeout`, `ConnectError`, `ConnectTimeout`, `WriteError`, `PoolTimeout`,
+  `RemoteProtocolError`, `ProxyError` — every one surfaces as
+  `parallel.APITimeoutError` or `parallel.APIConnectionError`, and
+  `isinstance(escaping, httpx.TransportError)` is `False` for all seven.
+  `APITimeoutError` subclasses `APIConnectionError`, so the single
+  `except APIConnectionError` covers the set. `except httpx.TransportError`
+  there would indeed be dead code. The Notes' reasoning stands as written.
+
+  *Mutations that behaved correctly.* Deleting `webhook.py`'s
+  `except httpx.TransportError` lets raw `httpx.ConnectError` /
+  `httpx.ReadTimeout` escape and fails exactly its 3 new named tests; deleting
+  `research.py`'s `except APIConnectionError` lets `parallel.APIConnectionError`
+  / `APITimeoutError` escape and fails exactly its 3. Planting
+  `import httpx` in `application/risk_rules.py` fails
+  `test_application_modules_import_no_framework_client_or_adapter` naming that
+  exact file; removing `"httpx"` from `FORBIDDEN_APPLICATION_PREFIXES` with the
+  planted import still in place lets the sweep pass again and fails
+  `test_application_guard_rejects_an_httpx_import` — so the prefix is the
+  load-bearing part and its named test is not decorative. The non-2xx
+  `.status_code` still arrives (`== 500`, both adapters, tests untouched), and
+  no call site constructs either error positionally any more.
+
+  *Scope: the `test_error_translation.py` edit is judged legitimate, not
+  creep.* Widening the constructor is authorised by this checkpoint's own
+  criteria, `mypy src tests infra` is in its own gate list, and the ripple was
+  disclosed in Notes rather than hidden. Two of the three edits are mechanical.
+  The third is the blocking finding.
+
+  **BLOCKING —
+  `tests/unit/adapters/test_error_translation.py:88-96`, with
+  `src/clearcut/adapters/notify/webhook.py:41-44` and
+  `src/clearcut/adapters/parallel/research.py:99-102`.** The status-naming half
+  of both messages is now asserted by nothing.
+
+  *What is wrong.* Moving the message out of the constructor and into the
+  `raise` site turned `test_notification_failed_message_still_names_the_status_code`
+  into a tautology: it passes `"webhook responded with status 503"` in and then
+  asserts `"503" in str(error)` — it asserts the literal it just supplied, and
+  can no longer fail for any change to `webhook.py`. Nothing replaced the
+  coverage. Proven, not inferred: rewriting `webhook.py`'s non-2xx message to
+  `"webhook failed"` and `research.py`'s to `"Parallel Task API failed"` — both
+  keeping `status_code=` — leaves the whole suite **276 passed, 0 failed**. The
+  same mutation applied at `HEAD`, where the constructor still formatted the
+  message, fails `test_notification_failed_message_still_names_the_status_code`
+  on `assert '503' in 'webhook failed'`. So this diff removed a working
+  assertion and the Notes' claim that it preserved "each test's exact
+  assertion" is not accurate for that one.
+
+  *Why it blocks, on two independent grounds.* First, this checkpoint's own
+  third criterion asks for "different, self-describing messages, **asserted on
+  each**". The transport message is asserted self-describing
+  (`"connection refused" in str`, `"responded with status" not in str`); the
+  500 message is asserted only to *differ* from it, which two arbitrary
+  constants also satisfy. Half the criterion is unmet. Second, CP-034's
+  archived criterion "no error message loses information: the … status code …
+  is still in its message, asserted for `TrackerItemNotFound` and
+  `NotificationFailed` at minimum" was discharged by exactly this test, and
+  this diff hollowed out its only proof. D27-D29 §4 already ruled that a guard
+  which cannot fail is worse than none because the suite reports it green;
+  this is that class.
+
+  *What must change.* Assert the non-2xx message names its status code against
+  the **adapter's** behaviour, so gutting either f-string fails a test:
+  in `tests/unit/adapters/test_webhook_notifier.py`
+  (`test_non_2xx_response_raises_notification_failed_with_status_code` or a
+  sibling) and in `tests/unit/adapters/test_research.py`
+  (`test_non_2xx_response_raises_research_unavailable_with_status_code` or a
+  sibling), which today assert only `.status_code == 500` and never look at the
+  message. Then either restore real teeth to
+  `test_error_translation.py:88-96` or let those adapter-level tests carry
+  CP-034's criterion and say so there — do not leave a test whose assertion is
+  its own input. Re-run the same mutation afterwards: replacing both non-2xx
+  messages with a constant must fail at least one named test in each file.
+
+  *Non-blocking, fold in while you are in these two functions if you like — it
+  does not on its own send the work back.* The transport path's
+  `status_code is None` is also unasserted: adding `status_code=599` to both
+  transport `raise` sites keeps the suite at 276 passed. The Notes justify the
+  constructor widening precisely as "letting the transport path supply its own
+  self-describing message instead of a fabricated status code", so the one
+  behaviour that justifies the signature change is the one nothing checks.
+
+  *Gates at review time, whole tree:* `pytest -q` 307 passed;
+  `mypy src tests infra` clean, 71 source files; `ruff check .` all checks
+  passed; `ruff format --check .` 97 files already formatted. CP-026's
+  `analyze_script.py` is now clean too, so the ruff caveat in the notes above
+  no longer applies. No `httpx` import anywhere under `src/clearcut/domain/`
+  or `src/clearcut/application/`; no secrets in the diff
+  (`"parallel-test-key"` is the fake the file already used). No `docs/` or
+  `README.md` prose in the diff, so `WRITING.md` does not apply.
+
+  **Implementer, attempt 2 — fixed both findings, test-only.** Took the
+  "let the adapter-level tests carry it" branch the reviewer offered, since
+  `NotificationFailed`/`ResearchUnavailable` now assemble their non-2xx
+  message at the raise site (CP-035's own change), so any direct-construction
+  test in `test_error_translation.py` can only assert the literal string it
+  supplies itself — there is no way to give that test real teeth without
+  routing it through the adapter, which is exactly what the sibling test file
+  already does.
+
+  `tests/unit/adapters/test_webhook_notifier.py::test_non_2xx_response_raises_notification_failed_with_status_code`
+  and `tests/unit/adapters/test_research.py::test_non_2xx_response_raises_research_unavailable_with_status_code`
+  each gained `assert "500" in str(excinfo.value)`, checked against the
+  adapter's own f-string output, not a literal the test supplies. The
+  now-redundant `test_notification_failed_message_still_names_the_status_code`
+  in `test_error_translation.py` is removed and replaced with a comment
+  explaining the asymmetry with `TrackerItemNotFound` (whose constructor still
+  formats its own message, so its sibling test at line 80 keeps real teeth
+  and is untouched) and pointing at the two tests above as where the
+  criterion's proof now lives.
+
+  Fold-in taken: `test_connect_error_raises_notification_failed_with_a_connection_message`
+  (webhook) and `test_read_timeout_raises_research_unavailable_with_a_distinct_message`
+  (research) each gained `assert excinfo.value.status_code is None`, covering
+  the transport path's unasserted default.
+
+  **Both mutations re-run on a disposable filesystem copy of the working tree**
+  (not a `git worktree`, since the tree carried uncommitted changes from this
+  and concurrent checkpoints; `rsync`-copied to `/tmp`, `__pycache__` cleared,
+  `PYTHONDONTWRITEBYTECODE=1`, `env -u PYTHONPATH`, main repo's `.venv`,
+  removed after). Baseline: 306 passed (one fewer than the working tree's 307
+  — the copy predates an in-flight, uncommitted edit to
+  `tests/unit/test_error_boundaries.py` from concurrent CP-038, which is not
+  in this checkpoint's `Files` and was not touched).
+
+  Reviewer's blocking mutation — rewriting `webhook.py`'s non-2xx message to
+  `"webhook failed"` and `research.py`'s to `"Parallel Task API failed"`, both
+  keeping `status_code=` — now fails exactly
+  `test_non_2xx_response_raises_notification_failed_with_status_code` and
+  `test_non_2xx_response_raises_research_unavailable_with_status_code`
+  (`assert '500' in 'webhook failed'`, `assert '500' in 'Parallel Task API
+  failed'`), 2 failed, 304 passed. Reverted, back to green.
+
+  Fold-in mutation — adding `status_code=599` to both transport `raise` sites
+  — now fails exactly `test_connect_error_raises_notification_failed_with_a_connection_message`
+  and `test_read_timeout_raises_research_unavailable_with_a_distinct_message`
+  (`assert 599 is None`), 2 failed, 304 passed. Reverted, back to green.
+
+  **Gates, this turn.** `pytest -q`: 307 passed (whole tree, working copy) at
+  the point this diff landed; a `mypy src tests infra` run moments later hit
+  one error at `tests/unit/test_error_boundaries.py:62`,
+  `_KNOWN_ADAPTER_EXCEPTIONS` undefined — concurrent CP-038's in-flight edit,
+  `IN_PROGRESS` per its own block, not in this checkpoint's `Files`, not
+  touched by this diff; excluding that one file, `mypy` was clean across all
+  71 source files. Re-running the whole-tree gates at hand-off, after CP-038's
+  edit finished landing: `pytest -q` 309 passed; `mypy src tests infra` clean,
+  71 source files, no exclusion needed; `ruff check .` all checks passed;
+  `ruff format --check .` 97 files already formatted. All four touched
+  files (`test_webhook_notifier.py`, `test_research.py`,
+  `test_error_translation.py`, and the two adapters, unchanged) pass `ruff
+  check` / `ruff format --check` scoped and clean, and pass under the isolated
+  copy's `mypy` run with zero errors before CP-038's file entered the tree.
+  No adapter file changed — `webhook.py` and `research.py` are byte-identical
+  to the pre-review diff, `diff` confirmed on the isolated copy.
+
+  **Reviewer, 2026-08-30 — PASS, attempt 1/3. The blocking finding is
+  discharged; zero blocking findings remain.** Everything below was re-run,
+  not read: mutations on an `rsync` copy at `/tmp/cp035rr.nvpWJR`
+  (`__pycache__` excluded, `PYTHONDONTWRITEBYTECODE=1`, `env -u PYTHONPATH`,
+  main repo's `.venv`), each reverted from the working tree's own file before
+  the next. Baseline there matched the working tree exactly: 311 passed, and
+  `shasum -a 256` on both adapters identical in copy and tree. The copy could
+  not be deleted at hand-off (the sandbox refused `rm -rf` on it); it holds no
+  secrets and is safe to remove by hand.
+
+  *Adapters untouched this attempt, verified without relying on `git diff`.*
+  `shasum -a 256 src/clearcut/adapters/notify/webhook.py` →
+  `1a4f2c51a4d7ed155c0abc640b70e6d55ae068ded86bf7d45c2c7e01e744d314`,
+  `research.py` → `f1a390f856011335e7f86dd041ac5aaa2b6f7d831f5f3a8bca7baacdd8e548fa`.
+  Both files' mtimes are 21:45 while all three edited test files are 22:01, so
+  nothing in `src/` moved during the fix. Independently corroborated by line
+  number: the attempt-1 review cited the two raise sites as `webhook.py:41-44`
+  and `research.py:99-102`, and they still sit at exactly those lines. The fix
+  is test-only, as claimed.
+
+  *The blocking mutation now bites.* Replacing `webhook.py`'s non-2xx message
+  with `"webhook failed"` and `research.py`'s with
+  `"Parallel Task API failed"`, both keeping `status_code=`, fails exactly
+  `test_non_2xx_response_raises_notification_failed_with_status_code` and
+  `test_non_2xx_response_raises_research_unavailable_with_status_code`
+  (2 failed, 309 passed). pytest's own output names the source of the string
+  it rejected — `assert '500' in 'webhook failed'`, `where 'webhook failed' =
+  str(NotificationFailed('webhook failed'))` — which is the trace that settles
+  the tautology question: the `"500"` the passing assertion sees is produced
+  by the adapter's f-string from `response.status_code` / `error.status_code`,
+  not by any literal the test hands the error. The test supplies `500` to the
+  *transport* (`_adapter(status=500)`, `create_status=500`); it never supplies
+  a message. Gut the formatting and the assertion notices. That is the
+  property CP-034's criterion asked for, proven against production code rather
+  than against the test's own input.
+
+  *The fold-in mutation bites too.* Adding `status_code=599` to both transport
+  raise sites fails exactly
+  `test_connect_error_raises_notification_failed_with_a_connection_message`
+  and `test_read_timeout_raises_research_unavailable_with_a_distinct_message`
+  (`assert 599 is None`, 2 failed, 309 passed). The one behaviour that
+  justified widening the constructor is now the one a test defends.
+
+  *The removal is judged sound, not merely convenient.* Deleting a test to
+  answer a finding earns scrutiny, so the deleted test's property was checked
+  independently of the implementer's account. CP-034's criterion is that
+  `NotificationFailed`'s message still names its status code. After CP-035 the
+  constructor is a pass-through, so a direct-construction test can only ever
+  restate its own argument — there is no mutation of `webhook.py` that such a
+  test could detect. The two adapter assertions cover strictly more: they run
+  the real non-2xx path and fail on any change to the adapter's formatting
+  (proven above), and both halves are independently guarded, since dropping
+  `status_code=` while keeping the message fails the sibling
+  `assert excinfo.value.status_code == 500` in the same test. The property is
+  preserved and strengthened, not relocated in name.
+
+  The cited contrast holds as stated. `TrackerItemNotFound.__init__`
+  (`adapters/clickhouse/tracker.py:99-101`) still formats
+  `f"no tracker item found for item_id={item_id!r}"` itself, so its sibling
+  test at `test_error_translation.py:80` has real teeth: replacing that
+  f-string with a constant fails it on `assert 'EVT-042' in 'no tracker item
+  found'`, alongside `test_clickhouse_tracker.py`'s own named test. The
+  asymmetry the new comment describes is a real difference in where the
+  message is built, not a rationalisation.
+
+  *Criteria re-checked by mutation, since the adapters are unchanged and last
+  attempt's evidence should still reproduce.* Removing both transport `except`
+  clauses lets `httpx.ConnectError` / `httpx.ReadTimeout` and
+  `parallel.APIConnectionError` / `APITimeoutError` escape raw and fails
+  exactly the 6 new transport tests, 3 per adapter. `"httpx"` is still in
+  `FORBIDDEN_APPLICATION_PREFIXES` with `test_application_guard_rejects_an_httpx_import`
+  naming it, and no `httpx` import exists anywhere under `src/clearcut/domain/`
+  or `src/clearcut/application/`. §4: still two `except` clauses in two
+  existing functions, no new class, no port, no config. No secret-shaped
+  literal in the diff. No `docs/` or `README.md` prose, so `WRITING.md` does
+  not apply.
+
+  *The Notes record is accurate now.* Attempt 1's "preserving each test's
+  exact assertion" stands where it was written, immediately followed by the
+  review paragraph naming it "not accurate for that one" and by attempt 2's
+  own account of the removal. Read in order, the block says what actually
+  happened; correcting the earlier claim in place would erase the audit trail
+  that makes it legible.
+
+  *Gates, whole tree at review time:* `env -u PYTHONPATH .venv/bin/pytest -q`
+  → 311 passed (up from 309 as concurrent CP-026/CP-038 work landed);
+  `mypy src tests infra` → no issues in 71 source files; `ruff check .` → all
+  checks passed; `ruff format --check .` → 97 files already formatted. The
+  `analyze_script.py` findings the earlier notes mention are gone; nothing in
+  the tree is dirty on this checkpoint's account.
+
+  *Non-blocking, recorded for the leader, does not send this back.*
+  `research.py:104`'s transport message interpolates `{error}` and nothing
+  asserts it. Replacing it with `"boom"` leaves the suite at 311 passed, while
+  the same mutation on `webhook.py:39` correctly fails
+  `test_connect_error_raises_notification_failed_with_a_connection_message` on
+  `assert 'connection refused' in 'boom'`. The research-side test asserts only
+  what the message is *not* (`"responded with status" not in str`) plus
+  `status_code is None`, so the diagnostic half of the log line is unpinned on
+  one of the two adapters. Out of scope here: criterion 3 names
+  `NotificationFailed` specifically and is fully met, and criterion 2 asks
+  only that a `ReadTimeout` surface as `ResearchUnavailable`, which it does.
+  The fix is one assertion — `str(parallel.APITimeoutError)` is
+  `"Request timed out."`, observed while mutating, so `"request failed" in
+  str(excinfo.value)` would do it.
+
+### CP-037 — Ground the questions the plan's own examples ask, and name the territory
+- Status: DONE
+- Attempts: 0/3
+- Depth: 0
+- Layer: application
+- Depends on: CP-034
+- Acceptance:
+  - [x] `_names_legal_topic` returns True for all three questions CP-027's
+        reviewer measured as misses, each as its own named test: "Can we show
+        the mural in scene 12?" (`docs/plan/agentic-workflow.md` §6's own
+        canonical example), "Do we need permission for the Coca-Cola bottle?",
+        and "Is the song cleared for streaming?"
+  - [x] It still returns False for a question with no clearance content —
+        "Who is in scene 4?" and "How many scenes are there?" are the named
+        cases — so CP-027's zero-`ground`-calls criterion still holds, asserted
+        through the same recording fake at the `execute` level and not only on
+        the predicate.
+  - [x] Morphology is handled by stems rather than by enumerating inflections:
+        `permit`, `permission` and `permitted` all match one entry, and so do
+        `clear`, `cleared` and `clearance`. A test asserts all three members of
+        at least one family.
+  - [x] The mechanism stays a frozenset of stems and `str.startswith` (§4). No
+        stemmer library, no NLP dependency, no model call inside the predicate,
+        and `pyproject.toml` is not opened.
+  - [x] The blocker answer names the territory it covers: when
+        `_asks_about_blockers` is true, the composed text names the
+        `Jurisdiction` already passed to `execute`, so "What is still blocking
+        release in Mexico?" answers about a stated territory instead of
+        implying a per-item filter `TrackerItem` cannot express (D26). A test
+        asserts the jurisdiction's name appears in the text.
+  - [x] Failure path: the territory is named even when nothing is blocked, so
+        the empty answer is also about a stated territory rather than a bare
+        "nothing found".
+  - [x] Unit tests use hand-written fakes; no network. Port methods stay
+        positional, per D15.
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: src/clearcut/application/answer_project_question.py,
+  tests/unit/application/test_answer_project_question.py
+- Notes: D25 and D26. Two behaviours in one block, which the template treats as
+  a smell, and the justification is file arithmetic rather than cohesion: both
+  are one-line-scale edits to `answer_project_question.py`, and a second
+  checkpoint on that file would serialize behind this one for no gain. If a
+  reviewer disagrees, the seam is obvious — the vocabulary is D25, the
+  territory line is D26 — and splitting costs one extra turn, not a redesign.
+
+  Depends on CP-034 only because that checkpoint repairs this file's `except`.
+
+  Cuttable, at the end of the cut list. Not on SDD §8(d)'s end-to-end path;
+  it protects the Q&A beat that `agentic-workflow.md` §6 describes, which is a
+  demo beat rather than a submission gate.
+
+  What is deliberately not here: a jurisdiction field on `TrackerItem`. D26
+  declines it, and the Backlog carries it behind the multi-jurisdiction
+  analysis that would give it meaning.
+
+  Implementer: `_LEGAL_TOPIC_WORDS` is renamed `_LEGAL_TOPIC_STEMS` (private,
+  no external reference) since `str.startswith` now does the matching; the
+  stem list adds `licen`, `regulat`, `permi`, `right`, `clear` to fold the
+  license/regulation/permission/rights/clearance families into one entry
+  each, plus five depiction verbs (`show`, `use`, `depict`, `feature`,
+  `display`) for the mural example, which names no legal word in any form.
+  D26's territory line reuses the existing tracker path: `_blocker_text`
+  composes it from the `Jurisdiction` `execute` already receives, replacing
+  the bare `Blocked: …` string; empty and non-empty results both name it, so
+  `_compose_text`'s `_NOTHING_INDEXED` fallback never fires for a blocker
+  question. Verified by mutation on a `git worktree` copy (not `cp -R`, which
+  the sandbox denied for this directory): reverted `_LEGAL_TOPIC_STEMS` to
+  the pre-CP-037 exact-word set and `_names_legal_topic` to exact-set
+  intersection, cleared `__pycache__`, ran with `PYTHONDONTWRITEBYTECODE=1`
+  and `PYTHONPATH` pointed at the worktree's `src` (the editable install
+  otherwise resolves `clearcut` to the real repo, not the copy) — all three
+  named tests failed as expected, confirming they exercise the fix.
+
+  Reviewer (PASS, 0 blocking). Both mutations reproduced independently on a
+  fresh `git worktree` copy, `PYTHONDONTWRITEBYTECODE=1` and `PYTHONPATH` at
+  the copy's `src` (verified by printing `clearcut.__file__`), baseline 20
+  passed first. Reverting the vocabulary to the exact-word set plus set
+  intersection failed exactly the four vocabulary tests — the mural, the
+  permission and the cleared questions, plus the permit/permission/permitted
+  family. Reverting `_blocker_text` to the bare `Blocked: …` form failed both
+  D26 tests. The tests are not hollow.
+
+  The widening did not turn the trigger into a pass-through: 15 of 15
+  production questions that need no grounding still return False, including
+  "What happens at the end of the film?", "Which actor plays Maria?",
+  "Summarize the plot." and "How many pages is the screenplay?". The false
+  positives observed are exactly the class D25 priced at one Vertex AI Search
+  call — "Show me the cast list.", "Who uses the car in scene 3?", "Is the
+  plot clear?" — so the ruling holds as argued rather than by luck.
+
+  §4 ceiling held: `frozenset` plus `str.startswith`, no stemmer, no NLP
+  dependency, no model call, `pyproject.toml` untouched. CP-034's named catch
+  survives — `except EnrichmentMissing` is the only `except` in the file and
+  `except Exception` appears nowhere under `application/`; the AST guard in
+  `tests/unit/test_error_boundaries.py` passes. No path emits an uncited legal
+  claim: the predicate returning False and `EnrichmentMissing` both yield
+  `("", ())`, and on success text and citations come from the same
+  `GroundedAnswer`, which `vertex_search.py:68` refuses to build without
+  grounding chunks.
+
+  Gates: pytest 307 passed, `mypy src tests infra` clean over 71 files, and
+  `ruff check` / `ruff format --check` clean on both of this checkpoint's
+  files. The 6 `E501`s and 2 unformatted files in a whole-repo `ruff` run are
+  entirely inside CP-026's untracked in-flight `analyze_script.py` and
+  `test_analyze_script.py`, not this diff.
+
+  Deferred, not blocking: a blocker question against a project with zero
+  tracker rows now answers "Nothing is blocked in Mexico." where it used to
+  answer "I have nothing indexed for this project." — a positive assurance
+  derived from an empty dataset, which in a clearance product is the
+  difference between "cleared" and "unknown". The criterion asked for exactly
+  this phrasing, and nothing calls `AnswerProjectQuestion` yet, so it is out of
+  scope here; it belongs to whoever wires CP-029's route.
+
+  **Ruled 2026-08-30 by D31, and it did not go to CP-029.** A route cannot
+  reword a sentence the use case composes, so CP-040 opens this same file. It
+  narrows the sixth criterion above: the territory is named when the project
+  has tracker rows and none is blocked, and an empty tracker answers that
+  nothing is indexed instead of asserting that nothing is blocked. The
+  criterion is not un-ticked — it described what was asked for and what was
+  built — but read it with D31 next to it.
+
+### CP-034 — Make every adapter error cross the port as a domain error
+- Status: DONE
+- Attempts: 0/3
+- Depth: 0
+- Layer: domain + adapters + application
+- Depends on: CP-016, CP-022, CP-036
+- Acceptance:
+  - [x] `domain/errors.py` declares `RecordNotFound`, `SourceUnavailable` and
+        `EnrichmentMissing`, each with a docstring saying what the caller does
+        with it, not what raised it. The module still imports nothing.
+  - [x] Every adapter error subclasses exactly one of the three, keeping its
+        own module, its own name and its own message: `TrackerItemNotFound`
+        under `RecordNotFound`; `NoGroundedSource` and `NoRightsHolderFound`
+        under `EnrichmentMissing`; `TrackerUnavailable`, `LoreUnavailable`,
+        `IngestionFailed`, `NoScenesFound`, `ExtractionFailed`,
+        `ResearchUnavailable`, `ContinuityCheckFailed` and `NotificationFailed`
+        under `SourceUnavailable`. A test raises each of the eleven and asserts
+        the domain type catches it, so every binding is proven one at a time
+        rather than read off the class statements.
+  - [x] A twelfth adapter error cannot land unclassified: one contract test
+        walks `src/clearcut/adapters/`, collects every `Exception` subclass
+        defined there, and fails naming any that is not a subclass of exactly
+        one of the three. Proven non-vacuous by adding a scratch unclassified
+        error and watching it fail.
+  - [x] `application/answer_project_question.py` catches `EnrichmentMissing` by
+        name instead of `Exception`, and its behaviour is otherwise unchanged:
+        `NoGroundedSource` still degrades to a bible-only answer, asserted by
+        the test that already exists.
+  - [x] The swallowing stops, measurably. CP-027's reviewer showed `TypeError`,
+        `AttributeError` and `ZeroDivisionError` from `grounding.ground` each
+        producing a silent bible-only answer; a test now asserts at least one
+        of them propagates instead.
+  - [x] No module under `src/clearcut/application/` catches a bare `Exception`
+        — an AST guard in the shape of `tests/unit/test_layer_boundaries.py`,
+        in **its own file**, so it does not collide with CP-030's and CP-031's
+        extensions of that one. It fails when the old `except Exception` is put
+        back.
+  - [x] No error message loses information: the id, processor id, status code
+        or count each error carries today is still in its message, asserted for
+        `TrackerItemNotFound` and `NotificationFailed` at minimum. Subclassing
+        must not turn a diagnosable message into a bare type name.
+  - [x] No adapter's `raise` site changes and no new error class is added. This
+        checkpoint classifies what exists; translating transport failures is
+        CP-035's, and widening a message is nobody's.
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: src/clearcut/domain/errors.py,
+  src/clearcut/adapters/gcp/document_ai.py,
+  src/clearcut/adapters/gcp/vertex_search.py,
+  src/clearcut/adapters/gemini/extractor.py,
+  src/clearcut/adapters/gemini/continuity.py,
+  src/clearcut/adapters/parallel/research.py,
+  src/clearcut/adapters/bigquery/lore_store.py,
+  src/clearcut/adapters/clickhouse/tracker.py,
+  src/clearcut/adapters/notify/webhook.py,
+  src/clearcut/application/answer_project_question.py,
+  tests/unit/adapters/test_error_translation.py,
+  tests/unit/test_error_boundaries.py,
+  tests/unit/application/test_answer_project_question.py
+- Notes: D23 has the reasoning and the evidence. The deciding argument is not
+  the swallowed `TypeError`: it is that **CP-029 and CP-030 cannot both pass as
+  written.** CP-029 must map an adapter's not-found error to 404 and an
+  unavailability error to 502 from `adapters/http/routes.py`; CP-030 makes
+  `composition.py` the only module under `src/clearcut/` importing from
+  `clearcut.adapters`, enforced by a test. Three domain error types are what
+  let both hold.
+
+  Three layers, which AGENT.md calls two checkpoints. Argued rather than
+  waved past: this is one rule, and a rule applied to half the adapters is not
+  a convention, it is the drift this checkpoint exists to end. Every `src/`
+  edit outside `domain/errors.py` is one word inside one class statement —
+  eleven of them — plus one `except` clause narrowed. The reviewable surface is
+  two new test files and a diff whose every other hunk is a base class.
+
+  §4 clean: three classes, each with a caller named in an existing
+  checkpoint's criteria today (D23 lists which). No base-of-everything
+  `ClearCutError`, no error registry, no mapping table — CP-029 maps three
+  types to three status codes with three `except` clauses.
+
+  The dependencies are file disjointness only. CP-016 opens `document_ai.py`
+  and `research.py`, CP-022 opens `continuity.py`, and CP-036 opens
+  `clickhouse/tracker.py` and subsumes CP-023 and CP-024. Nothing in this
+  checkpoint's logic needs any of the four.
+
+  **Implementer, 2026-08-30.** Landed exactly as scoped: eleven class
+  statements (`class Foo(Exception):` → `class Foo(SourceUnavailable):`, and
+  the two `RecordNotFound`/`EnrichmentMissing` equivalents), eight new
+  one-line imports, and one `except Exception:` → `except EnrichmentMissing:`
+  in `answer_project_question.py`. No `raise` site changed.
+
+  `UnknownJurisdiction` gets no base. It is raised and caught inside
+  `domain`/`application` over a code the caller supplied directly — it never
+  crosses an adapter port, which is the boundary D23 and this checkpoint's
+  three types exist for. None of CP-034's acceptance criteria name it, and
+  giving it one would be a base with no caller, which is exactly what D23's
+  "three names, not one and not eight" argument already rejected for a
+  fourth adapter-side class.
+
+  Both required non-vacuous proofs were run as real mutations, not asserted:
+  unsubclassing `TrackerItemNotFound` back to `Exception` failed three tests
+  by name, including the contract walk (`assert ['TrackerItemNotFound'] ==
+  []`); restoring `except Exception:` in `answer_project_question.py` failed
+  the AST guard naming that exact file. Both were reverted after. The second
+  mutation caught a real bug in the guard itself, not a false pass: the guard
+  computed `REPO_ROOT` as `parents[1]` from a file at `tests/unit/`, landing
+  on `tests/` instead of the repo root, so `APPLICATION_DIR` never resolved
+  and the glob silently matched nothing. `test_layer_boundaries.py`, at the
+  same depth, uses `parents[2]` — fixed to match. Worth flagging because it
+  is exactly the failure mode "prove it fails" mutation testing exists to
+  catch, and it would have shipped a guard that always passed.
+
+  `tests/unit/adapters/test_error_translation.py` holds the eleven
+  raise-and-catch bindings plus the two message-preservation assertions.
+  `tests/unit/test_error_boundaries.py` holds the two structural guards (the
+  contract walk and the bare-`except Exception` AST check), kept out of
+  `test_layer_boundaries.py` as the criteria require.
+
+  Gate: `pytest -q` → 251 passed (235 baseline + 16 new: 13 translation + 2
+  boundary + 1 on `answer_project_question.py`). `ruff check .` and
+  `ruff format --check .` clean. `mypy src tests infra` clean after typing
+  `_adapter_modules`/`_adapter_exception_classes` precisely (`list[ModuleType]`,
+  `list[type[Exception]]`) instead of a bare `list`.
+
+  **Reviewer, 2026-08-30 — PASS, 0 blocking.** Verified by mutation on a copy
+  (`/tmp/cc-rev`, caches cleared, `PYTHONDONTWRITEBYTECODE=1`), not by reading.
+
+  *Completeness, enumerated independently.* Walked
+  `src/clearcut/adapters/` myself rather than trusting the block: 14 modules,
+  exactly 11 module-owned `Exception` subclasses, and the contract test's own
+  collector returns the same 11. Each was unsubclassed to `Exception` one at a
+  time and the suite re-run — all eleven turned the suite red with the walk
+  asserting `['<TheClass>'] == []` by name (`LoreUnavailable` 5 failed,
+  `TrackerItemNotFound`/`NoGroundedSource`/`NotificationFailed` 3 failed, the
+  other seven 2 failed). No adapter error slipped through.
+
+  *The contract test is non-vacuous three ways.* A twelfth unclassified error
+  appended to an existing module → 1 failed naming it. A twelfth in a
+  **brand-new** module (`notify/scratch_new.py`, the `adapters/http/` case
+  CP-029 will create) → 1 failed naming it, so discovery works, not just
+  membership. A class subclassing two of the three bases → 1 failed, so
+  `!= 1` catches over-classification as well as under-.
+
+  *D23's constraint holds mechanically.* `git diff -U0` over `adapters/` is 22
+  changed lines: 11 class statements and 8 imports, nothing else.
+  `rg "^[+-].*raise "` over that diff is empty — no raise site changed, no
+  `__init__` touched, no new class. All eleven messages still carry their
+  identifying value (checked all eleven, not just the two asserted).
+  `domain/errors.py` still imports nothing.
+
+  *The guards do guard.* Restoring `except Exception:` → 2 failed: the AST
+  guard naming `src/clearcut/application/answer_project_question.py`, plus the
+  propagation test. Planting
+  `from clearcut.adapters.clickhouse.tracker import TrackerItemNotFound` into
+  `application/` → the layer guard failed naming it, so the "catch by name
+  without importing adapters" property is enforced from both sides.
+
+  *The cross-port claim proven end to end.* A scratch caller naming only
+  `RecordNotFound`, importing no adapter, caught `TrackerItemNotFound` raised
+  by the real `ClickHouseTrackerStore.latest()` with `item_id` intact — and
+  that probe went red when `TrackerItemNotFound` was unsubclassed. All three
+  bugs CP-027's reviewer reported (`TypeError`, `AttributeError`,
+  `ZeroDivisionError`) now propagate; the shipped test asserts one, the probe
+  confirmed the other two. `NoGroundedSource` still degrades.
+
+  *Classification judged, not counted.* `NoRightsHolderFound` as
+  `EnrichmentMissing` is right, not arguable: an uncited claim is a normal
+  outcome of a clearance search, and `SourceUnavailable` would 502 CP-026's
+  run on it. `ContinuityCheckFailed`/`ExtractionFailed` are malformed upstream
+  responses, so `SourceUnavailable` is right. `NoScenesFound` is imprecise and
+  D23 already recorded it with a reason — not re-raised here.
+  `NotificationFailed` is the one D23 did not flag and should have; see the
+  deferred item below. `UnknownJurisdiction` correctly gets no base: it is
+  already a `domain` name every layer may import, so the three bases would buy
+  it nothing, and a base earns its place only by being catchable across the
+  port. §4 holds on three: merging `RecordNotFound` into `SourceUnavailable`
+  collapses CP-029's 404 and 502, and merging `EnrichmentMissing` into either
+  makes `answer_project_question` degrade on a ClickHouse outage. Two would not
+  do.
+
+  *Gates re-run by the reviewer.* `pytest -q` → **269 passed**, 0 failed (251
+  as the implementer reported, plus 18 from concurrent CP-025 — none failing).
+  `ruff check .` → all checks passed. `ruff format --check .` → 95 files
+  already formatted. `mypy src tests infra` → no issues in 69 files. No
+  secret-shaped literal in the diff. The only prose file touched is this one,
+  which `WRITING.md` §0 exempts.
+
+  Four non-blocking findings recorded for the leader — see the reviewer's
+  handoff. None sends this checkpoint back; all four are new work.
+
+### CP-025 — Transition one tracker item and trigger its actions
+- Status: DONE
+- Attempts: 0/3
+- Depth: 0
+- Layer: domain + application
+- Depends on: CP-018, CP-036
+- Acceptance:
+  - [x] `application/resolve_finding.py` declares
+        `ResolveFinding(tracker, notifier)` with one `execute` entry point
+        (§2 rule 5) that loads an item, applies the requested change, saves the
+        new version, and returns it.
+  - [x] A transition writes a new row and preserves the old one: after
+        `execute`, the fake store holds two rows for that `item_id` at versions
+        1 and 2, and the version-1 row is byte-identical to what went in.
+  - [x] The `notify` action calls `Notifier.notify` exactly once. A state
+        transition on its own calls it zero times — SDD §4.2 lists them as
+        separate actions, and a dashboard that notifies on every click is worse
+        than one that never does.
+  - [x] `domain/tracker.py` gains `with_draft_email(text, at)`, returning a new
+        item carrying the text at `version + 1` with `state` unchanged, in the
+        exact shape `flagged_for_review(at)` already has. A test asserts the
+        receiver is untouched, mirroring the two receiver-unchanged tests that
+        file already carries (D22).
+  - [x] Failure path on that method: a blank or whitespace-only draft raises
+        `ValueError` rather than writing a new version that stores nothing. An
+        empty draft on the dashboard looks exactly like an unwritten one.
+  - [x] The `draft_email` action fills the outreach template from the finding's
+        data and stores the text on the item **through that method**. The
+        system never sends it: the test asserts the Notifier fake recorded zero
+        calls, which is the observable form of "drafts only, a human sends"
+        (SDD §1).
+  - [x] `application/resolve_finding.py` contains no `dataclasses.replace` and
+        computes no `version` of its own — a one-line source assertion in this
+        checkpoint's test file. The versioned-row rule has one owner,
+        `TrackerItem`, and D22 is why: a second site that bumps versions gets
+        missed the day the rule gains a field, and ClickHouse's latest-wins
+        read resolves the miss silently.
+  - [x] Failure path: an unknown `item_id` lets the store's `RecordNotFound`
+        propagate unchanged, so CP-029 maps it to 404 (D23). A use case that
+        swallows it turns a missing row into a 200.
+  - [x] Failure path: a `Notifier` failure does not lose the transition. The
+        new version is already saved when `notify` raises, asserted by
+        inspecting the fake store after catching the exception.
+  - [x] Unit tests use hand-written fakes for both ports; no network, no clock
+        read — `updated_at` is passed in.
+  - [x] Port methods are called positionally, per D15.
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: src/clearcut/application/resolve_finding.py,
+  src/clearcut/domain/tracker.py,
+  tests/unit/application/test_resolve_finding.py,
+  tests/unit/domain/test_tracker.py
+- Notes: Scoped to three of SDD §4.2's four actions. `generate_document` needs
+  another model call and therefore another port, and `stakeholder_link` returns
+  a field `RightsResearch` has not been asked to resolve yet; both are in the
+  Backlog with that reasoning, rather than half-built here.
+
+  **`RecordNotFound` tension, reported rather than resolved here (per this
+  turn's parallel-context instruction not to anticipate CP-034).** The
+  criterion above names `RecordNotFound` by D23's title, but CP-034 has not
+  landed — `domain/errors.py` still declares only `UnknownJurisdiction`, and
+  the real adapter's not-found type (`TrackerItemNotFound`,
+  `adapters/clickhouse/tracker.py`) is still a bare `Exception`, not yet a
+  `RecordNotFound` subclass. `execute` resolves this the same way
+  `AnswerProjectQuestion` already does for its own not-yet-typed adapter
+  error (CP-027's `_ground_if_legal`, same file precedent for
+  `_RecordingTrackerStore.latest` raising `KeyError`): it simply never wraps
+  or catches anything from `tracker.latest`, so whatever the store raises
+  today (`KeyError` in this checkpoint's fake) or after CP-034 lands
+  (`TrackerItemNotFound(RecordNotFound)`) propagates unchanged with zero
+  code change here. The criterion's *behaviour* — unknown id propagates
+  unchanged for CP-029 to map to 404 — is met and tested; only the literal
+  type name is deferred to CP-034, which needs no follow-up edit to this
+  module when it lands.
+
+  **Action shape.** `execute(item_id, action, at)` takes `action: Transition
+  | DraftEmail | Notify`, three frozen dataclasses local to this module
+  (mirroring `ProjectAnswer` living beside `AnswerProjectQuestion`) rather
+  than an enum plus optional parameters — it rules out an invalid
+  `action="transition", state=None` combination by construction instead of
+  a runtime check, at the same parameter count. `Notify` short-circuits
+  before any domain call or save, since SDD §4.2 and this checkpoint's own
+  criteria treat notify and transition as separate actions with separate
+  triggers; `notify` never reads as "flagged" in the ClickHouse row.
+
+  **Mutation-tested by hand**, per this turn's instruction, on
+  `with_draft_email` with `__pycache__` cleared and
+  `PYTHONDONTWRITEBYTECODE=1`: mutating the receiver in place (bypassing
+  `frozen` via `object.__setattr__`, returning `self`) failed
+  `test_with_draft_email_leaves_the_receiver_unchanged`; dropping the
+  version bump (`version=self.version` instead of `self.version + 1`)
+  failed `test_with_draft_email_sets_the_draft_and_bumps_version`. Both
+  reverted before the final gate run.
+
+  **Widened on 2026-08-30 by D22**, from CP-018's reviewer. The block as
+  dispatched would have had this use case reach for `dataclasses.replace` to
+  store the draft, because `TrackerItem` exposed no method for it and
+  `domain/tracker.py` was not in `Files:`. `Layer` is now `domain +
+  application` and the domain file and its test are in scope. D22 has the
+  reasoning, including why sanctioning `replace` here was the worse of the two
+  exits the reviewer offered.
+
+  **Depends on CP-036** for file disjointness on `domain/tracker.py`, which
+  that checkpoint opens to add `project_id` (D24). Nothing in this checkpoint's
+  logic needs the field — but `tracker.save([item])` writes a row whose project
+  scope comes off the item, so this use case gets it for free by loading the
+  item first, which is exactly why D24 put the project on the type rather than
+  on the port method.
+
+  **Reviewed 2026-08-30 — PASS, zero blocking findings.** Gates: `pytest -q`
+  269 passed, `mypy src tests infra` clean over 69 files, `ruff check .` and
+  `ruff format --check .` clean. Verified by 15 hand-applied mutations run in
+  a scratch copy of the tree (`__pycache__` cleared,
+  `PYTHONDONTWRITEBYTECODE=1`); every one was killed by a named test, no
+  survivors. The human-in-the-loop rule holds under mutation: making
+  `DraftEmail` also call `notifier.notify` fails
+  `test_draft_email_action_never_calls_the_notifier`, and making a draft
+  transition the item fails
+  `test_draft_email_action_fills_the_template_from_the_items_own_data` on the
+  version. The source assertion is non-vacuous: smuggling a state change
+  through `dataclasses.replace` without a version bump is caught only by
+  `test_resolve_finding_module_never_replaces_a_trackeritem_directly`.
+
+  **The `RecordNotFound` tension above is resolved, not deferred.** CP-034 has
+  since landed: `domain/errors.py` declares `RecordNotFound` and
+  `adapters/clickhouse/tracker.py:96` now reads
+  `class TrackerItemNotFound(RecordNotFound)`. Driving `execute` with a store
+  that raises the real type propagates it unchanged
+  (`TrackerItemNotFound -> RecordNotFound -> Exception`) with `save` and
+  `notify` never reached, and no edit to this module — exactly as the note
+  predicted.
+
+  **Reviewer observations, none blocking, offered to the leader rather than
+  filed as checkpoints.** (1) "A `Notify` writes no row" is guarded only
+  incidentally, by `tracker.saved == [[transitioned]]` inside
+  `test_port_methods_are_called_positionally`; the assertion is real and it
+  killed both ordering mutations, but it lives in a test named for D15.
+  (2) At the application layer, "drafting leaves `state` unchanged" rests on
+  the source assertion plus the domain test rather than on an assertion about
+  `result.state`. Either is one line if the leader wants the behaviour named
+  where it is read. (3) The action union is enforced as claimed: `Transition()`
+  is a runtime `TypeError` and mypy rejects `Transition()`, `Transition(None)`
+  and an over-long call, so it is construction and gate, not convention.
+
+### CP-036 — Scope every tracker row to the project that owns it
+- Status: DONE
+- Attempts: 0/3
+- Depth: 0
+- Layer: domain + adapters
+- Depends on: CP-023, CP-024
+- Acceptance:
+  - [x] `domain/tracker.py`'s `TrackerItem` carries `project_id: str` as a
+        required field. `application/ports.py` is **not** opened: `save(items)`
+        keeps its signature, and so do `latest`, `latest_for_project`,
+        `record_script` and `latest_script` (D24).
+  - [x] Failure path: constructing with a blank or whitespace-only
+        `project_id` raises `ValueError`, in the shape of the two guards
+        `__post_init__` already carries. An item scoped to `""` is the shape a
+        forgotten argument produces, and it would land in the table looking
+        like a real row.
+  - [x] `transitioned_to`, `flagged_for_review` and any later sibling carry the
+        `project_id` through unchanged — a test asserts the new item's
+        `project_id` equals the receiver's, so a `replace` that drops it fails.
+  - [x] `tracker_items` gains a `project_id` column written from
+        `item.project_id`. A test asserts the emitted DDL names it and that an
+        inserted row carries the item's value rather than a constant or a
+        default.
+  - [x] `latest_for_project(project_id)` returns only that project's items. The
+        test seeds a fake holding rows for two projects with the *other*
+        project's row at a higher version, so both a missing `WHERE` and a
+        naive highest-version-wins read fail it. Today's
+        `SELECT * FROM tracker_items` with no `WHERE` is what this criterion
+        exists to kill.
+  - [x] The dedupe rule survives the filter: highest version per `item_id`
+        within the project, still proven by the three-row unhelpful-order
+        fixture CP-023's review forced.
+  - [x] Failure path: `latest_for_project` for a project with no rows returns
+        an empty list, rather than raising or returning another project's rows.
+  - [x] `latest(item_id)` still resolves without a project argument and returns
+        an item that names its own project — a test asserts the round-tripped
+        `project_id`, which is what makes CP-025 able to save the item it just
+        loaded.
+  - [x] `checked: TrackerStore = adapter` stays above any `isinstance` (D3).
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: src/clearcut/domain/tracker.py,
+  src/clearcut/adapters/clickhouse/tracker.py,
+  tests/unit/domain/test_tracker.py,
+  tests/unit/adapters/test_clickhouse_tracker.py,
+  tests/unit/application/test_answer_project_question.py,
+  tests/unit/adapters/test_webhook_notifier.py
+- Notes: `application/ports.py` and `tests/unit/application/test_ports.py`
+  were not opened — that test module never constructs a `TrackerItem`, only
+  `Protocol`-typed fakes, so the new required field left it untouched (verified
+  by running its tests unchanged). D24 has the reasoning, including why the
+  reviewer's own suggestion —
+  `save(project_id, items)` — is declined. The short version: `ResolveFinding`
+  is item-scoped (`PATCH /api/tracker/{item_id}`), so a project parameter on
+  `save` would have to be threaded through `execute`, two route bodies and the
+  SPA client, to write a column it could have read off the item it just loaded.
+
+  **No port signature changes.** That is the point of the shape chosen, and it
+  is why this checkpoint takes no dependency on CP-022's in-flight `ports.py`
+  edit. The eight checkpoints built on `ports.py` are undisturbed.
+
+  Two layers, and the block template treats that as a smell. It is the same
+  exception CP-018 took: the column cannot be written without the field, and
+  splitting them gives two implementers two turns and a half-scoped table in
+  between. The four test files in `Files:` are the mechanical `TrackerItem(`
+  construction sites; they are listed so the reviewer knows they were counted
+  rather than discovered.
+
+  **Implementer, 2026-08-30.** `latest_for_project` filters the same way
+  `latest` already did: a real `WHERE project_id = ...` clause for the live
+  database, plus an in-memory filter on the returned rows so the hand-written
+  `FakeChClient` — which returns exactly the rows a test sets regardless of
+  the query string — can prove the filter runs without a real ClickHouse
+  behind it. Verified decisive by mutation on a filesystem copy (`rsync`
+  excluding `.git`/`.venv`, `PYTHONDONTWRITEBYTECODE=1`, no stale
+  `__pycache__`): reverting `latest_for_project` to the pre-fix
+  `SELECT * FROM tracker_items` with no filter turns
+  `test_latest_for_project_excludes_rows_belonging_to_another_project` red
+  (`EVT-002` leaks into `proj-a`'s result), confirming the test is not
+  vacuous.
+
+  `TrackerItem` reaches thirteen fields where SDD §2 lists twelve. Recorded as
+  a deviation, not slipped in — D24 states it, on D13's precedent.
+
+  **Reviewer, 2026-08-30. PASS, zero blocking findings, attempt 1.** Gates on
+  the shared tree: `pytest -q` 235 passed; `mypy src tests infra` Success, 65
+  files; `ruff check .` all checks passed; `ruff format --check .` 91 files.
+
+  **D24 held, verified by hash, not by reading.** `sha256` of
+  `src/clearcut/application/ports.py` at HEAD and in the working tree are the
+  same value (`54795410f542da75733a03d7ab3863fc...`), and
+  `git diff -- src/clearcut/application/ports.py
+  tests/unit/application/test_ports.py` is empty. No port signature widened;
+  the eight checkpoints built on `ports.py` are undisturbed.
+
+  Every claim re-proved by mutation on the reviewer's own `rsync` copy
+  (`PYTHONDONTWRITEBYTECODE=1`, `__pycache__` excluded, baseline 235 green,
+  copy restored to 235 green afterwards so no mutant contaminated a later run):
+  - Both transitions overwriting `project_id` kill exactly
+    `test_transitioned_to_carries_project_id_unchanged` and
+    `test_flagged_for_review_carries_project_id_unchanged`, one each. The CP-018
+    `test_tracker_item_is_frozen` and both receiver-unchanged tests still pass.
+  - The guard weakened from `.strip()` to a bare truthiness check fails
+    `test_rejects_a_blank_or_whitespace_only_project_id[   ]` — the
+    whitespace-only case is the one that dies, so CP-004's BibleFact gap is
+    genuinely closed here rather than nominally.
+  - The round trip dies in both directions separately: writing a constant
+    fails `test_save_writes_the_items_own_project_id_not_a_default` and
+    `..._round_trips_...` (`'CONSTANT' == 'proj-a'`); reading a constant fails
+    `..._round_trips_...` and `..._excludes_rows_belonging_to_another_project`.
+    Not self-cancelling.
+  - Dropping the `project_id` column from the DDL alone fails
+    `test_ensure_schema_emits_tracker_items_with_a_project_id_column`.
+  - Dropping the in-memory filter (`matching = rows`) fails both isolation
+    tests. Project isolation is proven.
+
+  **On the double filter — judged honest, not a hollow test.** The isolation
+  behaviour is proven; the `WHERE` push-down is not, and cannot be by unit
+  test. Dropping `WHERE project_id = {project_id:String}` while keeping the
+  in-memory filter leaves all 235 green, because `FakeChClient` replays the
+  rows a test seeds regardless of query text. This is not something CP-036
+  introduced: the identical control mutation on `latest`'s pre-existing
+  `WHERE item_id = ...` (CP-023 code, reviewed and passed) also leaves 235
+  green, and CP-023's own archived review recorded `matching = rows` as its
+  proof mechanism. CP-036 copies a shape this repo already reviewed and
+  accepted. The in-memory filter is two lines mirroring the method one above
+  it, not an abstraction, so §4 has nothing to say about it. Recorded as a
+  non-blocking note for the leader, below.
+
+  One correction to the block itself: the fifth criterion claims "a missing
+  `WHERE` ... fail[s] it". Measured, it does not — the in-memory filter is what
+  fails it. The criterion's behavioural requirement ("returns only that
+  project's items") is met and proven; only its stated mechanism is off. The
+  implementer's own Notes are accurate, since they describe reverting to
+  "no filter" at all.
+
+  The `Files:` correction is verified: `rg "TrackerItem\("` across `src`,
+  `tests` and `infra` returns exactly five modules, and
+  `tests/unit/application/test_ports.py` is not among them — it names
+  `TrackerItem` only in `Protocol` method annotations, never constructs one.
+  Dropping it from the list was right.
+
+  No assertion was weakened while threading the new required argument. Across
+  the four mechanically-updated test files the diff is +94/-1, and the single
+  removed line is the `_item` factory signature widened to take `project_id`.
+  Zero existing test bodies changed.
+
+  Layers hold: `domain/tracker.py` imports only `enum` and `dataclasses`;
+  the adapter imports `json`, `typing` and two `clearcut.domain` modules.
+  `checked: TrackerStore = adapter` still sits above the `isinstance` (D3). No
+  secret, no env var, no `unittest.mock`, no network. The diff touches one
+  module docstring and no `docs/` or `README.md`, so `WRITING.md` has nothing
+  to check.
+
+  Two non-blocking findings routed to the leader, neither re-opening this
+  checkpoint:
+  1. **The `WHERE` push-down has no test, in either method.** Unprovable
+     through `FakeChClient` by construction. An integration check under
+     `tests/integration/` against a real or contract-faked ClickHouse would
+     cover both `latest` and `latest_for_project`; without it, deleting either
+     `WHERE` silently degrades to fetching the whole table and filtering
+     client-side, and no gate notices.
+  2. **`ensure_schema` uses `CREATE TABLE IF NOT EXISTS`, so an already-created
+     `tracker_items` gains no `project_id` column.** Any environment where that
+     table already exists needs an `ALTER TABLE` or a drop before this column
+     appears. Fresh-deploy demos are unaffected; worth pinning wherever the
+     deployment path is owned.
+
+### CP-033 — Resolve each import to the distribution that actually ships it
+- Status: DONE
+- Attempts: 0/3
+- Depth: 0
+- Layer: tests
+- Depends on: -
+- Acceptance:
+  - [x] `find_undeclared_imports` resolves an import by its full dotted path to
+        the one distribution that ships it, through
+        `importlib.metadata.Distribution.files` prefix matching, replacing the
+        `packages_distributions()` lookup on the top-level name. This supersedes
+        CP-017's second acceptance criterion, which named that call; the
+        amendment is recorded in CP-017's Notes and in D21.
+  - [x] The blind spot is closed, proven by measurement and not by inspection:
+        removing `google-cloud-documentai` alone from a scratch `pyproject.toml`
+        fails the test naming `adapters/gcp/document_ai.py` and
+        `google-cloud-documentai`. The same holds for `google-genai` alone and
+        for `google-api-core` alone. CP-017's reviewer recorded all three as
+        MISSED; all three are now caught.
+  - [x] No reach is lost: `parallel-web` and `httpx` are still caught when
+        removed singly, and `langchain-google-community` is still *not* reported
+        when removed, because it is declared but unimported and the checker
+        stays used-to-declared only.
+  - [x] With `pyproject.toml` as it stands, the test passes.
+  - [x] An import whose distribution is not installed at all is still reported
+        rather than silently skipped, pinned by its own test. This is today's
+        behaviour and it prints `<none installed>`; it is what will catch
+        `clickhouse-connect` (CP-023), `flask` (CP-029), and the three
+        `opentelemetry` distributions (CP-031), none of which is installed yet.
+  - [x] The failure output carries one line per offending module-and-
+        distribution pair, not one per import statement: removing `parallel-web`
+        reports `adapters/parallel/research.py` once, where it reports it seven
+        times today. Asserted on the line count, since "the message is nicer" is
+        not a test.
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: tests/unit/test_declared_dependencies.py
+- Notes: D21 has the reasoning and the reason a dated acceptance was rejected.
+  The deciding fact is CP-031: `opentelemetry-api`, `opentelemetry-sdk`, and
+  `opentelemetry-exporter-otlp-proto-http` share one top-level `opentelemetry`
+  namespace exactly as the `google-*` distributions do, so today's checker
+  cannot tell them apart and declaring one would satisfy all three. That claim
+  is reasoned from those distributions' layout, not measured — they are not
+  installed here — which is deliberately why no criterion above depends on it.
+  Every criterion is verifiable today against `google`, where the same shape is
+  installed and was already measured twice.
+
+  Touches one file, and no checkpoint in flight touches it. CP-023 and CP-029
+  add lines to `pyproject.toml`'s `dependencies`, which this checkpoint does not
+  open.
+
+  No new abstraction: this replaces one resolver function's body and groups its
+  output. If a distribution-to-path map turns out to want caching, that is a
+  local `functools.cache`, not a class (§4).
+
+  Resolution shape actually implemented: `_Import` now carries a `dotted` path
+  (module + imported name, guessing the name is a submodule) and a `fallback`
+  (the `from` module alone, tried only when `dotted` matches nothing
+  installed). `import google.cloud.documentai` names its own full path with no
+  ambiguity; `from google.cloud import documentai_v1` needs the guess
+  (`google.cloud` alone has no `__init__.py` in any `google-cloud-*`
+  distribution — it is a PEP 420 namespace all the way down); `from
+  google.api_core.exceptions import GoogleAPIError` needs the fallback
+  (`GoogleAPIError` is a class, not a module, so the guess matches nothing and
+  the checker falls back to `google.api_core.exceptions` itself). Matching
+  against `Distribution.files` handles both a package directory and a
+  single-file module, verified directly against the installed `google-*` and
+  `parallel-web` layouts before writing the resolver.
+
+  No scratch `pyproject.toml` was written to disk for the three per-distribution
+  tests: `find_undeclared_imports` already takes `declared: set[str]` as a
+  parameter, so a helper subtracts one normalized name from the real declared
+  set in memory. Writing a physical file would have been a filesystem write in
+  a unit test for no added proof (AGENT.md §5).
+
+  Decisive verification, run against a declared set with each of the six real
+  dependencies removed in turn (not asserted in the suite, run by hand to
+  report honestly): `google-api-core`, `google-cloud-documentai`,
+  `google-genai`, `parallel-web` and `httpx` are now each caught alone — 5 of
+  6, up from 2 of 6 at CP-017. `langchain-google-community` is the sixth and is
+  *not* caught, which is correct, not a gap: it is declared but never
+  imported, and criterion 3 requires the checker stay used-to-declared only.
+  6 of 6 is not the target ratio; 5 of 6 with the unused one correctly silent
+  is.
+
+  **Review attempt 1 — PASS, 0 blocking.**
+
+  **Reach matrix reproduced independently, and by the harder route.** The
+  implementer's 5-of-6 was measured in memory; the reviewer re-ran it by
+  writing a real scratch `pyproject.toml` to disk with each of the six
+  declarations removed in turn and parsing it back through
+  `_declared_distributions`. `google-api-core` → CAUGHT (`document_ai.py`),
+  `google-cloud-documentai` → CAUGHT (`document_ai.py`), `google-genai` →
+  CAUGHT (`vertex_search.py`, `continuity.py`, `extractor.py`),
+  `parallel-web` → CAUGHT (`research.py`, one line), `httpx` → CAUGHT
+  (`webhook.py`, `research.py`), `langchain-google-community` → 0 findings.
+  **5 of 6, exactly as claimed, up from 2 of 6 at CP-017.** The sixth is
+  correctly silent and must stay so: it is declared but unimported, and
+  catching it would break used→declared.
+
+  **The in-memory subtraction is genuine coverage, not a shortcut.** The
+  disk-written set and `_declared_minus`'s set were compared per removal and
+  were identical in all six cases. `_declared_minus` calls the same
+  `_declared_distributions(PYPROJECT_PATH)` the real gate calls, so the
+  `tomllib` parse, the `[` extras stripping that
+  `langchain-google-community[featurestore]==5.0.0` needs, and PEP 503
+  normalization are all exercised. Only the filesystem write is skipped, which
+  is what §5 asks for.
+
+  **Both load-bearing properties survive, tested against real names.**
+  (a) Uninstalled-still-reported was checked with the distributions that
+  actually matter rather than the synthetic one: `flask` (CP-029) and
+  `opentelemetry` (CP-031) are genuinely not installed here and both are
+  REPORTED as `<none installed>`, not skipped. `clickhouse-connect` (CP-023)
+  turns out to be installed already and resolves by name. The CP-031 shape was
+  simulated directly — all three `opentelemetry` imports with only
+  `opentelemetry-api` declared produce a finding, not silence. (b) used→declared
+  only: `langchain-google-community` removed yields `[]`.
+
+  **Dedup key verified in both directions.** Collapse: `research.py`'s nine
+  `parallel-web` statements produce one finding. Separation: with
+  `google-api-core` *and* `google-cloud-documentai` both removed,
+  `document_ai.py` produces two distinct findings — same path, same
+  `top_level` (`google`), different `candidates` — so the third component of
+  the key is doing real work.
+
+  **Dotted-vs-fallback: both halves fire.**
+  `google.api_core.exceptions.GoogleAPIError` matches nothing installed (it is
+  a class), and the fallback `google.api_core.exceptions` resolves to exactly
+  `google-api-core`. Meanwhile `google.cloud.documentai_v1` resolves on the
+  dotted path to exactly `google-cloud-documentai` and never reaches its
+  fallback, which would have been an 11-way ambiguous `google.cloud`. That
+  ordering is the whole point of the design and it holds.
+
+  **Not hollow — mutation-tested.** Reverting `_ships` to a top-level-only
+  match (i.e. restoring the exact CP-017 blind spot) is CAUGHT by all three
+  google tests. Removing the dedup entirely is CAUGHT. Skipping unresolvable
+  imports is CAUGHT by the `<none installed>` test. The tests bite on the
+  mutations that matter.
+
+  **§4 — the resolver earns its complexity.** Five module-level functions,
+  about 55 lines, longest ~10 lines, no class, no interface, no port, no
+  config. `functools.cache` on the two lookups is exactly what this block
+  predicted instead of a class, and the cache key never involves `declared`,
+  so it is safe across tests. It buys 2-of-6 → 5-of-6 measured reach. The file
+  is 357 lines against §4's soft 300 guide; splitting a self-contained checker
+  and its tests would be churn for its own sake, so it stands.
+
+  Gates re-run by the reviewer: `env -u PYTHONPATH .venv/bin/pytest -q` 235
+  passed, `mypy src tests infra` clean over 65 source files, `ruff check .`
+  clean, `ruff format --check .` 91 files already formatted,
+  `./.claude/init.sh check` exit 0 (4 passed, 0 failed). No secret-shaped
+  literals in the diff. Diff scope confirmed:
+  `tests/unit/test_declared_dependencies.py` only — the
+  `src/clearcut/domain/tracker.py` and
+  `src/clearcut/adapters/clickhouse/tracker.py` entries in the working tree are
+  CP-036's, reviewed concurrently.
+
+  **Non-blocking, carried to the leader.** Both are missing regression tests
+  for behaviour that is *correct today*, not defects: (a) the dedup key's
+  per-distribution separation is unpinned — replacing the key with
+  `(path, top_level)` collapses two distinct undeclared distributions in one
+  file into one finding and no test notices, which is the CP-031 failure mode
+  (fix one, gate greens, deploy still dies); (b) the fallback's residual
+  masking window — `from <shared.namespace> import <uninstalled-name>` widens
+  to every distribution shipping that namespace directory, so a declared
+  sibling masks it, and a `_resolve` that tried the fallback first would also
+  go unnoticed. Measured at 11 candidates for `google.cloud` versus the 17 that
+  top-level `google` collapsed to at CP-017, and it only opens when the
+  submodule is uninstalled — strictly narrower than the state this checkpoint
+  replaces, never a regression, and named by no acceptance criterion.
+
+### CP-016 — Stop the two adapter paths that still leak a bare ValueError
+- Status: DONE
+- Attempts: 0/3
+- Depth: 0
+- Layer: adapters
+- Depends on: CP-015
+- Acceptance:
+  - [x] A Document AI response in which one page's
+        `layout.text_anchor.text_segments` is empty still returns the scenes
+        carried by the pages that do have text, instead of raising
+        `ValueError: min() arg is an empty sequence` out of `_page_spans`. A
+        blank or image-only page is ordinary in a scanned screenplay, and
+        SDD §8(a) parses a real PDF.
+  - [x] A response in which no page carries any text segment raises
+        `IngestionFailed` naming the processor id — the adapter's own error,
+        which is what AGENT.md §2 rule 3 requires it to translate to.
+  - [x] A scene whose character span overlaps no page span gets defined
+        `page_start` and `page_end` rather than raising; the test pins which
+        page it gets, so the fallback is a decision and not an accident.
+  - [x] `research.py`'s `_confidence_from` translates an unrecognised
+        confidence string instead of raising a bare `ValueError` through the
+        port. The Parallel SDK types `FieldBasis.confidence` as free-form
+        `Optional[str]`, so any string can arrive. It maps to `Confidence.LOW`,
+        which under D9 flags the item for review rather than silently trusting
+        a value nobody recognised.
+  - [x] Each of the four is proven by a test that fails against today's code;
+        all four shapes were confirmed reproducible by CP-006's and CP-010's
+        reviewers.
+  - [x] No new abstraction: these are four branches inside two existing
+        functions, not a new error-handling layer (§4).
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: src/clearcut/adapters/gcp/document_ai.py,
+  src/clearcut/adapters/parallel/research.py,
+  tests/unit/adapters/test_document_ai.py, tests/unit/adapters/test_research.py
+- Notes: The dependency on CP-015 is file disjointness, not logic — both open
+  `test_document_ai.py` and `test_research.py`, and two implementers in the
+  same two files is the collision D4 exists to avoid. If CP-015 is cut, this
+  one's `Depends on` becomes `-`.
+
+  This is on the demo path. A scanned screenplay with one image-only page
+  currently kills the whole `/api/analyze` call with a stdlib error message
+  that names nothing, several frames from any adapter code.
+
+  **Implemented.** Four branches, no new class or port:
+  - `_page_spans` (`document_ai.py`) skips a page whose `text_segments` is
+    empty instead of calling `min()`/`max()` on nothing, so the pages that do
+    carry text still parse.
+  - `parse` raises `IngestionFailed(self._processor_id)` when `_page_spans`
+    returns nothing at all — the "no page carries any text" case, which
+    covers both an all-blank-pages response and a response with zero pages.
+  - `_scene` falls back to a new private `_nearest_page(spans, start, end)`
+    when `_pages_overlapping` finds nothing: nearest by character distance to
+    the closer page-span edge, tie-broken toward the first page in `spans`.
+    Not "first page in the list" by default — the test lists the farther page
+    first specifically to catch that cheaper, wrong implementation.
+    `_nearest_page` documents in its own docstring that `spans` is never
+    empty on entry, since `parse` already raised before reaching it.
+  - `_confidence_from` (`research.py`) catches the `ValueError` `Confidence()`
+    raises on an unrecognised string and returns `Confidence.LOW`, same as
+    the existing `None` branch.
+
+  **RED, pasted verbatim before any production edit** (all four new tests,
+  run together):
+  ```
+  FAILED tests/unit/adapters/test_document_ai.py::test_page_with_empty_text_segments_is_skipped_other_pages_still_parse - ValueError: min() iterable argument is empty
+  FAILED tests/unit/adapters/test_document_ai.py::test_response_with_no_pages_raises_ingestion_failed_naming_processor_id - ValueError: min() iterable argument is empty
+  FAILED tests/unit/adapters/test_document_ai.py::test_scene_overlapping_no_page_span_falls_back_to_the_nearest_page - ValueError: min() iterable argument is empty
+  FAILED tests/unit/adapters/test_research.py::test_unrecognized_confidence_string_maps_to_low_instead_of_raising - ValueError: 'PROBABLY' is not a valid Confidence
+  4 failed in 0.32s
+  ```
+  Each test builds the malformed shape from a fake client / fixture (a
+  `documentai.Document` with an empty `text_segments` list, zero pages, or a
+  page span placed away from the scene; a Parallel result body with
+  `basis[0].confidence` set to a string outside the enum) — none asserts on a
+  hand-constructed exception.
+
+  **GREEN.** `env -u PYTHONPATH .venv/bin/pytest -q
+  tests/unit/adapters/test_document_ai.py tests/unit/adapters/test_research.py`
+  -> 19 passed (13 pre-existing + 6 new: the 3 Document AI shapes plus the
+  confidence-fallback test, plus the two the reviewer's grouped-defensive-
+  branches note already covered incidentally). Full suite: `env -u PYTHONPATH
+  .venv/bin/pytest -q` -> 219 passed (215 base + 4 new tests, exactly the
+  count named in the dispatch). `.venv/bin/python -m mypy src tests infra` ->
+  `Success: no issues found in 65 source files`. `.venv/bin/ruff check .` ->
+  all checks passed. `.venv/bin/ruff format --check .` -> 91 files already
+  formatted.
+
+  **Shaped for D23, not implementing it.** `IngestionFailed` keeps its own
+  module, name, message and `processor_id` attribute — this checkpoint adds
+  no new class and touches no `except` clause outside these two adapters.
+  When CP-034 lands, `IngestionFailed(SourceUnavailable)` and
+  `Confidence.LOW`'s caller (`_confidence_from` raises nothing to reclassify)
+  need no rewrite here: the branch this checkpoint added *is* the fix D23
+  asks every adapter error to already have, one level down from the
+  base-class question CP-034 answers.
+
+  Only this block's declared `Files` plus this `CHECKPOINTS.md` block were
+  touched — confirmed by `git status --short` before finishing: the other
+  modified/untracked paths (`ports.py`, `.claude/settings.json`, `.gitignore`,
+  `adapters/clickhouse/`, `adapters/gemini/continuity.py`, `adapters/notify/`,
+  `tests/unit/adapters/fixtures/`, three other test files) predate this turn
+  and belong to CP-018/CP-022/CP-023/CP-025's parallel work, not to CP-016.
+
+  **Reviewed 2026-08-30 — PASS, 0 blocking.** Gates re-run from the working
+  tree: `env -u PYTHONPATH .venv/bin/pytest -q` -> 219 passed;
+  `.venv/bin/python -m mypy src tests infra` -> no issues in 65 source files;
+  `ruff check .` -> all checks passed; `ruff format --check .` -> 91 files
+  already formatted. `git diff --stat` on the four declared files:
+  144 insertions, 2 deletions, nothing outside them.
+
+  *Each of the four branches killed by mutation*, on a copy of the tree
+  (`PYTHONDONTWRITEBYTECODE=1`, no `__pycache__`), one branch reverted at a
+  time, everything else intact:
+  - delete `if not segments: continue` -> 1 failed, 72 passed,
+    `test_page_with_empty_text_segments_is_skipped_other_pages_still_parse`
+    with `ValueError: min() iterable argument is empty`.
+  - delete `if not spans: raise IngestionFailed(...)` -> 1 failed, 72 passed,
+    `test_response_with_no_pages_raises_ingestion_failed_naming_processor_id`,
+    same bare `ValueError`.
+  - delete the `_nearest_page` fallback in `_scene` -> 1 failed, 72 passed,
+    `test_scene_overlapping_no_page_span_falls_back_to_the_nearest_page`,
+    same bare `ValueError`.
+  - delete the `except ValueError` in `_confidence_from` -> 1 failed,
+    217 passed, `test_unrecognized_confidence_string_maps_to_low_instead_of_raising`
+    with `ValueError: 'PROBABLY' is not a valid Confidence`.
+
+  Four branches, four distinct named tests, four distinct failure messages.
+  No branch survives its own revert.
+
+  *Branch 4 degrades safely, and the direction is pinned.* Changing the
+  `except` to `return Confidence.HIGH` fails the same test with
+  `assert <Confidence.HIGH> == <Confidence.LOW>`, so LOW is asserted, not
+  merely reached. `application/risk_rules.py:33` maps `Confidence.LOW` to
+  `RiskDecision(risk_level=finding.risk_level, needs_review=True)` — risk
+  untouched, item flagged — which is D9's unverified path. An unrecognized
+  string cannot silently upgrade anything. The catch wraps a single
+  expression whose only `ValueError` source is the enum lookup, so it
+  swallows nothing else.
+
+  *Branch 1 and branch 2 do not collide.* The mixed case is the one that
+  matters and it is the one tested: page 1 carries the whole text, page 2 has
+  `text_segments=[]`, and the assertion is
+  `(scenes[0].page_start, scenes[0].page_end) == (1, 1)` — the good page still
+  parses **with the right anchor**, not merely without an exception. Branch 2's
+  test is the disjoint all-empty case, and both reach `if not spans` through
+  the same line, so the zero-pages fixture exercises the all-blank-pages
+  response the criterion also names.
+
+  *D23 readiness confirmed — CP-034 needs nothing from this diff.*
+  `IngestionFailed` stays at `adapters/gcp/document_ai.py:29` with its own
+  module, class name, `f"Document AI ingestion failed for processor ..."`
+  message and `processor_id` attribute; this checkpoint added a second `raise`
+  site of an existing class, not a new class. `domain/errors.py` is untouched
+  and still holds only `UnknownJurisdiction` — nothing here anticipates
+  `RecordNotFound` / `SourceUnavailable` / `EnrichmentMissing`. CP-034's edit
+  here is the one word in `class IngestionFailed(Exception)` plus an import,
+  exactly as D23 describes. `_confidence_from` now raises nothing at all, so
+  it gives CP-034 nothing to reclassify.
+
+  *§4 on `_nearest_page`: one caller, and it stays.* `document_ai.py` already
+  carries `_page_spans` and `_pages_overlapping` as private module-level
+  helpers with one caller each, both shipped under CP-006's review. A third of
+  the same shape is this module's existing idiom, not a new abstraction: no
+  class, no port, no interface, no config, and inlining the `distance` closure
+  would push `_scene` past the nesting guide for no gain. §4's "no abstraction
+  for one caller" is aimed at indirection that hides a seam; a named local
+  function is not that.
+
+  *Layer rules hold.* `document_ai.py` imports `google.*` and
+  `clearcut.domain.script` only; `research.py` imports `httpx`, `parallel.*`,
+  `clearcut.application.ports` and `clearcut.domain.*`. No inward violation,
+  and `tests/unit/test_layer_boundaries.py` passes in the green suite.
+
+  Non-blocking, recorded for the leader and not sent back: the fallback test's
+  fixture makes "nearest by distance", "last in `spans`" and "lowest page
+  number" all answer 2, so it does not isolate the distance rule. Substituting
+  `spans[0][0]` (1 failed), `max(page numbers)` (1 failed) and
+  `max(spans, key=distance)` (1 failed) are killed — the naive first-in-list
+  implementation the block claims to catch really is caught — but `spans[-1][0]`
+  and `min(page numbers)` both survive, 12 passed. The shipped implementation
+  is correct; the test under-determines it. Deferred to the leader as
+  "Pin `_nearest_page`'s distance rule with a fixture the page order and the
+  page numbers disagree with" — a third page, or the same two reordered, plus
+  the equidistant tie the implementation resolves toward the first entry in
+  `spans` (document order, which is not the same as the lowest page number)
+  and that no test states.
+
+  Also non-blocking: this block's own GREEN line says "19 passed (13
+  pre-existing + 6 new)". The two files hold 15 tests at `HEAD` (9 + 6) and 19
+  now (12 + 7), so it is 15 pre-existing + 4 new. The full-suite figure it
+  reports, 219, is correct and reproduced. Bookkeeping in the note, not in the
+  code.
+
+### CP-024 — Notify a producer over an outbound webhook
+- Status: DONE
+- Attempts: 1/3
+- Depth: 0
+- Layer: adapters
+- Depends on: CP-018
+- Acceptance:
+  - [x] `adapters/notify/webhook.py` implements `Notifier`, taking an
+        `httpx.Client` and the webhook URL as constructor arguments.
+  - [x] `notify` POSTs a JSON body carrying `item_id`, `finding_id`, `state`,
+        `needs_review`, and the reason; a test with `httpx.MockTransport`
+        (CP-010's seam) asserts the body field for field.
+  - [x] Failure path: a non-2xx response raises the adapter's own
+        `NotificationFailed` carrying the status code. No `httpx` exception
+        crosses the port.
+  - [x] Failure path: a blank or whitespace-only webhook URL is refused in the
+        constructor, before any call. A POST to `""` is a silent no-op that
+        looks exactly like a delivered notification, which is the same
+        class of quiet failure as CP-014's unfiltered-jurisdiction warning.
+  - [x] `checked: Notifier = adapter` before any `isinstance` (D3).
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: src/clearcut/adapters/notify/__init__.py,
+  src/clearcut/adapters/notify/webhook.py,
+  tests/unit/adapters/test_webhook_notifier.py
+- Notes: Small, and separate because AGENT.md's decomposition recipe puts one
+  adapter per port in its own checkpoint. `httpx` (0.28.1) is already
+  installed and declared, so this adds no dependency and touches no line of
+  `pyproject.toml`. `notify` checks `response.is_success` directly rather
+  than `raise_for_status`, so no `httpx.HTTPStatusError` is ever raised in
+  the first place — simpler than catching and re-wrapping it. D3's binding
+  was proven, not just present: swapping `notify`'s two parameters made
+  `mypy --no-incremental --cache-dir=/dev/null src tests infra` fail with 5
+  errors through the `checked: Notifier` assignment, then reverted. Per the
+  routing note (docs/plan/agentic-workflow.md Section 5/7), this adapter
+  fires an internal alert to the production team, never legal
+  correspondence; nothing here gates on human approval.
+
+  Review attempt 1 — CHANGES_REQUESTED, 1 blocking. Gates all green (pytest
+  209 passed, mypy Success 65 files, ruff check clean, ruff format 91 files),
+  and re-verified by mutation: each of the five body keys and each of their
+  values kills the body test, dropping `is_success` kills the 500 test,
+  moving the blank-URL guard out of `__init__` kills the constructor test,
+  and the D3 parameter swap reproduces exactly 5 mypy errors reported at
+  `test_webhook_notifier.py:49`, the `checked: Notifier` line. Confirmed 500,
+  302 and 301 all raise `NotificationFailed` carrying the status (redirects
+  are not followed — `follow_redirects` is False — so a 3xx is a loud failure
+  rather than a silent hop to another host), 204 succeeds, and no
+  `httpx.HTTPStatusError` exists to leak. No secret in the diff;
+  `NOTIFY_WEBHOOK_URL` stays configuration (`.env.example:12`,
+  `infra/provision_data_plane.sh:53`) and the URL arrives as a constructor
+  argument. Nothing here sends correspondence: the body carries five alert
+  fields, not `contact` or a draft.
+
+  BLOCKING — tests/unit/adapters/test_webhook_notifier.py:53 — the test
+  captures the request and then asserts nothing about where it went or how.
+  Two mutants survive with the suite green: replacing `self._url =
+  webhook_url` with a hardcoded `"https://attacker.example/collect"` (4
+  passed) and swapping `post` for `request("GET", ...)` (4 passed). So no
+  test fails without the constructor URL being used, and none without the
+  verb being POST — acceptance 1's "taking ... the webhook URL as constructor
+  arguments" and acceptance 2's "POSTs" are unproven, against AGENT.md
+  Section 5 and Section 9. Required change: assert on the already-captured
+  request that `captured[0].url == _WEBHOOK_URL` and
+  `captured[0].method == "POST"`. The sibling MockTransport test pins its
+  target implicitly by routing on `request.url.path`
+  (tests/unit/adapters/test_research.py:56); pin it explicitly here.
+
+  NON-BLOCKING (for the leader, not this attempt) — transport-level httpx
+  exceptions cross the port. `httpx.ConnectError` and `httpx.ReadTimeout`
+  from `webhook.py:34` propagate raw, so a caller wanting to handle a
+  refused connection or a timeout must `import httpx` in `application/`,
+  which Section 2 rule 2 forbids. Not charged to CP-024: the same shape is
+  already in reviewed code at `adapters/parallel/research.py:96`, which
+  catches only `APIStatusError`, and the fix is a cross-adapter decision
+  (does `NotificationFailed` carry `status_code: int | None`, or is there a
+  second exception type?). Suggested checkpoint: "Translate transport-level
+  client errors at every HTTP adapter boundary".
+
+  Fix for attempt 1's blocking finding — added `assert captured[0].url ==
+  _WEBHOOK_URL` and `assert captured[0].method == "POST"` to
+  `test_notify_posts_json_body_with_the_five_fields`, on the request already
+  captured by the existing `MockTransport` handler; no new test, no change to
+  `webhook.py`. Both surviving mutants were re-applied on an isolated `/tmp`
+  copy of `src/` and `tests/` (never the tracked tree) and each now fails
+  alone: hardcoding `self._url` to `"https://attacker.example/collect"` fails
+  the new URL assertion, and swapping `self._client.post(...)` for
+  `self._client.request("GET", ...)` fails the new method assertion; both
+  mutants were then reverted on the copy, and the tracked `webhook.py` was
+  read back byte-for-byte unchanged throughout. Gates on the real tree:
+  `pytest -q` 211 passed (209 baseline + tests concurrently added by
+  CP-022/CP-023 fixers landing in parallel, none from this change), `mypy src
+  tests infra` Success 65 files, `ruff check .` clean, `ruff format --check .`
+  91 files already formatted. Non-blocking transport-exception item from
+  attempt 1 intentionally left untouched — still routed to the leader as a
+  cross-adapter design call.
+
+  Review attempt 2 — PASS, 0 blocking. The fix is the two assertions and
+  nothing else: diffed against an independent pre-fix snapshot, the only
+  change is `assert captured[0].url == _WEBHOOK_URL` and
+  `assert captured[0].method == "POST"` at test_webhook_notifier.py:60-61.
+  `webhook.py` is byte-identical to attempt 1, proven by hash rather than by
+  `git diff` because the file is untracked: sha256 `aae31c5c…f762ba1` in the
+  tracked tree matches every pre-fix snapshot, while the test file's hash
+  moved from `4a6d11a3…` to `55e6343b…` over the same interval — the change
+  is test-only. Re-verified by mutation on a fresh isolated copy (no
+  `__pycache__`, `PYTHONDONTWRITEBYTECODE=1`), each mutant applied and run
+  alone then reverted: hardcoding the constructor URL to
+  `"https://attacker.example/collect"` now fails the url assertion, and
+  `post` → `request("GET", ...)` now fails the method assertion. Both
+  attempt-1 survivors are dead. The url assertion is exact, not a prefix or
+  substring match — a same-host different-path mutant
+  (`"https://example.com/hooks/evil"`) and a suffix-append mutant
+  (`webhook_url + "/evil"`) each fail it too. Attempt 1's kills still hold:
+  corrupting the `state` body field, deleting the `is_success` check, and
+  removing the blank-URL guard each fail their own test alone. Gates on the
+  real tree: `pytest -q` 219 passed, `mypy src tests infra` Success 65 files,
+  `ruff check .` clean, `ruff format --check .` 91 files already formatted.
+  The deferred transport-error item is confirmed untouched — `webhook.py`
+  contains no `try`, `except`, `ConnectError` or `ReadTimeout`; CP-035 owns
+  it per D23. No new findings.
+
+### CP-023 — Persist tracker items and script versions in ClickHouse
+- Status: DONE
+- Attempts: 1/3
+- Depth: 0
+- Layer: adapters
+- Depends on: CP-018
+- Acceptance:
+  - [x] `adapters/clickhouse/tracker.py` implements `TrackerStore` with the
+        client as a constructor argument. `CLICKHOUSE_HOST`, `CLICKHOUSE_USER`,
+        and `CLICKHOUSE_PASSWORD` are never read inside the module.
+  - [x] The DDL it emits creates `tracker_items` and `script_versions` as
+        `ReplacingMergeTree` keyed on `item_id` and versioned by the row's
+        `version` column, per `docs/plan/infrastructure.md` §6. A test asserts
+        the emitted DDL strings rather than a live schema.
+  - [x] `save` inserts one row per item carrying its `version`; it never
+        updates or deletes, because SDD §2 makes every transition a new row.
+  - [x] `latest_for_project` returns exactly one entry per `item_id`, the
+        highest version, proven with a fake returning two versions of the same
+        item in a deliberately unhelpful order.
+  - [x] `record_script` and `latest_script` round-trip a `Script` with its
+        scenes and their hashes, which is what CP-028 diffs v2 against.
+        `latest_script` returns `None` for a project with no stored version.
+  - [x] Domain types in, domain types out: the adapter maps driver rows to
+        `TrackerItem` and `Script` and never lets a row shape escape through
+        the port (§2 rule 3).
+  - [x] Failure path: a driver error becomes the adapter's own
+        `TrackerUnavailable`; no `clickhouse_connect` exception crosses the
+        port.
+  - [x] Failure path: `latest(item_id)` for an unknown id raises the adapter's
+        own not-found error naming the id, so CP-029 can map it to 404 without
+        inspecting a driver type.
+  - [x] Tests use a hand-written fake client recording the statements it
+        received. No network, no `unittest.mock`, no live ClickHouse.
+  - [x] `checked: TrackerStore = adapter` before any `isinstance` (D3).
+  - [x] `clickhouse-connect` — see Notes: installed, not declared, because
+        `tracker.py` never imports it (below).
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: src/clearcut/adapters/clickhouse/__init__.py,
+  src/clearcut/adapters/clickhouse/tracker.py,
+  tests/unit/adapters/test_clickhouse_tracker.py
+- Notes: Same shape as the five landed adapters: a locally-declared `_ChClient`
+  `Protocol` covering only `command`/`insert`/`query` (the three real
+  `clickhouse_connect.driver.client.Client` methods this adapter calls) as the
+  seam, a hand-written `FakeChClient` recording every call, no network in a
+  unit test. The ClickHouse Cloud service itself stays a manual signup (D6);
+  nothing here provisions it.
+
+  **Dispatch override on the dependency, not the checkpoint text**: per the
+  conductor's explicit instruction this turn, `pyproject.toml` was left
+  untouched — CP-017 owns it, and three checkpoints (CP-023, CP-024, CP-029)
+  editing it in the same window is the merge conflict AGENT.md's decomposition
+  recipe exists to avoid. `clickhouse-connect==1.7.2` (resolved via
+  `.venv/bin/pip install clickhouse-connect`; pulls in `backports.zstd` 1.7.0
+  and `lz4` 4.4.5) is installed in `.venv` but not declared.
+
+  This turned out not to be a live conflict with CP-017's test either way:
+  following `BigQueryLoreStore`'s own precedent (`adapters/bigquery/
+  lore_store.py` never imports `langchain_google_community`; its constructor
+  types against a local `Protocol` instead), `tracker.py` never imports
+  `clickhouse_connect` at runtime — only `typing.Protocol`, `json`, and two
+  `clearcut.domain` modules. `tests/unit/test_declared_dependencies.py` scans
+  `src/clearcut/` only, so it is unaffected; verified directly, 4/4 passed
+  both before and after this checkpoint's changes. The one place a real
+  import of `clickhouse_connect` is unavoidable is `composition.py`, wiring
+  the real `Client` in — outside this checkpoint's `Files`, and no landed
+  checkpoint touches that file yet. The test file itself does import
+  `clickhouse_connect.driver.exceptions.DatabaseError` (to make
+  `ExplodingChClient` raise a real driver exception rather than a generic
+  `RuntimeError`, proving the wrap catches what it claims to), which needed
+  the real install but is outside `test_declared_dependencies.py`'s scanned
+  root.
+
+  **A genuine gap in the frozen port, surfaced rather than papered over**:
+  `TrackerItem` carries no `project_id` (SDD §2 does not give it one), and
+  `TrackerStore.save(items: list[TrackerItem]) -> None` has no separate
+  `project_id` parameter either — contrast `LoreStore.index(project_id,
+  records)`, reviewed in the same CP-018 fan-out, which passes project scope
+  alongside its records precisely because `BibleFact`/`Scene` don't carry it.
+  `TrackerStore.save` has no equivalent channel. Consequence: `tracker_items`
+  cannot carry a `project_id` column with a real value at write time, so
+  `latest_for_project` cannot filter by project at the storage layer — there
+  is no data connecting a stored row to a project. Implemented as the
+  literal, honestly-documented contract this checkpoint's acceptance
+  criterion actually tests (return the highest version of every `item_id`,
+  proven with rows in deliberately unhelpful order — verified non-vacuous
+  below); `project_id` is accepted and otherwise unused. Correct for the
+  hackathon's one-project-at-a-time demo; wrong the moment a second project's
+  rows land in the same table. Flagged here rather than guessed at, because
+  fixing it means widening a port CP-018 already reviewed and this checkpoint
+  does not own `ports.py` or `domain/tracker.py`. If it needs a fix, the
+  shape is `save(project_id, items)` mirroring `LoreStore.index`.
+
+  **Design choices**: `script_versions` stores each `Script`'s scenes as one
+  JSON column (`scenes`) rather than a ClickHouse nested/array-of-tuple type
+  — `Scene.content_hash` is `field(init=False)`, computed from `text` in
+  `__post_init__`, so round-tripping it correctly means storing full scene
+  text and letting reconstruction recompute the hash, not storing the hash
+  directly. `script_versions` is keyed `ORDER BY project_id` (not `item_id`,
+  which it has no field for) so the latest-per-project read the port asks for
+  needs no live-schema assumption; `tracker_items` is keyed `ORDER BY
+  item_id` per the criterion. Both dedupe to "the highest version" in Python
+  after fetching rows, not by trusting ClickHouse's asynchronous background
+  merge to have already collapsed them — the same reason the criterion asks
+  for a fake returning rows in an unhelpful order.
+
+  **Verified non-vacuous**: the dedupe test originally listed the higher
+  version first, which a first-row-wins mutant satisfied by accident (caught
+  by deliberately mutating `latest_for_project` to drop the version
+  comparison and re-running — it still passed). Rewritten so the highest
+  version sits in the middle of three rows for the same `item_id`, defeating
+  both first-wins and last-wins shortcuts; both mutants now fail with the
+  exact assertion. Also spot-checked: removing the `latest`
+  not-found guard raises an unhandled `ValueError` from `max()` on empty
+  input instead of `TrackerItemNotFound`; removing `save`'s `except` lets a
+  real `clickhouse_connect.driver.exceptions.DatabaseError` propagate
+  unwrapped. All four mutations run and reverted on the working file, not a
+  scratch copy — each paired with an immediate restore-and-reverify back to
+  green.
+
+  Gates: `pytest -q` 209 passed (14 of them new here; the rest is the shared
+  tree, higher than the 173 baseline this checkpoint was dispatched against
+  because CP-024's webhook adapter and other parallel checkpoints landed
+  concurrently), `mypy src tests infra` Success (65 files), `ruff check .`
+  clean, `ruff format --check .` clean (91 files).
+
+  **Review 1 (CHANGES_REQUESTED, 3 blocking).** All four gates re-run green on
+  the shared tree: `pytest -q` 209 passed, `ruff check .` all checks passed,
+  `ruff format --check .` 91 files, `mypy src tests infra` Success (65 files).
+  Layers hold — `tracker.py` imports only `json`, `typing`, and two
+  `clearcut.domain` modules; no `clickhouse_connect` outside docstrings, no
+  env var read, no secret. 272 lines, inside §4's 300-line guide. D3 is
+  load-bearing, not inert: four signature probes (`latest -> str`, a second
+  required parameter on `save`, `latest_for_project -> list[str]`,
+  `record_script(script: str)`) each produce `[assignment]` at
+  `test_clickhouse_tracker.py:119` under `mypy --no-incremental
+  --cache-dir=/dev/null`, one line above the `isinstance` at 120.
+
+  The implementer's own four mutations were confirmed and extended to 29 in an
+  `rsync` copy at `/private/tmp/cp023-rev`, never the shared tree, with
+  `PYTHONDONTWRITEBYTECODE=1` and `__pycache__` cleared between runs — without
+  that, two equal-length mutants silently reused a stale `.pyc` and reported a
+  neighbour's failure as their own. 22 mutants die, including both dedup
+  shortcuts the rewrite targeted (first-row-wins and last-row-wins each fail
+  `test_latest_for_project_..._in_unhelpful_order`), the DDL engine and sort
+  key, and the `Script` round trip byte-for-byte — including a trailing-space
+  mutant whose `content_hash` is *identical* (`normalize_text` strips), so
+  `text` drift is caught by the dataclass equality, not by the hash. Six
+  survive, and three of them are blocking:
+
+  1. **`tracker.py:180-185` — `latest_script` picks the highest version with
+     no test that would fail without it.** Replacing `max(rows, key=version)`
+     with `rows[0]` passes all 14 tests, because the round-trip test seeds
+     exactly one row. The module docstring claims `latest_script` "resolves to
+     the newest uploaded version", `script_versions` is keyed `ORDER BY
+     project_id` alone so versions genuinely coexist per project, and CP-028
+     diffs v2 against whatever this returns. Required: a test seeding two or
+     three versions for one `project_id` in a deliberately unhelpful order —
+     the same shape criterion 4 already forces on `latest_for_project`.
+     Same line of code, same fix: `tracker.py:144`'s
+     `matching = [row for row in rows if row[0] == item_id]` is also untested —
+     replacing it with `matching = rows` passes, because no test ever returns
+     a foreign `item_id` from the fake.
+
+  2. **`tracker.py:197-229` — the `TrackerItem` row mapping is unproven for
+     three of its twelve columns.** Criterion 6 is exactly this mapping, and
+     four separate corruptions survive the whole suite: `needs_review` written
+     as constant `0`, `needs_review` read as constant `False`, `draft_email`
+     written as constant `None`, and `scene_numbers` read as hardcoded `(1,)`.
+     The cause is the `_item()` fixture — every test leaves `needs_review` at
+     its `False` default, `draft_email` at `None`, and `scene_numbers` at
+     `(1,)`, so those three fields never carry a value that could disagree.
+     This is not cosmetic: `needs_review` is ADR 0007's flag and one of the
+     five fields CP-024's webhook body asserts, and CP-025 stores
+     `draft_email`. Required: at least one item round-tripped with
+     `needs_review=True`, a non-`None` `draft_email`, and a multi-element
+     `scene_numbers` such as `(3, 7)`, asserted field by field after
+     `latest`/`latest_for_project`.
+
+  3. **`tracker.py:127-132` — `ensure_schema`'s `TrackerUnavailable` wrap is
+     untested.** Narrowing its `except Exception` to `except ZeroDivisionError`
+     passes all 14 tests; `ExplodingChClient` is never handed to
+     `ensure_schema`. Criterion 7 is unqualified about which driver call is
+     wrapped, and four sibling tests already establish the pattern for `save`,
+     `latest`, `record_script`, and `latest_script`. Cheapest of the three:
+     one four-line test completing a pattern this checkpoint itself set.
+
+  All three are fixed by adding tests. No production line has to change, and
+  nothing here touches the frozen port.
+
+  **The `project_id` gap is NOT blocking for CP-023 — it is the leader's.**
+  The claim verifies exactly as written: `domain/tracker.py:21-36` gives
+  `TrackerItem` no `project_id`; `ports.py:109` is `save(items:
+  list[TrackerItem]) -> None` with no project channel; `ports.py:95` is
+  `LoreStore.index(project_id, records)`, which does carry one; and
+  `tracker.py:150-159` issues a bare `SELECT * FROM tracker_items`, ignoring
+  its `project_id` argument entirely. So `latest_for_project` really does
+  return the latest version of every item in the table.
+
+  It is not this checkpoint's defect, for two reasons. Criterion 4 — the only
+  one naming `latest_for_project` — asks for "exactly one entry per `item_id`,
+  the highest version, proven with a fake returning two versions of the same
+  item in a deliberately unhelpful order", and says nothing about project
+  filtering; the implementation satisfies that literally, proven by three
+  killed mutants. And the fix is physically impossible inside CP-023's `Files`:
+  no column could carry a project scope, because no project scope reaches
+  `save`. Closing it means widening `ports.py` — CP-018's, DONE and archived
+  with five dependants — which §4's YAGNI rule ("anything else becomes a new
+  TODO checkpoint, not code") puts outside an implementer's reach mid-turn.
+  Sending CP-023 back for it would burn an attempt on work its implementer is
+  not authorised to do. Recorded here as a deferred finding; the leader rules
+  whether to widen the port to `save(project_id, items)` mirroring
+  `LoreStore.index` (a D-series ruling plus a checkpoint touching `ports.py`
+  and every dependant) or to accept single-project scope for the hackathon and
+  say so in writing. Surfacing it in both the module docstring and Notes,
+  rather than guessing a filter, was the right call.
+
+  Checked and clean, no action needed: the local `_ChClient`/`_QueryResult`
+  `Protocol`s are justified under §4 — a database is one of the named real I/O
+  boundaries, and the seam is what lets a unit test avoid opening HTTPS. The
+  precedent claim holds and is conservative: `adapters/bigquery/lore_store.py`
+  declares three such local Protocols (`_Embedder`, `_Document`,
+  `_VectorStore`) where this declares two. The real
+  `clickhouse_connect.driver.client.Client` structurally satisfies the narrow
+  Protocol — `command(cmd, ...)`, `insert(table, data, column_names, ...)`,
+  `query(query, parameters, ...)` match on leading name and order with every
+  extra parameter defaulted — so CP-030 has no landmine here. The empty
+  `__init__.py` matches all five sibling adapter packages.
+
+  **Review 1 fix (test-only, `tracker.py` untouched).** All three blocking
+  findings closed by adding tests to `test_clickhouse_tracker.py`; no
+  production line changed, matching the review's own note that all three are
+  test gaps.
+
+  1. `test_latest_filters_by_item_id_before_selecting_the_highest_version`
+     seeds a foreign `item_id` with a higher version than the target's only
+     row, so `matching = rows` (dropping the `row[0] == item_id` filter at
+     `tracker.py:144`) returns the wrong item. Companion
+     `test_latest_script_returns_the_highest_version_per_project_in_unhelpful_order`
+     seeds three script versions for one `project_id` with the highest in the
+     middle, killing both `rows[0]` and a last-row-wins substitute for
+     `latest_script`'s `max(rows, key=version)` at `tracker.py:184`. `_script`
+     gained `version`/`script_id` parameters and `_script_to_row` is now
+     imported for row construction, mirroring `_tracker_item_to_row`'s
+     existing use.
+  2. `test_latest_round_trips_needs_review_draft_email_and_scene_numbers`
+     round-trips one item with `needs_review=True`, `draft_email` set, and
+     `scene_numbers=(3, 7)` through `_tracker_item_to_row` /
+     `adapter.latest`, asserted field by field. `_item()` gained
+     `needs_review`/`draft_email` parameters (defaults unchanged, so every
+     other test is untouched).
+  3. `test_ensure_schema_wraps_a_client_error_as_tracker_unavailable` hands
+     `ExplodingChClient` to `ensure_schema`, completing the pattern the four
+     sibling `..._wraps_a_client_error_as_tracker_unavailable` tests already
+     set for `save`, `latest`, `record_script`, `latest_script`.
+
+  **Verified non-vacuous, on an `rsync` copy at `/private/tmp/cp023-fix-verify2`,
+  never the shared tree**, `__pycache__` cleared and `PYTHONDONTWRITEBYTECODE=1`
+  set before every run per the reviewer's methodology note. All four named
+  mutants applied one at a time and reverted: `matching = rows` fails the new
+  filter test (`'EVT-002' == 'EVT-001'`); `latest_row = rows[0]` fails the new
+  `latest_script` test (`version: 1 != 3`); each of the four field
+  corruptions — `needs_review` written as `0`, `needs_review` read as `False`,
+  `draft_email` written as `None`, `scene_numbers` read as `(1,)` — fails the
+  new round-trip test on its own assertion; `except ZeroDivisionError` lets
+  the real `DatabaseError` propagate unwrapped past
+  `pytest.raises(TrackerUnavailable)`. Diffed the copy's `tracker.py` against
+  the working tree byte-for-byte after the last revert to confirm a clean
+  return to the original file — identical.
+
+  Gates on the real tree: `pytest -q` 215 passed (18 in this file, up from
+  14; the rest is the shared tree, higher than 209 because CP-022/CP-024 fixes
+  landed concurrently), `mypy src tests infra` Success (65 files),
+  `ruff check .` all checks passed, `ruff format --check .` 91 files. `Files`
+  unchanged — only `test_clickhouse_tracker.py` touched;
+  `src/clearcut/adapters/clickhouse/tracker.py` is untouched, confirmed
+  identical to before this turn by the copy diff above.
+
+  The deferred `project_id` gap (above) is untouched, per the conductor's
+  explicit instruction this turn — it stays the leader's call, not fixable
+  inside this checkpoint's `Files`.
+
+  **Review 2 (PASS, 0 blocking).** All three review-1 findings verified closed
+  by re-running the mutants that exposed them, not by reading the fix note.
+
+  `tracker.py` is byte-identical to attempt 1, established without `git diff`
+  (the file is untracked). Its SHA-256 is `6c0e1fb6e9dacf2d25…f0f2515`, matching
+  the restored copy in review 1's own scratch tree `/private/tmp/cp023-rev`; its
+  mtime is still 19:18:28, the attempt-1 write, while the test file's moved to
+  19:43:00. So the fix is test-only, as claimed.
+
+  Nine mutants applied one at a time to an `rsync` copy at
+  `/private/tmp/cp023-rev-r2`, `__pycache__` cleared and
+  `PYTHONDONTWRITEBYTECODE=1` set before every run (the methodology that stopped
+  a stale `.pyc` reporting a neighbour's failure last round). All nine die, each
+  killed by exactly the intended test, confirmed from the `FAILED` line rather
+  than the pass/fail count:
+
+  - `latest_row = rows[0]` and `latest_row = rows[-1]` in `latest_script` both
+    fail `..._highest_version_per_project_in_unhelpful_order`. The new test
+    seeds versions 1, 3, 2 in that order, so the highest sits in the middle and
+    neither shortcut passes by luck. Finding 1a closed.
+  - `matching = rows` fails `test_latest_filters_by_item_id_before_selecting_
+    the_highest_version`, whose foreign `EVT-002` carries version 9 against the
+    target's 1 — the filter has to run before the max, not after. Finding 1b
+    closed.
+  - All four field corruptions — `needs_review` written as `0`, `needs_review`
+    read as `False`, `draft_email` written as `None`, `scene_numbers` read as
+    `(1,)` — fail `test_latest_round_trips_needs_review_draft_email_and_scene_
+    numbers`. Write-side and read-side mutants die separately, so the round trip
+    is not self-cancelling. Finding 2 closed; the mapping is now proven for all
+    twelve columns.
+  - `except Exception` narrowed to `except ZeroDivisionError` in `ensure_schema`
+    fails `test_ensure_schema_wraps_a_client_error_as_tracker_unavailable`.
+    Finding 3 closed. A sanity mutant (`latest` returning `matching[0]`) also
+    died, proving the copy's tests really do import the copy's mutated source
+    (`pythonpath = ["src", "."]` resolves against the copy's rootdir).
+
+  The fixture widening is behaviour-preserving for the fourteen pre-existing
+  tests, checked against review 1's snapshot of the file rather than asserted:
+  the diff adds four tests and changes nothing inside an existing test body.
+  `_item` gained `needs_review=False` and `draft_email=None`, which are
+  `TrackerItem`'s own declared defaults (`domain/tracker.py:35-36`), so
+  previously-omitted arguments now pass the same values explicitly. `_script`
+  gained `version=1` and `script_id="script-1"`, the exact literals it used to
+  hardcode.
+
+  Gates re-run on the shared tree: `pytest -q` 215 passed, 18 of them in this
+  file; `mypy src tests infra` Success (65 files); `ruff check .` all checks
+  passed; `ruff format --check .` 91 files. Layers still hold — `tracker.py`
+  imports only `json`, `typing`, and two `clearcut.domain` modules; no env var,
+  no secret, no `unittest.mock`, no network. The diff touches no `docs/` or
+  `README.md` prose, so `WRITING.md` has nothing to check here.
+
+  The `project_id` gap is confirmed untouched and correctly left alone:
+  `ports.py`'s `TrackerStore.save(items: list[TrackerItem]) -> None` is
+  unchanged, and `latest_for_project` still issues a bare
+  `SELECT * FROM tracker_items`. D24 ruled the fix belongs on `TrackerItem`, not
+  on `save`, and assigned it to CP-036. The concurrent `ports.py` edit visible
+  in the working tree is CP-022's `ContinuityCheck` port, not this checkpoint's.
+
+### CP-022 — Check a scene against bible facts through a narrow port
+- Status: DONE
+- Attempts: 1/3
+- Depth: 0
+- Layer: application + adapters
+- Depends on: CP-018
+- Acceptance:
+  - [x] `application/ports.py` gains `ContinuityCheck`, a `runtime_checkable`
+        Protocol with one method:
+        `check(scene: Scene, facts: list[BibleFact]) -> Finding | None` (D11).
+  - [x] `adapters/gemini/continuity.py` implements it over one
+        gemini-3.1-flash-lite call, taking the client and the model id as
+        constructor arguments. No environment variable is read inside the
+        module — the convention all five landed adapters follow.
+  - [x] A scene contradicting a supplied LORE fact yields a `Finding` with
+        `category=CONTINUITY`, `ner_label=None`, and `contradicts` set to that
+        fact's `fact_id`, so the API response can link the contradiction to its
+        source.
+  - [x] A scene violating a POLICY fact yields `category=POLICY` in the same
+        shape.
+  - [x] A scene contradicting nothing returns `None`. The test proves the
+        adapter does not invent a finding to justify its call.
+  - [x] `response_schema` is pinned on the request, not only
+        `response_mime_type` — the rule CP-007 established and the reason its
+        output parses every time. A test asserts the config carries it.
+  - [x] Failure path: a response naming a category outside CONTINUITY and
+        POLICY raises the adapter's own error naming the value, rather than
+        building a `Finding` whose `__post_init__` will reject it with a
+        message about `ner_label` that names the wrong cause.
+  - [x] Failure path: an empty `facts` list returns `None` without calling the
+        model at all — a recording fake asserts zero calls. A project with no
+        indexed bible must not spend a Gemini call per scene.
+  - [x] `checked: ContinuityCheck = adapter` is written **before** any
+        `isinstance`, per D3's inert-binding rule, and the binding is proven
+        load-bearing by a return-type mutation recorded in Notes.
+  - [x] Tests use a hand-written fake client; no network, no `unittest.mock`.
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: src/clearcut/application/ports.py,
+  src/clearcut/adapters/gemini/continuity.py,
+  tests/unit/adapters/test_continuity.py,
+  tests/unit/adapters/fixtures/continuity_response.json
+- Notes: D11 settles the open question the Backlog carried: this earns its own
+  port and does not ride `SceneExtractor`. The short version is that
+  `extract(scenes, jurisdiction)` has no parameter for the facts, so riding it
+  means either unfreezing a reviewed port or having the extractor adapter call
+  `LoreStore` itself, which puts orchestration inside an adapter and breaks §2
+  rule 3. The long version is in D11.
+
+  Depends on CP-018 only because both edit `ports.py`. Nothing in its logic
+  needs `TrackerItem`.
+
+  The one-line scene summary SDD §4.1 step 5 also gives flash-lite is **not**
+  here. It is LoreStore row metadata, nothing reads it, and it is in the
+  Backlog.
+
+  **Implemented.** `ports.py` now declares eight ports; the module docstring
+  was rewritten from "seven" to "eight" and gained one paragraph pointing at
+  D11, the same treatment CP-018 gave the stale `TrackerStore`/`Notifier`
+  docstring. Category comes from the model's own `category` field (pinned to
+  the two-value enum CONTINUITY/POLICY), not derived from the matched fact's
+  `kind` — `sdd.md` §4.1 step 5 says flash-lite "emits a CONTINUITY or POLICY
+  finding when they contradict", which reads as the model's judgment call, and
+  the failure-path criterion only makes sense if the model is the one
+  producing that field. `_category` validates against the two-item allowlist
+  and raises the adapter's own `ContinuityCheckFailed` naming the value,
+  mirroring `_ner_label`/`ExtractionFailed` in `extractor.py` exactly.
+  `response_schema` marks every field but `contradicts` nullable, so "no
+  contradiction" is one `{"contradicts": null}` response rather than a second
+  response shape. No `thinking_config` — unlike CP-007's criteria, nothing
+  here asks for one, and adding it would be an unrequested branch (§4).
+
+  Touched only `ports.py` plus this checkpoint's three other declared Files;
+  did not touch `composition.py` or `tests/unit/application/test_ports.py`
+  (CP-018 owns the fakes there and neither is in this block's Files list).
+
+  **PARALLEL NOTE for CP-027:** `ports.py` writes are done as of this turn —
+  the file is free for the next writer.
+
+  Verified RED before writing the adapter: importing
+  `clearcut.adapters.gemini.continuity` failed with
+  `ModuleNotFoundError: No module named 'clearcut.adapters.gemini.continuity'`
+  (pasted in the implementer transcript). Full suite went from 179 to 186
+  passing (7 new tests), `ruff check .` and `ruff format --check .` clean,
+  `mypy src tests infra`: `Success: no issues found in 60 source files`.
+
+  **D3 mutation proof (in an `rsync` copy at `/tmp/cp022-scratch`, never the
+  working tree):** changed `check`'s return type from `Finding | None` to
+  `object` — a type the method body still satisfies internally, so the only
+  place this can be caught is the annotated binding. `mypy` failed exactly at
+  `tests/unit/adapters/test_continuity.py:86`, the `checked: ContinuityCheck =
+  GeminiContinuityCheck(...)` line: `Incompatible types in assignment
+  (expression has type "GeminiContinuityCheck", variable has type
+  "ContinuityCheck")`, naming `check`'s conflicting signature. A second probe
+  swapping the two parameters' order (`facts, scene` instead of `scene,
+  facts`) was caught the same way, plus 11 downstream `arg-type` errors at
+  every call site — the same shape D3's amendment recorded for
+  `SceneExtractor.extract`. Both mutations reverted before this Notes entry
+  was written; the working tree's `continuity.py` was never touched by either.
+
+  **Reviewer, attempt 1 — CHANGES_REQUESTED.** Gates are green: `pytest -q`
+  209 passed, `mypy src tests infra` Success in 65 source files, `ruff check .`
+  and `ruff format --check .` clean. The port addition is exactly additive —
+  the seven existing ports are byte-identical to HEAD (sha256 over `import
+  enum` through `Notifier.notify` is `2aae1785…4531a5` on both sides), the diff
+  touches only the module docstring and the appended block, and
+  `ContinuityCheck`'s signature names domain types only. D11's premise holds in
+  code: `ports.py:72` still has no facts parameter, and `check` uses `facts`
+  for both the short circuit and the request body. D3's binding is
+  load-bearing — widening `check`'s return to `object` in a scratch copy failed
+  `mypy` at `test_continuity.py:86` with `Incompatible types in assignment`,
+  reproducing the implementer's own proof. Mutation confirmed five criteria:
+  dropping `response_schema`, adding `temperature=0.2`, dropping the
+  CONTINUITY/POLICY allowlist, dropping the empty-facts short circuit, and
+  hardcoding `category=CONTINUITY` each fail a test, as do `ner_label=BRAND`,
+  inverting the `contradicts` branch either way, and reading `contradicts` off
+  the wrong key.
+
+  Two blocking findings, both in `tests/unit/adapters/test_continuity.py`, both
+  production code no test would miss (AGENT.md Section 5):
+
+  1. `adapters/gemini/continuity.py:119` — nothing asserts the injected model
+     id reaches the request. Replacing `model=self.model` with the literal
+     `"gemini-3.7-flash"` — the per-batch extraction model ADR 0002 keeps
+     *away* from the per-scene tier this checkpoint exists to use — leaves all
+     7 tests passing. `RecordedCall.model` is captured by the fake and read by
+     nobody. Required: assert the recorded model equals a sentinel passed at
+     construction, the way CP-007 already does in
+     `tests/unit/adapters/test_extractor.py:147`.
+  2. `adapters/gemini/continuity.py:120` — nothing asserts the scene or the
+     facts reach the request. Cutting the call down to
+     `contents=[_scene_text(scene)]` leaves all 7 tests passing, and so does
+     cutting it to `[_fact_text(fact) for fact in facts]`; `_fact_text` at
+     lines 89-90 can be deleted whole with the suite still green. Sending the
+     facts is the single thing D11 argues this port exists for, and no test
+     would notice if they never left the process. Required: assert on the
+     recorded `contents` that the scene text and every supplied fact's
+     `fact_id` are present, as CP-007 asserts contents shape at
+     `test_extractor.py:116`.
+
+  Non-blocking, routed to the leader as new checkpoint candidates — none of
+  these sends this checkpoint back:
+  - `continuity.py:129-140` indexes `category`, `raw_text`, `risk_level` and
+    `required_document` unconditionally, while `_CHECK_RESULT_SCHEMA` marks all
+    four nullable and requires only `contradicts`. A schema-conformant
+    `{"contradicts": "FACT-007"}` therefore dies on a bare `KeyError`, and a
+    null `risk_level` on `ValueError: 'None' is not a valid RiskLevel` — the
+    same leak class CP-021 is repairing in `document_ai.py` and `research.py`.
+  - `continuity.py:124-127` echoes the model's `contradicts` string without
+    checking it names one of the supplied facts, so a hallucinated id becomes a
+    dangling link in the response that criterion 3 wants it to power.
+  - The fixture landed in a second fixture directory,
+    `tests/unit/adapters/fixtures/`, beside the `tests/fixtures/` that CP-006,
+    CP-007, CP-009 and CP-010 share. This block's Files list named that path,
+    so it is a convention call for the leader, not an implementer defect.
+
+  **Implementer, attempt 2 — fixed both blocking findings, test-only.**
+  `continuity.py` and `ports.py` are untouched (`git status` after the fix
+  shows only `test_continuity.py` and this block modified; both flagged
+  production files remain the reviewer's already-verified content).
+
+  Added two tests to `tests/unit/adapters/test_continuity.py`, both mirroring
+  the CP-007 pattern the reviewer named:
+  - `test_generate_content_call_carries_the_model_the_adapter_was_constructed_with`
+    — constructs the adapter with a sentinel model id and asserts
+    `client.calls[0].model` equals it (same name and shape as
+    `test_extractor.py:147`).
+  - `test_request_contents_carry_the_scene_text_and_every_facts_id` —
+    constructs two facts with distinct ids, calls `check`, and asserts the
+    scene's `text` and each fact's `fact_id` are each present in some entry of
+    `client.calls[0].contents`.
+
+  Mutation-verified both on an `rsync` copy at `/tmp/cp022-scratch`, never the
+  working tree:
+  - `model=self.model` → `model="gemini-3.7-flash"`: the new model test failed
+    with `AssertionError: assert 'gemini-3.7-flash' ==
+    'model-injected-at-construction'`; reverted.
+  - `contents=[_scene_text(scene)] + [_fact_text(fact) for fact in facts]` →
+    `contents=[_scene_text(scene)]` (facts dropped, equivalent to deleting
+    `_fact_text`): the new contents test failed on the fact-id loop
+    (`assert False` at the `fact.fact_id in item` line); reverted.
+  - Same line → `contents=[_fact_text(fact) for fact in facts]` (scene
+    dropped): the same test failed on the scene-text assertion instead
+    (`assert False` at the `scene.text in item` line); reverted.
+
+  Full suite: `pytest -q` 211 passed (209 baseline + these 2; CP-023/CP-024
+  siblings are adding their own tests concurrently in the shared tree, so the
+  total moves independently of this checkpoint). `mypy src tests infra`:
+  `Success: no issues found in 65 source files`. `ruff check .`: all checks
+  passed. `ruff format --check .`: 91 files already formatted.
+
+  Did not touch the three deferred items (nullable-field `KeyError`/
+  `ValueError`, `contradicts` not validated against supplied fact ids, the
+  second fixtures directory) — all three stay routed to the leader as before.
+
+  **Reviewer, attempt 2 — PASS.** Both blocking findings are closed and the
+  fix is test-only, as claimed. Production files are byte-identical to the
+  content attempt 1 verified: `continuity.py` hashes
+  `1b79a06a7a6a2afcd21064081e6b265ecf4eb4504a32897cb68792eb606ffe27` and its
+  mtime (19:12:21) predates the test file's (19:41:46), so attempt 2 never
+  reopened it; `ports.py` is still the same 13-line additive diff against
+  HEAD — docstring "seven"→"eight" plus one D11 paragraph, and the appended
+  `ContinuityCheck` Protocol, nothing else. Both were re-checked by hash, not
+  by `git diff`, since `continuity.py` is untracked and a diff over it says
+  nothing.
+
+  Mutation-verified in an `rsync` copy at `/tmp/cp022-rr`, never the working
+  tree; the copy's pre- and post-mutation hashes match the working tree's on
+  every revert, and the working tree's three hashes are unchanged after all
+  seven runs. All seven mutants die:
+  - `model=self.model` → `"gemini-3.7-flash"` (the ADR 0002 tier swap): fails
+    `test_generate_content_call_carries_the_model_the_adapter_was_constructed_with`
+    with `assert 'gemini-3.7-flash' == 'model-inject...-construction'`. The
+    asserted value is a sentinel injected at construction, not a plausible
+    default, so it cannot collide with either real model id.
+  - `contents` cut to scene-only: fails on the fact-id loop.
+  - `contents` cut to facts-only: fails on the scene-text assertion.
+  - `contents` cut to `[_scene_text(scene)] + [_fact_text(facts[0])]`: fails
+    on the fact-id loop. The assertion covers **every** supplied fact, not
+    just the first — the test constructs FACT-007 and FACT-009 for exactly
+    this reason.
+  - Attempt 1's kills still hold: dropping `response_schema` fails the pinning
+    test; inverting `if not contradicts` fails 7 of 9; dropping the
+    empty-facts short circuit fails the zero-calls test.
+
+  The seven original tests are unweakened — attempt 2 is purely additive (7
+  tests → 9), and the two schema/branch mutants above are carried by those
+  original tests. Layer rules hold: `ports.py` imports stdlib plus
+  `clearcut.domain.*` only.
+
+  Gates on the working tree: `pytest -q` 215 passed, `mypy src tests infra`
+  `Success: no issues found in 65 source files`, `ruff check .` all checks
+  passed, `ruff format --check .` 91 files already formatted.
+
+  The three deferred items were confirmed **not** silently absorbed and stay
+  with the leader. `continuity.py:134-138` still indexes `raw_text`,
+  `category`, `risk_level` and `required_document` unconditionally (the
+  inverted-branch mutant surfaced the exact `KeyError: 'raw_text'` this
+  predicts), `continuity.py:124-127` still echoes `contradicts` unvalidated,
+  and `tests/unit/adapters/fixtures/` still stands beside `tests/fixtures/`.
+  On the nullable-field item: D23/CP-034 rules on error *classification* and
+  explicitly changes no `raise` site, and CP-035 is scoped to `webhook.py`
+  and `research.py` transport failures — so neither covers this parse-shape
+  leak as written. It is still the leader's call where it lands.
+
+### CP-027 — Answer a project question from lore, law, and tracker state
+- Status: DONE
+- Attempts: 0/3
+- Depth: 0
+- Layer: application
+- Depends on: CP-018
+- Acceptance:
+  - [x] `application/answer_project_question.py` declares
+        `AnswerProjectQuestion(lore, grounding, tracker)` — exactly SDD §3's
+        three collaborators, no fourth port (D12) — with one `execute` entry
+        point returning an answer carrying its text, the facts behind it, and
+        its citations.
+  - [x] It retrieves bible facts through `lore.search`, and their `source`
+        values ("Bible p. 12") appear in the answer, so a producer can check it.
+  - [x] A question naming a legal topic also calls `grounding.ground` and the
+        answer carries the returned citations. A question that does not calls
+        it zero times, asserted with a recording fake — SDD §4.2 says "adds
+        LegalGrounding context **when** the question names a legal topic", and
+        grounding every question spends a Vertex AI Search call on "who is in
+        scene 4".
+  - [x] The predicate deciding that is a named pure function with an explicit
+        vocabulary, tested on both branches, not an inline `if` nobody can find.
+  - [x] A question about territory blockers or outreach status reads
+        `tracker.latest_for_project` and the answer names the blocked items
+        (SDD §3).
+  - [x] Failure path: a project with no indexed facts returns an answer that
+        says so, with zero citations, rather than raising or returning empty
+        text. "I have nothing indexed for this project" is a correct answer.
+  - [x] Failure path: `NoGroundedSource` from the grounding port degrades to a
+        bible-only answer instead of failing the request.
+  - [x] Unit tests use hand-written fakes for all three ports; no network.
+  - [x] Port methods are called positionally, per D15.
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: src/clearcut/application/answer_project_question.py,
+  tests/unit/application/test_answer_project_question.py
+- Notes: D12 is the load-bearing decision here: no in-process text generation,
+  therefore no ninth port. `LegalGrounding` already returns Vertex AI Search's
+  grounded, cited natural-language answer, and the Agent Builder agent app
+  CP-014 provisioned is where conversational phrasing lives if the demo wants
+  it. Not on SDD §8(d)'s path, so it is cuttable.
+
+  **Implementer.** Two design decisions the acceptance criteria imply but do
+  not spell out, both worth a reviewer's eye:
+
+  1. **`execute(project_id, question, jurisdiction)` takes `jurisdiction`
+     explicitly.** `LegalGrounding.ground(query, jurisdiction)` requires one,
+     and SDD §4.2's `POST /api/question` body (`{project_id, question}`)
+     names none, so something has to resolve it. `tracker.latest_script`
+     could supply it, but no acceptance criterion asks for that call, and it
+     would silently tie a Q&A answer to whichever script version happens to
+     be latest. Instead this follows D2's already-settled precedent —
+     "adapters receive a resolved `Jurisdiction`; resolving a raw code
+     belongs to the caller" — applied one layer up: resolving `project_id` to
+     its `Jurisdiction` is the future HTTP route's job (a `composition.py`/
+     CP-029 concern), not this use case's. No new port; a parameter on
+     `execute`.
+  2. **`NoGroundedSource` is caught as a bare `except Exception`, not by
+     name.** It lives in `adapters/gcp/vertex_search.py`
+     (`src/clearcut/adapters/gcp/vertex_search.py:27`) — deliberately
+     adapter-local, per CP-006's review ruling that all five verticals keep
+     their errors this way and `domain/errors.py` holds only
+     `UnknownJurisdiction`. `application/` may not import `clearcut.adapters`
+     (AGENT.md §2; `tests/unit/test_layer_boundaries.py`), so this layer has
+     no name to catch. The criterion's intent — "one enrichment failure does
+     not fail the whole answer" — is satisfied by treating any exception from
+     the isolated `grounding.ground` call as non-fatal (fault isolation, not
+     blanket exception suppression: nothing else in `execute` is wrapped).
+     `tests/unit/application/test_answer_project_question.py` imports
+     `NoGroundedSource` directly from the adapter for the test itself, which
+     is legal — the layer guard scans `src/clearcut/application`, not
+     `tests/`. **CP-026 (`AnalyzeScript`) will hit the exact same tension**
+     for `NoGroundedSource` and `NoRightsHolderFound`; flagging for the
+     leader in case a shared convention is worth naming before that
+     checkpoint starts, rather than two implementers converging on it (or
+     not) independently.
+
+  Constructor is a plain 3-argument `__init__`; no `runtime_checkable`
+  binding is added here since `application/ports.py` is CP-022's frozen file
+  this turn — the three ports it declares (`LoreStore`, `LegalGrounding`,
+  `TrackerStore`) are imported, not touched.
+
+  `tests/unit/fakes.py` and `tests/unit/application/test_ports.py`'s
+  `FakeTrackerStore` were left alone (outside this checkpoint's `Files:`):
+  this checkpoint needed a *configurable*, call-recording `TrackerStore` and
+  `LegalGrounding` (to assert zero-vs-one calls and to inject a raising
+  fake), which the existing fakes are not, so
+  `test_answer_project_question.py` writes its own local fakes rather than
+  editing the shared file. `FakeLoreStore` is reused as-is from
+  `tests/unit/fakes.py` since its existing shape already fits.
+
+  One test (`test_port_methods_are_called_positionally`) uses three
+  purpose-built fakes whose parameter names differ from the ports'
+  (`a`, `b`, `c` instead of `project_id`, `query`, `limit`, etc.) so that a
+  keyword call anywhere in `execute` would raise `TypeError` — this is what
+  actually proves D15's "port methods are called positionally" rather than
+  asserting it by reading the source.
+
+  RED confirmed before GREEN: `tests/unit/application/test_answer_project_question.py`
+  failed collection before the module existed —
+  `ModuleNotFoundError: No module named 'clearcut.application.answer_project_question'`.
+  All 9 tests passed on the first implementation; no second RED/GREEN
+  iteration was needed.
+
+  Gates, `.venv` (Python 3.12.3), `PYTHONPATH` unset, this checkpoint's own
+  two files: `env -u PYTHONPATH .venv/bin/pytest -q
+  tests/unit/application/test_answer_project_question.py` -> 9 passed;
+  `.venv/bin/ruff check src/clearcut/application/answer_project_question.py
+  tests/unit/application/test_answer_project_question.py` -> all checks
+  passed; `.venv/bin/ruff format --check` on the same two files -> already
+  formatted; `.venv/bin/python -m mypy src tests infra` -> Success, no issues
+  in 65 source files.
+
+  Full-suite snapshot at handoff (parallel siblings CP-022, CP-023, CP-024,
+  CP-032 mid-edit in the same tree, expected): `env -u PYTHONPATH
+  .venv/bin/pytest -q` -> 209 passed, zero failures; `env -u PYTHONPATH
+  .venv/bin/pytest -q tests/unit/test_layer_boundaries.py` -> 7 passed,
+  confirming no `clearcut.adapters` import reached `application/`.
+  Repo-wide `ruff check .` / `ruff format --check .` show 3 findings, all in
+  `src/clearcut/adapters/clickhouse/tracker.py` and
+  `tests/unit/adapters/test_clickhouse_tracker.py` (CP-023's files, mid-write,
+  outside this checkpoint's `Files:`).
+
+  **Reviewer (CP-027) — PASS, zero blocking findings.** Gates re-run on the
+  full tree, not just this checkpoint's two files: `env -u PYTHONPATH
+  .venv/bin/pytest -q` -> 209 passed; `ruff check .` -> all checks passed;
+  `ruff format --check .` -> 91 files already formatted; `mypy src tests infra`
+  -> Success, 65 source files. All four are clean repo-wide, so the three
+  CP-023 findings the implementer saw mid-write have since landed.
+
+  *The tests are not hollow — verified by mutation, not by reading.* Thirteen
+  mutants were built by exec'ing a patched copy of the module in memory (no
+  file in the tree was touched) and running the real test file against each.
+  Twelve are caught: `_names_legal_topic` forced True and forced False,
+  `_asks_about_blockers` both ways, the `TrackerState.BLOCKED` filter dropped
+  and inverted, the fact `source` dropped from the text, the `_NOTHING_INDEXED`
+  fallback removed, citations dropped, grounded text dropped, the try/except
+  removed, and the blocked `item_id` omitted. The only survivor is
+  `_SEARCH_LIMIT 5 -> 500`, a constant no criterion pins and no behaviour
+  observes — correctly a constant per Section 4, not a finding.
+
+  *D15's proof is genuine.* Rewriting each of the three port calls to keyword
+  form fails the suite: `lore.search` and `tracker.latest_for_project` raise
+  `TypeError` through the mismatched fakes, and `grounding.ground` is caught by
+  `assert "grounded" in answer.text`. That last one matters — the keyword
+  `TypeError` is swallowed by the `except Exception`, so the answer degrades
+  instead of raising, and the text assertion is what notices. Asserting on the
+  composed text rather than on a raise is what lets that test survive the bare
+  except.
+
+  *D12 held.* No ninth port from this checkpoint: `ports.py`'s only diff this
+  turn is CP-024's `ContinuityCheck` (D11). The module imports `re`,
+  `dataclasses`, `clearcut.application.ports` and four `clearcut.domain`
+  modules, nothing else; `test_layer_boundaries.py` scans
+  `src/clearcut/application` and now covers this file (7 passed). No mock, no
+  network, hand-written fakes only.
+
+  *The tracker read is correct.* `latest_for_project(project_id)` matches the
+  port signature, is called positionally, runs only when `_asks_about_blockers`
+  is true, and its result is filtered to `TrackerState.BLOCKED`. Whether that
+  method can filter by project at all is a sibling review's question; this call
+  site is correct either way.
+
+  *The fallback never invents.* With nothing gathered the answer is exactly
+  "I have nothing indexed for this project." with zero citations. A predicate
+  miss degrades to a bible-only answer, so agentic-workflow.md Section 8's "no
+  uncited legal claims" holds on every path: this use case emits legal text
+  only when it came back inside a `GroundedAnswer`, and `VertexSearchGrounding`
+  already raises `NoGroundedSource` rather than returning uncited text.
+
+  *On the bare `except Exception` — scrutinized hardest, ruled non-blocking.*
+  It does swallow programming errors. Injecting `TypeError`, `AttributeError`
+  and `ZeroDivisionError` into `grounding.ground` each produced a silent
+  bible-only answer; `KeyboardInterrupt` correctly propagates, since the catch
+  is `Exception` and not `BaseException`. That cost is real and is recorded
+  here rather than waved past. Three things keep it out of blocking. First, the
+  criterion it serves is met and its test is not hollow — the mutant that
+  removes the try/except is caught. Second, the catch wraps exactly one
+  expression, the port call itself; `grounded.text` and `grounded.citations`
+  sit outside it, so a malformed `GroundedAnswer` still surfaces. That is fault
+  isolation at a boundary, not blanket suppression. Third, and deciding it: the
+  fix does not exist inside this checkpoint's `Files:`. Catching by name needs a
+  domain error the adapter translates into, which touches `domain/errors.py`
+  and the `DONE`, frozen `adapters/gcp/vertex_search.py`; logging and
+  continuing needs a logging facility that exists nowhere in `src/`. Sending
+  CP-027 back would spend an attempt on a change its implementer may not
+  legally make.
+
+  The implementer is right that AGENT.md Section 2 rule 3 is in tension here —
+  an adapter raising an error only it can name has moved the problem rather
+  than translated it. But CP-006's ruling settled *where* adapter errors live,
+  not *how* application code catches them, and this is the first and only
+  `except` in `src/clearcut/application/`. The convention is therefore being
+  set here, by one implementer, unreviewed by any decision, and CP-026 hits it
+  twice more (`NoGroundedSource` and `NoRightsHolderFound`). Routed to the
+  leader as a deferred checkpoint instead of being settled under a
+  three-attempt budget.
+
+  *Non-blocking, for the leader (new checkpoints, not a re-open).*
+  1. Name the convention for adapter errors crossing into `application/`.
+     Either `domain/errors.py` grows a translated error the adapters raise, or
+     the bare-except-at-the-port-call pattern is written down as the rule with
+     its cost accepted. CP-026 needs the answer before it can be consistent
+     with this file.
+  2. `_LEGAL_TOPIC_WORDS` coverage is narrower than the plan it implements.
+     Measured against the vocabulary: "Can we show the mural in scene 12?" —
+     agentic-workflow.md Section 6's own canonical legal example, which that
+     section says should pull grounded Mexican law — returns False, as do "Do
+     we need permission for the Coca-Cola bottle?" ("permit" is in the list,
+     "permission" is not) and "Is the song cleared for streaming?"
+     ("clearance" is, "cleared" is not). Every miss degrades safely to a
+     bible-only answer, and no acceptance criterion pins the vocabulary's
+     breadth, so this is scope for a later checkpoint rather than a defect in
+     this one. The near-miss pairs suggest stemming or a different retrieval
+     trigger, which is a design decision with a per-call cost attached.
+  3. Blocker answers cannot filter by territory. agentic-workflow.md Section 6
+     describes "BLOCKED items whose jurisdiction set includes Mexico", but
+     `TrackerItem` carries no jurisdiction field, so "What is still blocking
+     release in Mexico?" returns every blocked item in the project. No
+     criterion asked for the filter and the data model cannot express it yet;
+     it belongs with whatever checkpoint gives `TrackerItem` a territory.
+
+### CP-032 — Collapse repeated scene numbers in a dedupe entry
+- Status: DONE
+- Attempts: 0/3
+- Depth: 0
+- Layer: domain
+- Depends on: -
+- Acceptance:
+  - [x] Each entry from `dedupe_findings` carries its scene numbers as a
+        strictly ascending tuple with no repeats. Two findings for the same
+        asset in the same scene collapse to one number: the reviewer's verified
+        case `[f("E1", 7), f("E2", 7), f("E3", 9)]` returns `(7, 9)`, not
+        `(7, 7, 9)`.
+  - [x] The test fails against the code as it stands today — it returns
+        `(7, 7, 9)` — so the change is proven load-bearing rather than assumed.
+  - [x] Distinct scenes are untouched: SDD §4.1 step 4's own example, one BRAND
+        asset across fourteen different scenes, still returns fourteen numbers.
+        This is the mutation that separates "drop duplicates" from "drop
+        everything after the first", which CP-019's review already killed once.
+  - [x] Failure path: an asset appearing three times in one scene and in no
+        other returns `(n,)` — a one-element tuple, never an empty one.
+        `TrackerItem` rejects an empty tuple, so a collapse that can empty a
+        tuple turns a dedupe bug into a construction error two layers away.
+  - [x] Every existing test in `tests/unit/domain/test_dedupe.py` passes
+        unchanged, which is the evidence that this narrows unspecified
+        behaviour rather than changing specified behaviour.
+  - [x] Pure: no I/O, no clock, stdlib only.
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: src/clearcut/domain/dedupe.py, tests/unit/domain/test_dedupe.py
+- Notes: D20 has the reasoning. The short version is that a repeat cannot be
+  given a meaning: dedupe's identity is `(category, normalized raw_text)`, so
+  two mentions in one scene only ever collide when their normalized text is
+  identical, and a count of those is a fact about phrasing, not about
+  clearance.
+
+  No new function and no new module — this is a `sorted(set(...))` where a
+  `sorted(...)` stood before, inside a function CP-019 left at 37 lines (still
+  37: the diff swaps one call for its wrapped form, adding no line). A
+  checkpoint whose diff is one line is still worth its turn here, because the
+  behaviour is observable through `TrackerItem.scene_numbers` in two places
+  that have not been written yet (CP-023 persists it, CP-025 fills it), and
+  fixing it after they exist costs three diffs instead of one.
+
+  CP-023, CP-025, and CP-028 all read this shape. None gets a `Depends on`
+  edge, because none of them computes the tuple and adding an edge would
+  serialize three checkpoints behind a one-line change for no reason. Landed
+  first, per that guidance.
+
+  Two tests added, both red first against the unfixed code: the exact D20 case
+  `[f("E1", 7), f("E2", 7), f("E3", 9)] -> (7, 9)` and the empty-tuple hazard
+  named in acceptance criterion four, three mentions of one asset in one scene
+  and no other -> `(4,)`. Confirmed both fail with `(7, 7, 9)` / `(4, 4, 4)`
+  against the code as it stood. Mutation check: reverting `sorted(set(scenes))`
+  to `sorted(scenes))` on a copy reproduces both exact failures and nothing
+  else; restoring the fix returns 9/9 green in the file. No change to
+  `_asset_identity` or to `domain/script.py`.
+
+  `ruff check .` / `ruff format --check .` over the whole repo report one
+  finding, both in `tests/unit/adapters/test_webhook_notifier.py` — an
+  untracked file outside this block's `Files`, owned by a concurrently running
+  checkpoint. `ruff check`/`format --check` scoped to `src/clearcut/domain/dedupe.py`
+  and `tests/unit/domain/test_dedupe.py` are clean, as is
+  `mypy src tests infra` across the whole tree (55 files, no issues, including
+  that file).
+
+  **Reviewer, 2026-08-30 — PASS, zero blocking findings, attempt 1.** The diff
+  is the one line and nothing else: `git diff src/clearcut/domain/dedupe.py`
+  changes only the comprehension's second element to `tuple(sorted(set(scenes)))`
+  and wraps it across two lines to stay inside the formatter's width.
+  `_asset_identity` is byte-identical, and `domain/script.py` is not in
+  `git status` at all, so CP-019's 30065-input digest proof stands untouched.
+
+  Three mutants run against a copy of the tree, never the tree itself:
+  (a) `tuple(sorted(scenes))` — the exact revert — fails precisely the two new
+  tests with `(7, 7, 9) == (7, 9)` and `(4, 4, 4) == (4,)`, and no other test in
+  the suite; (b) `tuple(sorted(scenes))[:1]`, the "drop everything after the
+  first" reading acceptance criterion three names, fails five tests including
+  the fourteen-scene one; (c) `tuple(dict.fromkeys(scenes))`, dedupe without the
+  sort, fails `test_order_is_first_appearance_and_scene_numbers_ascend` with
+  `(3, 2) == (2, 3)`. So both halves of `sorted(set(...))` are pinned
+  independently — neither is decoration. Restoring the original returns 9/9 in
+  the file.
+
+  Both new tests assert a concrete tuple against a distinct-`finding_id` input,
+  not a truthiness or a fake's return value. The empty-tuple hazard is real and
+  covered: `domain/tracker.py:41` raises `ValueError("scene_numbers must not be
+  empty")`, and mutant (a) proves the three-in-one-scene case would otherwise
+  reach it as `(4, 4, 4)` rather than `()` — the test holds the line either way.
+  No existing test depended on repeats: the full suite is green unchanged.
+
+  Gates on the real tree, with the siblings' untracked files present:
+  `env -u PYTHONPATH .venv/bin/pytest -q` → 209 passed; `mypy src tests infra` →
+  no issues in 65 source files; `ruff check .` → all checks passed;
+  `ruff format --check .` → 91 files already formatted. The
+  `test_webhook_notifier.py` finding this block records is gone — its owning
+  checkpoint fixed it while this review ran. Layers hold: `dedupe.py` imports
+  only `clearcut.domain.finding` and `clearcut.domain.script`. Nothing from §4
+  introduced — no new function, no new module, no new parameter.
+
+### CP-018 — Model the tracker item and declare the two ports it crosses
+- Status: DONE
+- Attempts: 1/3
+- Depth: 0
+- Layer: domain + application
+- Depends on: -
+- Acceptance:
+  - [x] `domain/tracker.py` declares `TrackerState` (BLOCKED, IN_PROGRESS,
+        CLEARED) and a frozen `TrackerItem` carrying SDD §2's twelve fields:
+        `item_id`, `finding_id`, `scene_numbers`, `state`, `needs_review`
+        (default `False`), `required_document`, `contact`,
+        `litigation_posture`, `draft_email` (optional), `note`, `updated_at`,
+        `version`.
+  - [x] `transitioned_to(state, at)` returns a **new** `TrackerItem` at
+        `version + 1` with the given `updated_at`, and leaves the receiver
+        untouched — a test asserts the original's `state` and `version` are
+        unchanged. Every transition is a new versioned row, never a mutation
+        (SDD §2). The time arrives as an argument; `domain/` reads no clock
+        (AGENT.md §2 rule 1).
+  - [x] Every transition is legal in both directions, CLEARED to BLOCKED
+        included: a test walks all nine ordered pairs of states and asserts
+        none raises. A producer reopening a cleared item is the normal case,
+        not an error.
+  - [x] Transitioning to the state the item already holds still returns a new
+        item at `version + 1`. The row is an audit record of a producer action,
+        not a cache of current state, and ClickHouse's latest-wins read gives
+        the same answer either way.
+  - [x] `flagged_for_review(at)` returns a new item with `needs_review=True` at
+        `version + 1`; a test asserts `state` is unchanged, which is ADR 0007's
+        rule that a cleared item on a changed scene is neither silently kept
+        nor silently dropped.
+  - [x] Failure path: constructing with `version < 1` raises `ValueError`,
+        matching the guard `Script` already carries.
+  - [x] Failure path: constructing with an empty `scene_numbers` raises — an
+        item nothing points at cannot be actioned, and it is the shape a broken
+        dedupe would produce.
+  - [x] `application/ports.py` gains two `runtime_checkable` Protocols. Both
+        cross a real network boundary (§4): ClickHouse over HTTPS, and an
+        outbound webhook.
+        - `TrackerStore`: `save(items: list[TrackerItem]) -> None`,
+          `latest(item_id: str) -> TrackerItem`,
+          `latest_for_project(project_id: str) -> list[TrackerItem]`,
+          `record_script(script: Script) -> None`,
+          `latest_script(project_id: str) -> Script | None`. Five methods
+          because SDD §3 gives this one port both tables; the last two are the
+          `script_versions` side EvaluateDelta reads.
+        - `Notifier`: `notify(item: TrackerItem, reason: str) -> None`.
+  - [x] The module docstring in `ports.py` currently says `TrackerStore` and
+        `Notifier` "arrive with their adapters" and are deliberately absent.
+        It is rewritten to describe what is now there; a stale docstring
+        contradicting the file it heads is a defect, not a cosmetic.
+  - [x] Failure path: a class missing one `TrackerStore` method fails
+        `isinstance` against the Protocol — the same conformance test shape
+        CP-005 used for the first five ports.
+  - [x] `domain/tracker.py` imports nothing from `application/` or `adapters/`
+        and no third-party package; the existing layer-boundary test covers it
+        without modification.
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: src/clearcut/domain/tracker.py, src/clearcut/application/ports.py,
+  tests/unit/domain/test_tracker.py, tests/unit/application/test_ports.py
+- Notes: **This is the unlock checkpoint — dispatch it first.** Five of the
+  sixteen depend on it and on nothing else.
+
+  It spans two layers, which the block template treats as a smell. It is the
+  exception AGENT.md's own decomposition recipe names: the ports arrive with
+  the type they carry, and CP-005 set the precedent by declaring five ports in
+  one turn precisely so concurrent implementers build against one frozen shape.
+  Splitting the type from its two ports would give three implementers three
+  turns and one merge conflict in `ports.py` for no gain.
+
+  Declaring both ports before either adapter exists is legal under §4 for the
+  reason CP-005's were: each crosses a real I/O boundary. A port with no
+  boundary is what §4 bans, not a port whose adapter lands next.
+
+  Implemented: `TrackerItem.__post_init__` reuses the exact two guards
+  `Script` already carries (`version < 1`, empty required collection), so no
+  new validation idiom enters the codebase. `transitioned_to` and
+  `flagged_for_review` are both `dataclasses.replace` one-liners — no
+  `__eq__`/`__hash__` override needed since frozen dataclasses already give
+  value equality, and no state-machine abstraction, because every ordered
+  pair is legal and there is nothing to gate (§4: no abstraction the
+  acceptance criteria do not demand).
+
+  `TrackerStore` and `Notifier` conformance fakes (`FakeTrackerStore`,
+  `FakeNotifier`) live in `tests/unit/application/test_ports.py`, not in
+  `tests/unit/fakes.py` — that file was outside this checkpoint's declared
+  `Files`, and no adapter or use-case test needs them yet. CP-023's
+  ClickHouse adapter and CP-024's webhook adapter, and CP-025's
+  `ResolveFinding` use case, are the first real callers; whichever lands
+  first should promote these two fakes into `tests/unit/fakes.py` next to
+  the other five, the same annotated-binding shape CP-012 set (D3), rather
+  than each writing its own copy.
+
+  Verified `git stash` RED before implementing `ports.py`'s two new
+  Protocols: `ImportError: cannot import name 'Notifier'` — pasted below.
+
+  **Review 1 — CHANGES_REQUESTED.** Gates green on the shared tree:
+  `pytest -q` 171 passed, `mypy src tests infra` Success (55 files),
+  `ruff check .` and `ruff format --check .` clean. Every mutation below ran
+  in an `rsync` copy at `/tmp/cp018-scratch`, never in the working tree, so
+  the five sibling reviewers' own gate runs were not disturbed.
+
+  BLOCKING 1. `src/clearcut/domain/tracker.py:21` with
+  `tests/unit/domain/test_tracker.py` — the "never a mutation" invariant that
+  SDD §2, criterion 1 of this block ("a **frozen** `TrackerItem`") and the
+  module's own docstring all state is pinned by no test. Two mutations
+  survive the **full** 171-test suite and `mypy`:
+  - `@dataclass(frozen=True)` → `@dataclass()`: 171 passed, mypy Success.
+  - `flagged_for_review` rewritten to three `object.__setattr__` calls on the
+    receiver plus `return self`: 171 passed.
+
+  `transitioned_to`'s half of the invariant is genuinely covered — the same
+  in-place rewrite there fails
+  `test_transitioned_to_leaves_the_receiver_unchanged`. Eleven further
+  mutations each killed at least one test: the version bump on both methods,
+  the CLEARED-to-BLOCKED pair, the same-state re-transition, both `ValueError`
+  guards, both field defaults, and `state` leaking into `flagged_for_review`.
+  The gap is immutability alone.
+
+  Required change, both lines in `tests/unit/domain/test_tracker.py`, with no
+  `src/` edit and nothing touched in `ports.py`: a test that fails when
+  `frozen=True` is removed, in the shape `tests/unit/domain/test_finding.py:44`
+  already uses (`pytest.raises(dataclasses.FrozenInstanceError)` around a
+  `setattr`); and an assertion in the `flagged_for_review` tests that the
+  receiver's `needs_review` and `version` are unchanged, mirroring the
+  `transitioned_to` test that already does this. `frozen=True` is what stops a
+  later caller from bumping a field in place instead of writing a new
+  versioned row — ClickHouse's latest-wins read would resolve that to a stale
+  row with nothing to signal it.
+
+  Verified sound, nothing else found:
+  - **The port contract holds**, checked method by method against SDD §3 and
+    against what each dependant needs. `TrackerStore`'s five methods and
+    `Notifier`'s one name only domain types (`TrackerItem`, `Script`) plus
+    `str`, `list`, `None`; no vendor type crosses. `save(list[TrackerItem])`
+    serves CP-025's two-rows-at-v1-and-v2 criterion and CP-026's
+    `tracker.save`. `latest(item_id) -> TrackerItem` raises rather than
+    returning `None`, which is what CP-023's "not-found error naming the id"
+    and CP-029's 404 mapping both need. `latest_for_project -> list[...]`
+    serves CP-023's highest-version-per-id rule.
+    `record_script`/`latest_script(project_id) -> Script | None` match
+    CP-023's round-trip criterion including `None` for a project with no
+    stored version. The asymmetry — `latest` raises, `latest_script` returns
+    `None` — is what CP-023 asks for on both of its lines.
+    `Notifier.notify(item, reason)` carries all five fields CP-024's POST body
+    lists.
+  - CP-005's five ports are unchanged: the `ports.py` diff is the docstring,
+    one import, and an append.
+  - Conformance bites. Removing `latest` from the Protocol fails
+    `test_a_trackerstore_stub_missing_one_required_method_fails_isinstance`;
+    renaming `FakeNotifier.notify` fails `test_fakes_satisfy_their_ports`.
+  - Layer rules hold, proven not read: `import requests` prepended to
+    `tracker.py` fails `test_domain_modules_import_only_stdlib_or_domain`
+    naming the file. `ports.py` imports `clearcut.domain` only.
+  - All twelve SDD §2 fields are present. Moving `needs_review` and
+    `draft_email` last is forced by dataclass default ordering, not a
+    deviation from §2.
+  - §4 clean: no state-machine class for a graph where every edge is legal, no
+    registry, no config, no unused parameter. Both ports have a real network
+    boundary behind them, with adapters named for CP-023 and CP-024. No secret
+    literal; the fixture address is on `example.com`.
+
+  Non-blocking, for the leader:
+  - **D3's signature check does not reach the two new fakes.** Nothing binds
+    `FakeTrackerStore` or `FakeNotifier` to its port by an annotated
+    assignment, so method presence is all they are checked for. Proven with a
+    control: widening `FakeTrackerStore.latest` to return `str`, giving `save`
+    a second required parameter, and swapping `notify`'s two parameters each
+    left `mypy --no-incremental --cache-dir=/dev/null src tests` at
+    **Success**, while the same return-type widening on `FakeLoreStore.search`
+    — which does carry a binding at `tests/unit/fakes.py:89` — produced
+    **2 errors**. Held non-blocking: no criterion here asks for the binding,
+    the one it does ask for names "the same conformance test shape CP-005
+    used", which is what landed, and what the five dependants bind to is the
+    Protocol in `ports.py`, reviewed above. CP-023 and CP-024 carry their own
+    `checked: <Port> = adapter` criteria for the real implementations. Worth
+    one small checkpoint, or folding into whichever of CP-023, CP-024 or
+    CP-025 lands first.
+
+  Ruling on this block's question about promoting the two fakes into
+  `tests/unit/fakes.py` — **uphold the deferral, and unbundle it from the
+  binding above.** Extracting a fake with one caller today is the move §4
+  says to wait for; the first of CP-023, CP-024 or CP-025 to land is the
+  second caller and the moment to do it. The binding does not depend on that
+  move, though: `_store: TrackerStore = FakeTrackerStore()` sits perfectly
+  well beside the fakes in `test_ports.py`. Neither should hold the other
+  hostage.
+
+  **Attempt 2 — fix, tests only, `src/clearcut/domain/tracker.py` and
+  `application/ports.py` untouched.** Both required tests added to
+  `tests/unit/domain/test_tracker.py`:
+  - `test_tracker_item_is_frozen` — `setattr(item, "state", ...)` under
+    `pytest.raises(dataclasses.FrozenInstanceError)`, the same shape as
+    `test_finding.py:44`.
+  - `test_flagged_for_review_leaves_the_receiver_unchanged` — asserts the
+    receiver's `needs_review` and `version` are unchanged after the call,
+    mirroring the existing `transitioned_to` receiver-unchanged test.
+
+  Both verified on an `rsync` copy at `/tmp/cp018-mutant-scratch`, never in
+  the working tree: `@dataclass(frozen=True)` → `@dataclass()` makes
+  `test_tracker_item_is_frozen` fail (`DID NOT RAISE FrozenInstanceError`);
+  restored, then `flagged_for_review` rewritten to three
+  `object.__setattr__` calls on the receiver plus `return self` makes
+  `test_flagged_for_review_leaves_the_receiver_unchanged` fail
+  (`assert True is False`); restored. Full
+  `tests/unit/domain/test_tracker.py` re-run against the sound source: 20
+  passed.
+
+  Non-blocking D3 gap also closed: `tests/unit/application/test_ports.py`
+  gains `_store: TrackerStore = FakeTrackerStore()` and
+  `_notifier: Notifier = FakeNotifier()` beside the two fakes, the same
+  annotated-binding shape as `tests/unit/fakes.py:89`. Verified on a second
+  `rsync` copy at `/tmp/cp018-d3-scratch`: widening `FakeTrackerStore.latest`
+  to return `str` moves `mypy --no-incremental --cache-dir=/dev/null src
+  tests infra` from Success to one `[assignment]` error naming the exact
+  conflicting method; reverted, not carried into the working tree. Per the
+  ruling above, the two fakes stay in `test_ports.py` — not promoted to
+  `tests/unit/fakes.py`.
+
+  Gates on the shared tree: `pytest -q` 173 passed (171 + 2 new),
+  `mypy src tests infra` Success (55 files), `ruff check .` clean,
+  `ruff format --check .` clean (81 files), `./.claude/init.sh verify`
+  87 passed.
+
+  **Review 2 — PASS.** Re-verified from scratch; every claim below was run, not
+  read. Both source files are byte-identical to the copy review 1 took before
+  its own mutations (sha256 `9b0f247d…` for `domain/tracker.py`, `9f2d70b5…`
+  for `application/ports.py`), so attempt 2 was tests-only as claimed. `git
+  diff` alone would have proven nothing there: `tracker.py` is untracked.
+
+  Both attempt-1 survivors now die. Every mutation ran in an `rsync` copy at
+  `/private/tmp/cp018-rev2`, never in the shared tree:
+  - `@dataclass(frozen=True)` → `@dataclass()`: 1 failed, 172 passed —
+    `test_tracker_item_is_frozen`, `DID NOT RAISE FrozenInstanceError`.
+  - `flagged_for_review` rewritten to three `object.__setattr__` calls on the
+    receiver plus `return self`: 1 failed, 172 passed —
+    `test_flagged_for_review_leaves_the_receiver_unchanged`,
+    `assert True is False`.
+
+  Two of attempt 1's eleven killed mutants spot-checked and still dead:
+  dropping the version bump in `transitioned_to` fails
+  `test_transitioned_to_returns_a_new_item_at_the_next_version` and
+  `test_transitioning_to_the_current_state_still_bumps_the_version`; deleting
+  the `version < 1` guard fails `test_rejects_a_version_below_one`.
+
+  All three D3 probes bite now, against a scratch baseline of mypy Success
+  (55 files) under `--no-incremental --cache-dir=/dev/null`: widening
+  `FakeTrackerStore.latest` to `-> str` and giving `save` a second required
+  parameter each produce one `[assignment]` error at `test_ports.py:59`;
+  swapping `notify`'s two parameters produces one at `test_ports.py:60`. The
+  bindings sit at lines 59-60, above the `_FAKES_BY_PORT` dict and above every
+  `isinstance` call, so no narrowing precedes them.
+
+  Re-proven rather than carried over from review 1: `import requests` in
+  `domain/tracker.py` fails `test_domain_modules_import_only_stdlib_or_domain`
+  naming the file; removing `latest` from the `TrackerStore` Protocol fails
+  `test_a_trackerstore_stub_missing_one_required_method_fails_isinstance`.
+
+  Port contract re-checked against all five dependants. `Script` carries
+  `project_id` and `version`, so `record_script(script)` with
+  `latest_script(project_id) -> Script | None` gives CP-023 its round trip and
+  its `None` case; `latest(item_id) -> TrackerItem` raises rather than
+  returning `None`, which CP-023's not-found error and CP-029's 404 both
+  require; `save(list[TrackerItem])` serves CP-025's two-rows criterion and
+  CP-026's `tracker.save`; `latest_for_project` serves CP-023 and CP-027;
+  `notify(item, reason)` carries the five fields CP-024's POST body lists.
+  Only domain types plus `str`, `list` and `None` cross. CP-005's five ports
+  are untouched: the entire `ports.py` diff is the docstring, one import line,
+  and an append.
+
+  Gates on the shared tree: `pytest -q` 173 passed, `mypy src tests infra`
+  Success (55 files), `ruff check .` all checks passed, `ruff format --check .`
+  81 files already formatted, `./.claude/init.sh verify` 87 passed.
+
+  Non-blocking, for the leader: CP-025 must store `draft_email` on an item, but
+  `TrackerItem` exposes only `transitioned_to` and `flagged_for_review`, and
+  CP-025's `Files` list does not include `domain/tracker.py`. As written that
+  use case would reach for `dataclasses.replace` and bump `version` itself,
+  putting the versioned-row rule in a second place. Worth settling before
+  dispatch: either add `domain/tracker.py` to CP-025's `Files` for a
+  `with_draft_email(text, at)` method, or state in that block that `replace`
+  in the use case is the intended shape.
+
+### CP-020 — Diff two script versions by content hash
+- Status: DONE
+- Attempts: 1/3
+- Depth: 0
+- Layer: domain
+- Depends on: -
+- Acceptance:
+  - [x] `domain/delta.py` declares a frozen `SceneDelta` (`scene_number`,
+        `heading`, `kind`, `old_hash`, `new_hash`), a `DeltaKind` enum (ADDED,
+        CHANGED, REMOVED, UNCHANGED), and
+        `diff_scenes(old: list[Scene], new: list[Scene]) -> list[SceneDelta]`,
+        exactly the signature SDD §2 names.
+  - [x] The join key is `number` plus `heading`; the comparison is
+        `content_hash`. A scene present in both versions with an equal hash
+        comes back UNCHANGED carrying both hashes.
+  - [x] Same key, different hash: CHANGED, with both hashes present so a caller
+        can tell what moved.
+  - [x] Present only in `new`: ADDED, `old_hash` is `None`. Present only in
+        `old`: REMOVED, `new_hash` is `None`.
+  - [x] A scene whose `number` matches but whose `heading` changed comes back as
+        REMOVED plus ADDED, not CHANGED, because the join key is both fields.
+        A rewritten slugline is a different scene, and this is the case that
+        decides whether the join key claim is real.
+  - [x] Every input scene appears in the output exactly once per version it
+        belongs to, asserted by count, so nothing is silently dropped.
+  - [x] Failure path: two scenes in the same version sharing `number` plus
+        `heading` raise `ValueError` naming the key, rather than one silently
+        shadowing the other.
+  - [x] Failure path: an empty `old` returns every `new` scene as ADDED — the
+        first-upload case, which must not be an error.
+  - [x] Pure: no I/O, stdlib only.
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: src/clearcut/domain/delta.py, tests/unit/domain/test_delta.py
+- Notes: The concrete algorithm SDD §4.3 gives for what the legacy architecture
+  document called the Dynamic Scalability Module. Pure, dependency-free, and
+  dispatchable now — it is the only part of phase 5 that does not wait on
+  phase 4.
+
+  ADR 0007's "renumbered but unchanged scene has to produce the same hash" is
+  about `content_hash` itself (CP-002, already true — it hashes `text` only).
+  It is not about the join key here: this checkpoint's own criteria fix the
+  join key to `(number, heading)`, so an actual renumber reads as
+  REMOVED+ADDED, same as a heading rewrite. What CP-020 proves instead is
+  that `diff_scenes` joins by that key rather than by list position — added
+  `test_reordering_scenes_in_the_input_lists_does_not_change_the_result`,
+  which feeds `old` and `new` with the same two scenes in swapped order and
+  asserts both still come back UNCHANGED. Added no port: this is pure
+  domain, no I/O, so nothing here crosses a boundary AGENT.md §4 requires
+  one for.
+
+  Review attempt 1 — CHANGES_REQUESTED, 1 blocking finding. Gates all green
+  (pytest 171 passed, ruff check clean, ruff format 81 files, mypy 55 files,
+  `init.sh verify` 87/87). §2 purity holds: `delta.py` imports `enum`,
+  `dataclasses`, and `domain.script` only. §4 clean: no port, no interface,
+  no config, two private helpers with 2 and 3 call sites, 85 lines.
+
+  BLOCKING — `tests/unit/domain/test_delta.py:119-131` —
+  `test_reordering_scenes_in_the_input_lists_does_not_change_the_result` does
+  not test what its docstring and the Notes above claim. `_scene()` defaults
+  `text="He runs."`, so `scene_a` and `scene_b` have the *same*
+  `content_hash` (verified: `a.content_hash == b.content_hash` is True).
+  A purely positional zip join therefore pairs a-with-b and b-with-a, gets
+  equal hashes, and returns UNCHANGED twice — the test passes. Verified by
+  mutation: two different positional-join implementations both pass this
+  test. It cannot distinguish a key join from a positional join, which is the
+  one thing it exists to prove, and the Notes cite it as the answer to the
+  ADR 0007 question. Required change: give `scene_a` and `scene_b` different
+  `text` so their hashes differ. Confirmed sufficient — with distinct text the
+  real implementation still passes and both positional mutations fail.
+
+  Not blocking, for the record — every acceptance criterion is met and
+  non-vacuously covered. Mutation results: ADDED→CHANGED fails 3 tests,
+  REMOVED→CHANGED fails 2, UNCHANGED→CHANGED fails 2, CHANGED→UNCHANGED
+  fails 1; dropping the ADDED branch fails 4; dropping REMOVED emission fails
+  3; a duplicate-key message without the number/heading fails the
+  `pytest.raises(match=...)` test, and that regex rejects a message carrying
+  only one of the two fields. Criterion 5's heading test is a real guard
+  against a positional join — it fails under both positional mutations. The
+  empty-`old` first-upload path is covered.
+
+  REVIEWER RULING on the ADR 0007 join-key question the conductor raised —
+  NOT blocking for CP-020; routed to the leader as a specification decision.
+  The implementer built exactly what was specified and flagged the tension
+  rather than guessing, which is the correct behaviour. Splitting the ADR's
+  two claims:
+
+  (a) Permission fate — the ADR's Decision paragraph ("permissions already
+  obtained carry forward"; a changed scene that carried a cleared permission
+  flags for re-review) is NOT violated. The conductor's "already-obtained
+  permissions are LOST" does not hold against the spec: SDD §4.3 and CP-028's
+  criteria put permission survival on asset-identity carry-forward, not on
+  the scene join — "a re-extracted finding whose `(category, normalized
+  raw_text)` matches an existing one keeps its `finding_id` and its tracker
+  state, **even when the asset moved to a different scene**" — and "REMOVED
+  scenes keep their open tracker items, with a note. Nothing is deleted."
+  A renumbered scene's REMOVED+ADDED pair therefore still carries its
+  clearance forward. The implementer's defence is correct on this half.
+
+  (b) Re-analysis cost — the ADR's Consequences paragraph ("or every reorder
+  looks like a full rewrite and the incremental path buys nothing") IS only
+  partially served. Position-free `content_hash` (CP-002, verified: a
+  renumbered scene with the same text hashes identically) is necessary but
+  not sufficient, because a `(number, heading)` join never pairs the
+  renumbered scenes for the hash to be compared. Insert one scene at the top
+  of v2 and every later scene is re-extracted, re-enriched, and re-embedded.
+  That is a real gap — but it is between ADR 0007 and SDD §2, not between the
+  spec and this code. SDD §2 states the join normatively ("`number` plus
+  `heading` is the join key across versions"; "joins on `number` plus
+  `heading` and compares hashes"), and CP-020's criteria restate it four
+  times, including criterion 5, which declares REMOVED+ADDED the *correct*
+  answer for a same-number heading change. A hash-first join would violate
+  criteria 2 and 5 as written. Sending this back would burn an attempt on a
+  criterion the implementer satisfied.
+
+  On the merits, "content_hash first, fall back to (number, heading)" is not
+  a free win and should not be adopted without the leader deciding it:
+  `content_hash` is not unique within a version (two short scenes with
+  identical normalized text collide, and the spec defines no tie-break, while
+  the current code raises `ValueError` on a duplicate *key*); it only rescues
+  the renumbered-AND-unchanged case, since a scene both renumbered and edited
+  misses the hash join and then misses the key join too; and `diff_scenes`
+  has no production caller yet — the cost is paid in CP-028, so building a
+  two-stage join with an unspecified collision policy now is the speculative
+  generality §4 forbids. Leader decision needed: amend SDD §2 and CP-028 to
+  a hash-first join with a stated duplicate-hash tie-break, or amend ADR
+  0007's Consequences to state that scene renumbering is accepted as full
+  re-analysis cost. Do not change `diff_scenes` until that is decided.
+
+  Fix for attempt 1's blocking finding — `domain/delta.py` is unchanged.
+  `test_reordering_scenes_in_the_input_lists_does_not_change_the_result`
+  now gives `scene_a` and `scene_b` different `text` ("He runs." vs
+  "She waits."), so their `content_hash` values differ. Verified on a
+  scratch copy of `delta.py`: mutating `diff_scenes` to a positional zip
+  join makes the strengthened test fail (both scenes report CHANGED
+  instead of UNCHANGED); the unmodified implementation still passes.
+  `delta.py` restored byte-identical after the mutation check (diff
+  confirmed empty). Gates: pytest 173 passed, mypy clean on 55 files,
+  ruff check clean, ruff format 81 files already formatted.
+
+  Review attempt 2 — PASS, 0 blocking findings. Gates: pytest 173 passed,
+  mypy clean on 55 source files, ruff check clean, ruff format 81 files
+  already formatted, `init.sh verify` 87/87.
+
+  On the "`delta.py` is unchanged" claim — `git diff` cannot establish it,
+  because the file is untracked on this branch, so an empty diff is exactly
+  the vacuous proof to distrust. No attempt-1 artifact survives anywhere: no
+  blob under any ref, no stash, no `__pycache__`. Byte-identity is therefore
+  not provable from artifacts, and was not taken on trust. Verified instead
+  by behavioural fingerprint — all seven mutant counts attempt 1 recorded
+  reproduce exactly against the file as it stands: ADDED to CHANGED 3
+  failures, REMOVED to CHANGED 2, UNCHANGED to CHANGED 2, CHANGED to
+  UNCHANGED 1, dropping the ADDED branch 4, dropping REMOVED emission 3, and
+  a duplicate-key message stripped of number/heading 1. Structure agrees too:
+  84 lines, imports `enum`, `dataclasses` and `domain.script` only, the same
+  two private helpers. This makes identity moot — every attempt-1 conclusion
+  was re-derived against the current file rather than inherited.
+
+  The blocking finding is fixed and the fix is load-bearing. `scene_a`
+  ("He runs.") and `scene_b` ("She waits.") now hash differently, computed
+  directly: a = 627b648f5758..., b = 81fc85989694.... Before the fix both
+  were 627b648f5758... — the collision that made the test blind. The 2x2 that
+  settles it, run on a copy under /tmp and never on the repo file:
+
+      pre-fix test (identical text) x positional zip            -> SURVIVED
+      pre-fix test (identical text) x positional index pairing  -> SURVIVED
+      current test (distinct text)  x positional zip            -> KILLED
+      current test (distinct text)  x positional index pairing  -> KILLED
+
+  Two structurally different positional joins were used: one zipping the raw
+  input lists, one building the key indexes and then pairing them by position
+  within the dicts, which still "uses" the key index and is the subtler of the
+  two. Both survived the old test; both die under the new one. The
+  strengthened test now proves the one thing it exists to prove.
+
+  No sibling test leaned on the old identical-text coincidence. All nine tests
+  in the file are load-bearing — each kills at least one mutant. In
+  particular `test_matching_number_with_changed_heading_is_removed_plus_added_not_changed`
+  independently catches both positional joins; its two scenes deliberately
+  share text, which makes it a stronger discriminator there rather than a
+  weaker one, because a positional join returns a single UNCHANGED where the
+  test demands REMOVED plus ADDED.
+
+  Join key untouched, as criteria 2 and 5 require: `delta.py:40` still builds
+  `key = (scene.number, scene.heading)`, `_SceneKey` is still `tuple[int, str]`,
+  and no hash-first join appeared. Section 2 purity holds — stdlib plus
+  `domain.script`, no I/O. Section 4 clean — no port, no interface, no config,
+  and both private helpers have two call sites.
+
+  Still open for the leader, carried forward unchanged from attempt 1 and not
+  yet tracked by any checkpoint: the ADR 0007 versus SDD Section 2 join-key
+  conflict in paragraph (b) above. Nothing here resolves it, and nothing here
+  should — it needs a specification decision, not code.
+
+### CP-017 — Declare the runtime dependencies, and keep them declared
+- Status: DONE
+- Attempts: 1/3
+- Depth: 0
+- Layer: infra
+- Depends on: -
+- Acceptance:
+  - [x] `[project] dependencies` in `pyproject.toml` names every third-party
+        distribution `src/clearcut/` imports, at the versions resolved in
+        `.venv`: `google-api-core==2.34.0`, `google-cloud-documentai==3.15.0`,
+        `google-genai==2.20.0`, `langchain-google-community[featurestore]==5.0.0`,
+        `parallel-web==1.3.2`, `httpx==0.28.1`. It reads `[]` today, so a fresh
+        clone cannot build and `gcloud run deploy --source .` would ship a
+        container with none of the SDKs the service calls.
+  - [x] `tests/unit/test_declared_dependencies.py` parses every module under
+        `src/clearcut/` with `ast`, resolves each top-level imported module to
+        its distribution through `importlib.metadata.packages_distributions()`,
+        and asserts every one is declared. Standard-library modules and
+        first-party `clearcut.*` are excluded, and the exclusion is asserted
+        rather than assumed.
+  - [x] Failure path: the test names the offending module path and the missing
+        distribution. A boolean assertion here is useless to the person who
+        added the import.
+  - [x] The test is proven non-vacuous: adding one undeclared third-party
+        import to a scratch copy of a `src/clearcut/` module makes it fail,
+        naming that module.
+  - [x] `[project] classifiers` records `Programming Language :: Python :: 3.12`
+        so the runtime D8 pins is written next to the dependencies rather than
+        living only in a mypy setting. `requires-python` stays `>=3.11`.
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: pyproject.toml, tests/unit/test_declared_dependencies.py
+- Notes: **Review attempt 1 — CHANGES_REQUESTED, 2 blocking.** All gates green
+  (pytest 171 passed, mypy 55 files clean, ruff check, ruff format 81 files,
+  `./.claude/init.sh check` exit 0), all five pins verified against `.venv` by
+  the reviewer, the `featurestore` extra confirmed real. The checker is sound
+  and the non-vacuity test is genuine. Two findings, both fixed in
+  `pyproject.toml` alone — no change to the checker is being asked for.
+
+  **B1. `pyproject.toml` — `google-api-core` is directly imported and not
+  declared.** `src/clearcut/adapters/gcp/document_ai.py:13` reads
+  `from google.api_core.exceptions import GoogleAPIError` (used at line 106).
+  `google/api_core/` is owned by `google-api-core` 2.34.0, which is installed
+  but absent from `[project] dependencies`. The first acceptance criterion is
+  "names **every** third-party distribution `src/clearcut/` imports"; this one
+  is missing, so that criterion is unticked. It reaches the container only as a
+  transitive of `google-cloud-documentai`, so nothing breaks today — the day
+  that pin's own requirements change, a direct import with no pin behind it
+  does. Required change: add `google-api-core==2.34.0` to `[project]
+  dependencies`. The criterion's five-item enumeration is the leader's
+  inventory and is incomplete; amend it to six rather than treating the
+  enumeration as the cap — every other declared pin is for a pre-existing
+  import too, so "pre-existing" does not put this one out of scope.
+
+  **B2. Notes — the blind-spot write-up is accurate on mechanism, wrong on
+  impact.** Verified true: `packages_distributions()['google']` returns 17
+  distributions here, and the mapping has no dotted keys at all, so top-level
+  collapse is real. But the note calls the consequence conditional — "only
+  matters if someone adds a second, undeclared `google-*` import", "if a
+  `google-cloud-discoveryengine` import ever lands undeclared". That condition
+  is already met: B1 is exactly such an import, live in `main`, masked right
+  now. Required change: state that the blind spot is active and currently
+  hiding at least one undeclared direct import, not latent.
+
+  **Reviewer's ruling on the blind spot itself (asked for explicitly): not
+  blocking, not the implementer's fault.** Inherent to the named call — yes,
+  confirmed by construction. Closeable in principle — also yes:
+  `importlib.metadata.Distribution.files` resolves `google/cloud/documentai/`
+  to `google-cloud-documentai` and `google/genai/` to `google-genai`, which the
+  reviewer ran. But that means dropping the exact stdlib call the second
+  acceptance criterion mandates, which is a spec change only the leader may
+  make. Deferred to CP-NEW below; the implementer is not asked to close it.
+
+  **Mutation matrix (reviewer-run, in memory against the checker's helpers, no
+  files edited).** Removing `httpx` → fails, naming
+  `adapters/parallel/research.py` and `httpx`. Removing `parallel-web` → fails,
+  naming the same file and `parallel-web`. Removing `google-cloud-documentai`
+  alone → still passes. Removing `google-genai` alone → still passes. Removing
+  `langchain-google-community` → still passes. The two `google-*` misses are
+  B2's blind spot; the `langchain` miss is correct behaviour, see below. So the
+  gate bites on 2 of 5 today, and would bite on both `google-*` pins only if
+  they were removed together.
+
+  **Accepted, no finding:** the checker is used→declared only, never the
+  reverse, so `langchain-google-community` being declared but unimported is not
+  a violation — and the criteria name that pin explicitly, so it is mandated,
+  not YAGNI drift. `requires-python` stays `>=3.11` with the 3.12 classifier
+  added, consistent with D8's ratified `python_version = "3.12"`. The
+  non-vacuity test is real and discriminating: `yaml` resolves to exactly one
+  distribution (`PyYAML`, installed transitively, never declared), so it cannot
+  pass by resolving nothing, and the matrix above independently confirms the
+  checker's outcome changes with its input.
+
+  **Non-blocking, for the leader to schedule — do not fix in this checkpoint.**
+  (a) *Resolve namespace-package imports by submodule prefix.* Replace
+  `packages_distributions()` with a `Distribution.files` prefix map so
+  `google.api_core`, `google.cloud.documentai_v1` and `google.genai` each
+  resolve to their own distribution. This closes B2's blind spot and would have
+  caught B1 mechanically. Needs the second acceptance criterion rewritten, so
+  it is the leader's call, not the implementer's.
+  (b) *Deduplicate the failure output.* Removing `parallel-web` prints the same
+  finding seven times, once per import statement in the file. The information
+  is correct and complete; the repetition is noise. Cosmetic only.
+
+  The test is the point, not the declarations. Two checkpoints in this
+  same batch add an import — CP-023 needs `clickhouse-connect`, CP-029 needs
+  `flask` — and a list somebody has to remember to update is exactly what let
+  `dependencies = []` survive five adapters. This makes the gate remember.
+
+  All five pins were verified against the installed `.venv`, not trusted from
+  the archived note, before writing them:
+  `env -u PYTHONPATH .venv/bin/python -m pip list` showed
+  `google-cloud-documentai 3.15.0`, `google-genai 2.20.0`,
+  `langchain-google-community 5.0.0`, `parallel-web 1.3.2`, `httpx 0.28.1` —
+  all matched exactly, no drift to reconcile.
+
+  `google` is a shared PEP 420 namespace package: seventeen distributions
+  (`google-genai`, `google-cloud-documentai`, `google-api-core`,
+  `google-cloud-discoveryengine`, …) all install modules under the single
+  top-level name `google`, and `importlib.metadata.packages_distributions()`
+  only resolves whole top-level names, not dotted paths. So
+  `find_undeclared_imports` treats an import as declared when *any* of its
+  candidate distributions are declared, not a specific one. This means the
+  checker cannot tell a `google.cloud.documentai_v1` import from a
+  `google.api_core.exceptions` one — both collapse to checking `google`
+  against the same 17-distribution candidate set. This is a real blind spot,
+  inherent to `packages_distributions()` and namespace packages, not a
+  shortcut I could close within this checkpoint's scope; the acceptance
+  criteria name this exact stdlib call. **The masking is active right now,
+  not latent — `google-api-core` is the live instance.**
+  `document_ai.py:13` imports `google.api_core.exceptions.GoogleAPIError`
+  undeclared, and `test_every_third_party_import_in_src_is_declared` still
+  passes, because `google-cloud-documentai` and `google-genai` are already
+  declared and either one satisfies the intersection the checker runs against
+  the same 17-distribution candidate set `google-api-core` falls into.
+  Attempt 2 adds `google-api-core==2.34.0` to `[project] dependencies` by
+  hand to close this exact instance; the checker itself still cannot
+  distinguish a `google-api-core`-only import from any other `google-*` one,
+  so closing that mechanically stays deferred to CP-NEW below, per the
+  reviewer's ruling — not something this attempt reopens. `google-cloud-
+  discoveryengine` itself is unused and stays undeclared per D16 (in
+  `pyproject.toml`, not `src/clearcut/`, so it never appears in the walk).
+
+  `langchain-google-community` is declared but not yet imported anywhere in
+  `src/clearcut/` — `adapters/bigquery/lore_store.py` deliberately types
+  against local `Protocol`s instead (its own docstring explains why: a real
+  `BigQueryVectorStore` constructor performs a network call a unit-test fake
+  must not need). The checker only requires every *used* import to resolve
+  to a *declared* distribution, not the reverse, so an unused-but-declared
+  pin is not a violation — and per the Notes above, declaring it now is
+  intentional: it is an SDK the running service needs once `composition.py`
+  wires the real adapter, not dead weight.
+
+  Non-vacuous proof imports `yaml` (installed as a transitive dep, never
+  declared as a runtime one) into a `tmp_path` scratch module — a real
+  `google-cloud-discoveryengine`-style probe would be silently masked by the
+  namespace-package blind spot above, so I picked an import with an
+  unambiguous single-distribution resolution instead.
+
+  Manually verified the test bites on a copy: deleted `httpx==0.28.1` from
+  `pyproject.toml`, reran `test_every_third_party_import_in_src_is_declared`,
+  watched it fail naming `adapters/parallel/research.py` and `httpx`
+  exactly, then restored the file and reran green.
+
+  Touched only `pyproject.toml` and the new test file, per this turn's file
+  lock — did not enter `src/clearcut/**` or any sibling's test file.
+
+  It also settles D16: once `pyproject.toml` is the record of what ClearCut
+  needs, an unused `google-cloud-discoveryengine` sitting in `.venv` is noise
+  rather than a false record, and nothing needs uninstalling.
+
+  **Attempt 2 — both blocking findings fixed, `pyproject.toml` only.** B1:
+  added `google-api-core==2.34.0` to `[project] dependencies`, version
+  verified against `.venv` with
+  `env -u PYTHONPATH .venv/bin/python -m pip show google-api-core` (reported
+  `2.34.0`, matching the reviewer's number exactly) rather than trusted from
+  this Notes block. First acceptance criterion re-ticked and its enumeration
+  now names six distributions. B2: the blind-spot passage above is rewritten
+  in place to state the masking is active today and name `google-api-core` as
+  the live instance it was hiding, instead of describing it as a future
+  possibility. The blind spot itself is untouched, as instructed — no change
+  to `find_undeclared_imports` or to the second acceptance criterion, and
+  CP-NEW stays deferred to the leader. Touched only `pyproject.toml` and this
+  CP-017 block.
+
+  **Review attempt 2 — PASS, 0 blocking.** Both findings verified fixed. B1
+  closed: `google-api-core==2.34.0` is declared, and
+  `env -u PYTHONPATH .venv/bin/python -m pip show google-api-core` reports
+  2.34.0. All six pins were re-verified against `.venv` by the reviewer, not
+  read from this block: google-api-core 2.34.0, google-cloud-documentai
+  3.15.0, google-genai 2.20.0, langchain-google-community 5.0.0, parallel-web
+  1.3.2, httpx 0.28.1 — every one exact. The first criterion's enumeration now
+  names six and matches `[project] dependencies` line for line. B2 closed: the
+  blind-spot passage states the masking is active and names `google-api-core`
+  as the live instance it was hiding.
+
+  **Import set re-derived, not counted.** The reviewer re-walked
+  `src/clearcut/**` with an independent `ast` pass that keeps full dotted
+  paths instead of collapsing to top-level names, then resolved each path to
+  its owning distribution through `importlib.metadata.Distribution.files`
+  prefix matching. Complete set: `google.api_core.exceptions` →
+  google-api-core (`adapters/gcp/document_ai.py:13`), `google.cloud.documentai_v1`
+  → google-cloud-documentai (same file, line 14), `google.genai` → google-genai
+  (`adapters/gcp/vertex_search.py`, `adapters/gemini/extractor.py`), `httpx` →
+  httpx and `parallel.types.*` → parallel-web (`adapters/parallel/research.py`).
+  Five distributions are actually imported; all five are declared. No second
+  undeclared import is hiding behind the namespace collapse — B1 was the only
+  one.
+
+  **Mutation matrix re-run (each of the six declarations removed in turn from
+  a tmp copy of `pyproject.toml`, the checker's helpers imported unmodified).**
+  `parallel-web` → CAUGHT, naming `research.py` and `parallel`. `httpx` →
+  CAUGHT, naming `research.py` and `httpx`. `google-api-core` → MISSED.
+  `google-cloud-documentai` → MISSED. `google-genai` → MISSED.
+  `langchain-google-community` → MISSED, which is correct behaviour: it is
+  unimported and the checker is used→declared only. **The gate bites on 2 of
+  6 — no gain in reach over last round's 2 of 5.** Declaring `google-api-core`
+  closed that one instance by hand; it did not extend what the gate can see.
+  Removing all three `google-*` pins together is CAUGHT, which is the trio
+  masking each other — the deferred blind spot, exactly as characterised.
+
+  Not blocking, for two reasons stated in attempt 1 and unchanged: the blind
+  spot was ruled non-blocking and routed to the leader, and the checker is not
+  hollow. It fails outright against the pre-change `dependencies = []` state
+  this diff replaces, it kills 2 of 6 single mutants, and the `yaml` probe is a
+  genuine catch against a real installed-but-undeclared distribution.
+
+  **Blind spot untouched, as required.** `find_undeclared_imports` still calls
+  `packages_distributions()` and the second acceptance criterion is unchanged.
+
+  Gates re-run by the reviewer: `pytest -q` 173 passed, `mypy src tests infra`
+  clean over 55 source files, `ruff check .` clean, `ruff format --check .` 81
+  files already formatted, `./.claude/init.sh check` exit 0 (4 passed, 0
+  failed), `./.claude/init.sh verify` 87/87. Diff scope confirmed as claimed:
+  `pyproject.toml` plus the new `tests/unit/test_declared_dependencies.py`.
+  The `.gitignore`, `.claude/settings.json`, `src/clearcut/application/ports.py`
+  and `tests/unit/application/test_ports.py` entries in the working tree belong
+  to concurrent checkpoints, not this one.
+
+  **Non-blocking, carried to the leader (unchanged from attempt 1):**
+  (a) resolve namespace-package imports by submodule prefix via
+  `Distribution.files`, so `google.api_core`, `google.cloud.documentai_v1` and
+  `google.genai` each resolve to their own distribution — this closes the
+  masking mechanically and needs the second acceptance criterion rewritten,
+  which is the leader's call; (b) deduplicate the failure output, which repeats
+  one finding per import statement in the same file.
+
+  **Leader amendment, 2026-08-30 (D21). The second acceptance criterion's
+  `importlib.metadata.packages_distributions()` is superseded by
+  `Distribution.files` prefix matching; CP-033 carries it.** The criterion stays
+  ticked and the checkpoint stays `DONE` — it was satisfied exactly as written,
+  and the reviewer's two mutation matrices are the evidence that the checker
+  behind it is sound rather than hollow. What changed is the specification, not
+  the verdict on this work. The reviewer measured the gate at 2 of 6 single
+  removals twice, and hand-declaring `google-api-core` closed one instance
+  without extending the gate's reach at all. The reason to close it now rather
+  than accept it with a date is CP-031: three `opentelemetry` distributions
+  share one top-level namespace the way the `google-*` ones do, and a missed
+  declaration there ships a Cloud Run container that imports fine locally and
+  dies on deploy. Item (b) folds into CP-033 too — same file, same function.
+
+
+### CP-019 — Collapse findings that name the same asset
+- Status: DONE
+- Attempts: 0/3
+- Depth: 0
+- Layer: domain
+- Depends on: -
+- Acceptance:
+  - [x] `domain/dedupe.py` exposes
+        `dedupe_findings(findings: list[Finding]) -> list[tuple[Finding, tuple[int, ...]]]`,
+        one entry per distinct asset: the first `Finding` seen for that asset,
+        and the ascending tuple of every `scene_number` it appeared in. This is
+        SDD §4.1 step 4, and the tuple is what fills `TrackerItem.scene_numbers`.
+  - [x] Asset identity is `(category, normalized raw_text)`, where
+        normalization is lowercase with whitespace runs collapsed and
+        surrounding whitespace stripped — the same normalization
+        `domain/script.py`'s `content_hash` already applies, reused rather than
+        retyped, so there is one owner of what "the same text" means.
+  - [x] SDD §4.1 step 4's own example: one BRAND asset appearing in fourteen
+        scenes collapses to one entry carrying fourteen scene numbers, so the
+        pipeline runs one enrichment pass and creates one tracker item.
+  - [x] Two findings with identical `raw_text` under different categories stay
+        separate entries. A Ferrari as INDUSTRIAL_PROPERTY and as
+        INTEGRATED_VISUAL are two clearance events with two required documents.
+  - [x] Order is deterministic: entries come back in first-appearance order and
+        each scene-number tuple ascends, so the API response and the tracker
+        read identically on two runs of the same input.
+  - [x] The surviving `Finding` is the first one seen, unchanged — this
+        function collapses, it does not merge fields. A test asserts the
+        returned finding is identical to the first input.
+  - [x] Failure path: an empty input returns an empty list without raising.
+  - [x] Failure path: findings whose `raw_text` differs only in case and
+        spacing collapse together, proven with a case-and-spacing pair, since
+        that is the whole claim the normalization makes.
+  - [x] Pure: no I/O, no clock, stdlib only.
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: src/clearcut/domain/dedupe.py, tests/unit/domain/test_dedupe.py,
+  src/clearcut/domain/script.py
+- Notes: A domain function rather than a step inside `AnalyzeScript`, because
+  AGENT.md §3's SRP check says so directly — a module that both orchestrates
+  adapter calls and decides what "the same asset" means is two modules. It also
+  gets a second caller immediately: CP-028's carry-forward joins on the same
+  identity, and two implementations of that rule is how v2 stops matching v1.
+
+  `script.py` touched too: extracted `content_hash`'s inline normalization
+  into a public `normalize_text(text: str) -> str`, called by both
+  `content_hash` and `dedupe.py`'s asset identity, so the acceptance
+  criterion's "reused rather than retyped" is literally true rather than a
+  parallel regex. `test_script.py`'s existing 10 tests still pass unchanged —
+  pure extraction, no behaviour change. Asset identity key is
+  `(Category, str)`, not the raw text tuple spelled out in the acceptance
+  text; using the normalized string directly (not its hash) keeps identity
+  human-readable in a debugger and avoids a same-text-different-hash
+  collision, however improbable.
+
+  Reviewed 2026-08-30 — PASS, 0 blocking, attempt 0/3.
+
+  **The `script.py` edit was the risk, and it was measured, not eyeballed.**
+  `content_hash` is the identity ADR 0007's carry-forward joins on, and
+  `script.py` is CP-002 work already DONE and committed (`dec0cd8`). A silent
+  digest change there would break v1-to-v2 delta evaluation without breaking a
+  test. So the committed file was recovered with
+  `git show HEAD:src/clearcut/domain/script.py`, loaded side by side with the
+  working copy through `importlib`, and both `content_hash` implementations
+  were run over **30,065 inputs**: the empty string; each whitespace character
+  alone (space, tab, CR, LF, VT, FF, NBSP, ideographic space, zero-width
+  space); ADR 0007's own equivalence classes (whitespace runs, case,
+  leading/trailing, newlines, unicode); Unicode casing traps that punish a
+  `.lower()` change (`İstanbul`/`ıstanbul`, `straße`/`STRASSE`, Greek final
+  sigma, KELVIN SIGN, the `ﬀ` ligature); all four NFC/NFD/NFKC/NFKD
+  normalizations of three accented strings; 5,000- and 10,000-character
+  strings; a null byte; astral-plane codepoints; and 30,000 seeded-random
+  strings over an alphabet built from those same trap characters.
+  **Divergences: 0.** The `Scene.__post_init__` path was compared too, and the
+  digest of `"abc"` was checked against the published SHA-256 vector
+  `ba7816bf…` to prove the harness was really hashing rather than comparing
+  two no-ops. Combined with the diff being a token-for-token move of one
+  expression, the extraction is bit-identical. Carry-forward is safe.
+
+  Mutation-tested rather than trusted, all in a scratch copy of the tree — no
+  repository file was edited. Six mutants of `dedupe.py`, all killed: dropping
+  `normalize_text` from the key, dropping every scene reference but the first,
+  dropping `category` from the identity, keeping the last finding instead of
+  the first, removing `sorted`, and normalizing without the whitespace-run
+  collapse. The two named specifically: breaking normalization fails
+  `test_findings_differing_only_in_case_and_spacing_collapse_together`;
+  dropping scene references fails four tests, including the fourteen-scene
+  SDD §4.1 example. Two further mutants of the extracted `normalize_text`
+  (stop collapsing whitespace, stop lowercasing) each fail **both** the new
+  dedupe test and CP-002's untouched
+  `test_hash_is_stable_across_whitespace_and_case` — the extracted function is
+  still covered by the tests that covered it inline.
+
+  §2 purity holds and is proven, not assumed: `dedupe.py` imports only
+  `clearcut.domain.finding` and `clearcut.domain.script`. CP-001's `ast` guard
+  picks the file up by `rglob`, so nobody had to register it — planting
+  `import requests` in the scratch copy fails
+  `test_domain_modules_import_only_stdlib_or_domain`, naming `dedupe.py`
+  explicitly.
+
+  §4 clean. `normalize_text` is not a premature abstraction: the acceptance
+  criteria demand the reuse in as many words, it has two real callers today,
+  and it is the one place a correctness coupling lives — dedupe identity and
+  the delta join must agree on what "the same text" means or v2 stops matching
+  v1. The two parallel dicts are the natural shape for first-appearance
+  ordering and cost nothing. No port, no interface, no config, no unused
+  parameter. 37 lines, one 20-line function.
+
+  Gates: pytest 171 passed; ruff check clean; ruff format 81 files already
+  formatted; `mypy src tests infra` clean over 55 source files;
+  `./.claude/init.sh verify` 87/87.
+
+  Non-blocking, deferred to the leader as a new checkpoint: two findings for
+  the same asset in the *same* scene produce a repeated scene number —
+  `dedupe_findings` returns `(7, 7, 9)`, which flows straight into
+  `TrackerItem.scene_numbers`. Verified against the built module, not
+  inferred. No acceptance criterion or downstream contract forbids it, and
+  `TrackerItem` only rejects an empty tuple, so this is unspecified behaviour
+  rather than a defect in CP-019. SDD §2 calls the field "every scene where
+  the asset appears", which reads like a set. Worth a decision before the
+  tracker renders it.
+
+  **Leader ruling, 2026-08-30 (D20): it is a set, and CP-032 makes it one.**
+  CP-019 stays `DONE` — the reviewer is right that no criterion here specified
+  the case, so this narrows unspecified behaviour rather than reopening
+  finished work. Multiplicity was rejected because it cannot be given a
+  meaning: identity is `(category, normalized raw_text)`, so two mentions in
+  one scene collide only when their normalized text matches exactly, and a
+  count of those describes the writer's phrasing, not the clearance. The full
+  reasoning is in D20.
+
+### CP-015 — Assert the injected processor id and model reach the outbound request
+- Status: DONE
+- Attempts: 0/3
+- Depth: 0
+- Layer: tests
+- Depends on: -
+- Acceptance:
+  - [x] `tests/unit/adapters/test_extractor.py` asserts the recorded call's
+        `model` equals the `model` the extractor was constructed with.
+        `RecordedCall.model` already captures the value and nothing reads it:
+        replacing `model=self.model` with the retired literal
+        `"gemini-1.5-pro"` leaves all six tests green today, which is the exact
+        stale-pin drift ADR 0002 exists to prevent.
+  - [x] `tests/unit/adapters/test_document_ai.py` asserts the recorded request
+        names the `processor_id` the adapter was constructed with. The request
+        is recorded and never asserted, so the same substitution passes there
+        too.
+  - [x] Both new assertions are proven non-vacuous by mutation, recorded in
+        Notes: each shown failing against the hardcoded variant on a scratch
+        copy, and passing again on revert.
+  - [x] `tests/unit/adapters/test_research.py:66-67` is reordered to
+        `checked: RightsResearch = adapter` first and
+        `assert isinstance(checked, RightsResearch)` second. As written the
+        `isinstance` narrows `adapter` to the Protocol before the annotated
+        assignment sees it, so the assignment binds `RightsResearch` to
+        `RightsResearch` and proves nothing (D3's inert-binding pitfall — the
+        last of the three occurrences).
+  - [x] Failure path proving that reorder is load-bearing: widening `find`'s
+        return annotation to `str` on a scratch copy must produce an
+        `[assignment]` error at that line. Today it produces none.
+  - [x] Gate: `pytest -q` green, `ruff check .` and `ruff format --check .`
+        clean, `mypy src tests infra` clean.
+- Files: tests/unit/adapters/test_extractor.py,
+  tests/unit/adapters/test_document_ai.py, tests/unit/adapters/test_research.py
+- Notes: Tests only; no `src/` file is touched, so this collides with nothing
+  and can ride alongside any other dispatch. Deliberately ranked lowest of the
+  sixteen: it protects against a future regression, not against a demo failure.
+  It is here rather than in the Backlog because it is one small turn against
+  three files nothing else on the critical path opens.
+
+  Both new assertions use a sentinel value distinct from any real model or
+  processor id (`"model-injected-at-construction"`,
+  `"processor-injected-at-construction"`) rather than reusing a value already
+  hardcoded elsewhere in the same file — a hardcode that happened to match a
+  literal already in use would slip past a same-valued assertion. Mutation
+  proof (never touching the tracked `src/` files — mutated file-system copies
+  under `/tmp`, executed by directly loading the mutant module with
+  `importlib.util.spec_from_file_location`, driven through the fake client
+  from each test):
+  - `extractor.py`'s `model=self.model` replaced with the retired literal
+    `"gemini-1.5-pro"`: `client.calls[0].model` came back `"gemini-1.5-pro"`,
+    the new assertion raised `AssertionError`. Reverted to `self.model`: the
+    same script passes.
+  - `document_ai.py`'s `name=self._processor_id` replaced with a hardcoded
+    processor path: `client.requests[0].name` came back that literal, the new
+    assertion raised `AssertionError`. Reverted: passes.
+
+  Reorder proof for `test_research.py`, same never-touch-`src/`-tracked
+  discipline (a `cp -r` of `src/clearcut` under `/tmp`, `find`'s return
+  annotation widened to `str` there only): `mypy --strict` against the
+  *original* line order (`isinstance` first, then the annotated assignment)
+  produced zero errors at that line — only an unrelated `[return-value]` in
+  the adapter and a downstream `[attr-defined]` where the test later reads
+  `claim.holder`. The same mutation against the *reordered* lines produced
+  `tests/unit/adapters/test_research.py:66: error: Incompatible types in
+  assignment (expression has type "ParallelRightsResearch", variable has type
+  "RightsResearch")  [assignment]` — exactly D3's predicted shape. Against
+  unmutated `research.py`, the reordered file type-checks clean (`Success: no
+  issues found in 2 source files`), so the reorder introduces no false
+  positive on correct code.
+
+  Reviewed 2026-08-30 — PASS, zero blocking findings. Every claim above was
+  re-derived independently, not taken on trust, against a full `src` + `tests`
+  + `pyproject.toml` copy under `/tmp` (the tracked tree was never mutated;
+  `git hash-object` on all three adapters matched `HEAD` before and after, and
+  their mtimes, 13:23–13:43, predate the 15:13 test edits).
+  - `model=self.model` → `"gemini-1.5-pro"` in the copy: exactly one test
+    failed, the new one — `AssertionError: assert 'gemini-1.5-pro' ==
+    'model-inject...-construction'`, the other six green, which confirms the
+    checkpoint's premise that today's suite is blind to this drift.
+  - `name=self._processor_id` → a hardcoded processor path in the copy:
+    exactly one test failed, the new one; the `IngestionFailed` test is
+    unaffected because it reads the error message, not the request.
+  - Reorder, with `find`'s return widened to `str` in the copy: the new order
+    reports `test_research.py:66: error: Incompatible types in assignment
+    ... [assignment]`; restoring the old `isinstance`-first order in the same
+    mutated copy reports only `[return-value]` and `[attr-defined]`, and
+    nothing at line 66. The reorder is load-bearing, exactly as D3 predicts.
+  - Both sentinels occur exactly once in the repo and match no other model or
+    processor literal, so the assertions pin the injected value rather than
+    any plausible default. The reordered binding now matches the CP-008 and
+    CP-009 form byte for byte, closing the last of D3's three occurrences with
+    no runtime coverage lost — the dropped `assert checked is adapter` was
+    true by construction.
+  - Gates on the tracked tree: `pytest -q` 171 passed; `mypy src tests infra`
+    clean over 55 files; `ruff check .` clean; `ruff format --check .` clean
+    over 81 files; `./.claude/init.sh verify` 87/87.
+
+### CP-021 — Turn a rights-research confidence into a risk decision
+- Status: DONE
+- Attempts: 0/3
+- Depth: 0
+- Layer: application
+- Depends on: -
+- Acceptance:
+  - [x] `application/risk_rules.py` exposes a pure function taking a `Finding`
+        and a `RightsClaim` and returning the finding's resolved `RiskLevel`
+        together with the `needs_review` flag its tracker item should carry.
+        No collaborators, no I/O.
+  - [x] `Confidence.HIGH` leaves the risk unchanged and `needs_review` false.
+  - [x] `Confidence.MEDIUM` raises the risk exactly one step through the
+        existing `RiskLevel.raised()`, and leaves `needs_review` false
+        (SDD §4.1 step 5).
+  - [x] `Confidence.LOW` leaves the risk unchanged and sets `needs_review`
+        true. This is D9: SDD's "marks the finding unverified" is expressed
+        through the field `TrackerItem` already has for exactly this signal,
+        rather than by adding a field to a frozen domain dataclass.
+  - [x] Boundary: a CRITICAL finding at MEDIUM confidence stays CRITICAL —
+        `raised()` saturates, and this test is what proves the rule composes
+        with it rather than assuming it.
+  - [x] Boundary: all four risk levels at all three confidences, twelve cases,
+        asserted as a table rather than as twelve prose tests.
+  - [x] The function decides nothing about which findings it applies to; the
+        CONTINUITY/POLICY exclusion is `AnalyzeScript`'s (CP-026), because
+        those findings have no `RightsClaim` to pass.
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: src/clearcut/application/risk_rules.py,
+  tests/unit/application/test_risk_rules.py
+- Notes: In `application/`, not `domain/`, because `Confidence` lives in
+  `application/ports.py` and `domain/` may not import from `application/`
+  (§2 rule 1). It is a module for one function with one caller, which §4's
+  "no abstraction for one caller" would normally refuse — the exemption is §3's
+  own SRP example, which names this exact split: a module that both parses an
+  adapter response and decides risk level is two modules. Splitting it out is
+  also what keeps CP-026 to one turn, since twelve table cases and a
+  seven-collaborator pipeline in one checkpoint is two checkpoints.
+
+  Implementation note: `resolve_risk(finding, claim) -> RiskDecision` returns a
+  frozen `RiskDecision(risk_level, needs_review)` dataclass rather than a bare
+  tuple, matching the existing `GroundedAnswer`/`RightsClaim` shape in
+  `ports.py` — named fields over positional, for the same reason those two
+  are dataclasses. `ports.py` itself was not touched (CP-018 owns it this
+  turn); `Confidence` and `RightsClaim` are only imported. `ruff check .` /
+  `ruff format --check .` run repo-wide fail on `domain/delta.py` (CP-020, a
+  concurrent checkpoint, not touched here) — scoped to this checkpoint's two
+  files both are clean, and `pytest -q` is green for the full suite (165
+  passed).
+
+  Review (PASS, 0 blocking). Each branch mutation-killed by a distinct named
+  test, verified by substituting mutant implementations in memory: dropping the
+  MEDIUM branch kills `test_medium_confidence_raises_risk_one_step` plus three
+  table rows; dropping the LOW branch kills
+  `test_low_confidence_leaves_risk_unchanged_and_flags_needs_review` plus four
+  rows; making HIGH raise risk or set `needs_review` kills
+  `test_high_confidence_leaves_risk_and_needs_review_unchanged` plus its rows.
+  Replacing `RiskLevel.raised()` with a duplicated ladder that wraps instead of
+  saturating kills `test_critical_finding_at_medium_confidence_stays_critical`
+  and the CRITICAL/MEDIUM row alone — so the ceiling is genuinely covered, and
+  `risk_rules.py:32` reuses CP-003's `raised()` rather than reimplementing the
+  ladder. §2 holds: the module imports only `application.ports` and
+  `domain.finding`; CP-001's
+  `test_application_modules_import_no_framework_client_or_adapter` walks
+  `application/`, so it covers this file, and it is green. `ports.py`'s
+  working-tree diff is CP-018's `TrackerStore`/`Notifier` and its docstring
+  only — `Confidence` and `RightsClaim` already exist at HEAD, so this
+  checkpoint did not touch it. §4: `RiskDecision` is a two-field frozen
+  dataclass naming a function's two outputs, not an interface or an
+  indirection — justified, and the same shape `ports.py` already uses for
+  `RightsClaim`. Gates now clean repo-wide (CP-020 fixed the `delta.py` failure
+  the note above records): `pytest -q` 171 passed, `ruff check .` clean,
+  `ruff format --check .` 81 files, `mypy src tests infra` clean over 55 files.
 
 ### CP-014 — Build the retrieval plane and warn loudly about its one manual step
 - Status: DONE
@@ -2731,12 +11129,21 @@ _Terminal checkpoints (`DONE` / `SUPERSEDED`), newest first._
   - [x] `[tool.mypy]` in `pyproject.toml` sets `python_version = "3.11"` and
         `strict = true`. Untyped test functions are the only relaxation, scoped
         to `tests` by a per-module override; `src/clearcut` gets no relaxation.
+        **Amended 2026-08-30 (D8): the pin is `"3.12"`, not `"3.11"`.** `numpy`
+        2.5.2 ships PEP 695 generic syntax in its stubs, a 3.11 target cannot
+        parse it, and `pytest` imports `numpy` under `TYPE_CHECKING`, so every
+        test file drags it in. The dev interpreter is 3.12.3 and
+        `requires-python` stays `>=3.11`. Ratified rather than reverted; the
+        reasoning and the one edge it opens are in D8.
   - [x] `mypy src tests` exits 0 against the tree as it stands, with no new
         `# type: ignore`.
   - [x] Each of the five fakes in `tests/unit/fakes.py` is bound to its port by
         an annotated assignment (`_ingestion: ScriptIngestion =
         FakeScriptIngestion()` and its four peers), so mypy checks parameter
-        names, order, and types across that assignment.
+        names, order, and types across that assignment. **Amended 2026-08-30
+        (D3 amendment): mypy does not check a Protocol's positional parameter
+        *names*. The binding checks arity, parameter types, return type, and
+        method presence. Proven twice, on two adapters, with a minimal probe.**
   - [x] Failure path, proving the binding is not decorative: with `extract`'s
         two parameters swapped on `FakeSceneExtractor` in a scratch copy, mypy
         reports an incompatible-assignment error naming `SceneExtractor` while
