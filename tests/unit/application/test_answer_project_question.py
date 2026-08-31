@@ -1,4 +1,4 @@
-"""Unit tests for `AnswerProjectQuestion` (CP-027).
+"""Unit tests for `AnswerProjectQuestion` (CP-027, CP-034).
 
 Hand-written fakes for all three ports (AGENT.md Section 5) — no
 `unittest.mock`, no network. `NoGroundedSource` is imported from its adapter
@@ -6,6 +6,8 @@ module for realism only; that import is legal here because the layer guard
 (`tests/unit/test_layer_boundaries.py`) restricts `src/clearcut/application`,
 not `tests/`.
 """
+
+import pytest
 
 from clearcut.adapters.gcp.vertex_search import NoGroundedSource
 from clearcut.application.answer_project_question import (
@@ -221,6 +223,23 @@ def test_no_grounded_source_degrades_to_a_bible_only_answer() -> None:
 
     assert "Bible p. 12" in answer.text
     assert answer.citations == ()
+
+
+def test_a_grounding_bug_propagates_instead_of_degrading_silently() -> None:
+    """D23/CP-034: only `EnrichmentMissing` degrades to a bible-only answer.
+
+    CP-027's reviewer found `except Exception` here swallowing `TypeError`,
+    `AttributeError`, and `ZeroDivisionError` from `grounding.ground` as a
+    silent bible-only answer. Narrowing the catch to `EnrichmentMissing`
+    means a bug like this one now propagates instead.
+    """
+    grounding = _RaisingLegalGrounding(TypeError("boom"))
+    use_case = AnswerProjectQuestion(
+        lore=FakeLoreStore(), grounding=grounding, tracker=_RecordingTrackerStore([])
+    )
+
+    with pytest.raises(TypeError):
+        use_case.execute("proj-1", "What does copyright law say about the mural?", _MEXICO)
 
 
 class _PositionalOnlyLoreStore:

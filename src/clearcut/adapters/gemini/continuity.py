@@ -17,6 +17,7 @@ from typing import Any, Protocol
 from google.genai import types
 
 from clearcut.domain.bible import BibleFact
+from clearcut.domain.errors import SourceUnavailable
 from clearcut.domain.finding import Category, Finding, RiskLevel
 from clearcut.domain.script import Scene
 
@@ -54,7 +55,7 @@ _CHECK_RESULT_SCHEMA = types.Schema(
 )
 
 
-class ContinuityCheckFailed(Exception):
+class ContinuityCheckFailed(SourceUnavailable):
     """Raised when a Gemini response names a category outside CONTINUITY/POLICY."""
 
     def __init__(self, category: object) -> None:

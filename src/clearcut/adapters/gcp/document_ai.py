@@ -13,12 +13,13 @@ from typing import Protocol
 from google.api_core.exceptions import GoogleAPIError
 from google.cloud import documentai_v1 as documentai
 
+from clearcut.domain.errors import SourceUnavailable
 from clearcut.domain.script import Scene
 
 _SLUGLINE = re.compile(r"^(?:INT\.|EXT\.)(?:/(?:INT|EXT)\.)?[ \t]", re.MULTILINE)
 
 
-class NoScenesFound(Exception):
+class NoScenesFound(SourceUnavailable):
     """Raised when Document AI returned text with no recognizable slugline."""
 
     def __init__(self, script_id: str) -> None:
@@ -26,7 +27,7 @@ class NoScenesFound(Exception):
         self.script_id = script_id
 
 
-class IngestionFailed(Exception):
+class IngestionFailed(SourceUnavailable):
     """Raised when the Document AI call itself fails, carrying the processor id."""
 
     def __init__(self, processor_id: str) -> None:

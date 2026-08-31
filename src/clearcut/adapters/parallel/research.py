@@ -26,6 +26,7 @@ from parallel.types.task_run_result import TaskRunResult
 from parallel.types.task_spec_param import TaskSpecParam
 
 from clearcut.application.ports import Confidence, RightsClaim
+from clearcut.domain.errors import EnrichmentMissing, SourceUnavailable
 from clearcut.domain.finding import Category, Citation
 from clearcut.domain.jurisdiction import Jurisdiction
 
@@ -59,7 +60,7 @@ _OUTPUT_SCHEMA: JsonSchemaParam = {
 _TASK_SPEC: TaskSpecParam = {"output_schema": _OUTPUT_SCHEMA}
 
 
-class NoRightsHolderFound(Exception):
+class NoRightsHolderFound(EnrichmentMissing):
     """Raised when every candidate claim in a Task API result is uncited."""
 
     def __init__(self, asset_name: str) -> None:
@@ -67,7 +68,7 @@ class NoRightsHolderFound(Exception):
         self.asset_name = asset_name
 
 
-class ResearchUnavailable(Exception):
+class ResearchUnavailable(SourceUnavailable):
     """Raised when the Parallel Task API responds with a non-2xx status."""
 
     def __init__(self, status_code: int) -> None:

@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 from typing import Any, Protocol
 
+from clearcut.domain.errors import RecordNotFound, SourceUnavailable
 from clearcut.domain.script import Scene, Script
 from clearcut.domain.tracker import TrackerItem, TrackerState
 
@@ -88,11 +89,11 @@ _SCRIPT_COLUMNS = [
 ]
 
 
-class TrackerUnavailable(Exception):
+class TrackerUnavailable(SourceUnavailable):
     """The ClickHouse client failed to execute a command, insert, or query."""
 
 
-class TrackerItemNotFound(Exception):
+class TrackerItemNotFound(RecordNotFound):
     """No stored row exists for the requested `item_id`."""
 
     def __init__(self, item_id: str) -> None:

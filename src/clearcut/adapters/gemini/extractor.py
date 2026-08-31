@@ -16,6 +16,7 @@ from typing import Any, Protocol
 
 from google.genai import types
 
+from clearcut.domain.errors import SourceUnavailable
 from clearcut.domain.finding import Finding, NerLabel, RiskLevel
 from clearcut.domain.jurisdiction import Jurisdiction
 from clearcut.domain.script import Scene
@@ -60,7 +61,7 @@ _FINDING_ITEM_SCHEMA = types.Schema(
 _FINDINGS_SCHEMA = types.Schema(type=types.Type.ARRAY, items=_FINDING_ITEM_SCHEMA)
 
 
-class ExtractionFailed(Exception):
+class ExtractionFailed(SourceUnavailable):
     """Raised when a Gemini response cannot become valid `Finding`s."""
 
     def __init__(self, ner_label: object) -> None:

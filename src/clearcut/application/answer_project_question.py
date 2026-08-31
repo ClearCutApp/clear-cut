@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 
 from clearcut.application.ports import LegalGrounding, LoreStore, TrackerStore
 from clearcut.domain.bible import BibleFact
+from clearcut.domain.errors import EnrichmentMissing
 from clearcut.domain.finding import Citation
 from clearcut.domain.jurisdiction import Jurisdiction
 from clearcut.domain.tracker import TrackerItem, TrackerState
@@ -108,15 +109,14 @@ class AnswerProjectQuestion:
             return "", ()
         try:
             grounded = self._grounding.ground(question, jurisdiction)
-        except Exception:
-            # `NoGroundedSource` (adapters/gcp/vertex_search.py) is
-            # deliberately adapter-local, per every vertical's own
-            # convention (CHECKPOINTS.md CP-006 review ruling), and
-            # `domain/errors.py` holds no matching type — this layer may
-            # never import `clearcut.adapters` (AGENT.md Section 2), so it
-            # cannot catch it by name. Grounding is optional enrichment: any
-            # failure here degrades to the bible-only answer rather than
-            # failing the whole request.
+        except EnrichmentMissing:
+            # `NoGroundedSource` (adapters/gcp/vertex_search.py) subclasses
+            # `EnrichmentMissing` (domain/errors.py, CHECKPOINTS.md Decision
+            # D23) — a name this layer may catch without importing
+            # `clearcut.adapters` (AGENT.md Section 2). Grounding is optional
+            # enrichment: this degrades to the bible-only answer rather than
+            # failing the whole request. Any other exception is a bug, not a
+            # missing enrichment, and propagates.
             return "", ()
         return grounded.text, grounded.citations
 

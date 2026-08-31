@@ -26,13 +26,14 @@ from collections.abc import Sequence
 from typing import Any, Protocol
 
 from clearcut.domain.bible import BibleFact, FactKind
+from clearcut.domain.errors import SourceUnavailable
 from clearcut.domain.script import Scene, content_hash
 
 _KIND_BIBLE_FACT = "bible_fact"
 _KIND_SCENE = "scene"
 
 
-class LoreUnavailable(Exception):
+class LoreUnavailable(SourceUnavailable):
     """The BigQuery vector store or the embedding call failed."""
 
 

@@ -15,6 +15,7 @@ from typing import Protocol
 from google.genai import types
 
 from clearcut.application.ports import GroundedAnswer
+from clearcut.domain.errors import EnrichmentMissing
 from clearcut.domain.finding import Citation
 from clearcut.domain.jurisdiction import Jurisdiction
 
@@ -24,7 +25,7 @@ from clearcut.domain.jurisdiction import Jurisdiction
 _MODEL = "gemini-3.1-flash-lite"
 
 
-class NoGroundedSource(Exception):
+class NoGroundedSource(EnrichmentMissing):
     """Raised when a response carries no citation-bearing grounding chunk."""
 
     def __init__(self, query: str) -> None:

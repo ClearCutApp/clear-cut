@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import httpx
 
+from clearcut.domain.errors import SourceUnavailable
 from clearcut.domain.tracker import TrackerItem
 
 
-class NotificationFailed(Exception):
+class NotificationFailed(SourceUnavailable):
     """Raised when the webhook responds with a non-2xx status."""
 
     def __init__(self, status_code: int) -> None:
