@@ -7,9 +7,12 @@ import pytest
 from clearcut.domain.tracker import TrackerItem, TrackerState
 
 
-def _item(state: TrackerState = TrackerState.BLOCKED, version: int = 1) -> TrackerItem:
+def _item(
+    state: TrackerState = TrackerState.BLOCKED, version: int = 1, project_id: str = "proj-1"
+) -> TrackerItem:
     return TrackerItem(
         item_id="itm-1",
+        project_id=project_id,
         finding_id="EVT-001",
         scene_numbers=(3,),
         state=state,
@@ -69,6 +72,13 @@ def test_every_ordered_pair_of_states_is_a_legal_transition(from_state, to_state
     assert updated.state == to_state
 
 
+def test_transitioned_to_carries_project_id_unchanged():
+    original = _item(project_id="proj-a")
+    updated = original.transitioned_to(TrackerState.IN_PROGRESS, at="2026-08-31T00:00:00Z")
+
+    assert updated.project_id == original.project_id
+
+
 def test_transitioning_to_the_current_state_still_bumps_the_version():
     original = _item(state=TrackerState.CLEARED, version=4)
     updated = original.transitioned_to(TrackerState.CLEARED, at="2026-08-31T00:00:00Z")
@@ -100,10 +110,18 @@ def test_flagged_for_review_leaves_the_receiver_unchanged():
     assert original.version == 1
 
 
+def test_flagged_for_review_carries_project_id_unchanged():
+    original = _item(project_id="proj-a")
+    updated = original.flagged_for_review(at="2026-08-31T00:00:00Z")
+
+    assert updated.project_id == original.project_id
+
+
 def test_rejects_a_version_below_one():
     with pytest.raises(ValueError):
         TrackerItem(
             item_id="itm-1",
+            project_id="proj-1",
             finding_id="EVT-001",
             scene_numbers=(1,),
             state=TrackerState.BLOCKED,
@@ -120,8 +138,27 @@ def test_rejects_empty_scene_numbers():
     with pytest.raises(ValueError):
         TrackerItem(
             item_id="itm-1",
+            project_id="proj-1",
             finding_id="EVT-001",
             scene_numbers=(),
+            state=TrackerState.BLOCKED,
+            required_document="Sync License",
+            contact="rights@example.com",
+            litigation_posture="none on record",
+            note="",
+            updated_at="2026-08-30T00:00:00Z",
+            version=1,
+        )
+
+
+@pytest.mark.parametrize("blank_project_id", ["", "   "])
+def test_rejects_a_blank_or_whitespace_only_project_id(blank_project_id):
+    with pytest.raises(ValueError):
+        TrackerItem(
+            item_id="itm-1",
+            project_id=blank_project_id,
+            finding_id="EVT-001",
+            scene_numbers=(1,),
             state=TrackerState.BLOCKED,
             required_document="Sync License",
             contact="rights@example.com",

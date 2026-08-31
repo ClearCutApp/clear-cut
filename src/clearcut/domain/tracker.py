@@ -23,6 +23,7 @@ class TrackerItem:
     """The actionable side of a Finding (SDD Section 2)."""
 
     item_id: str
+    project_id: str
     finding_id: str
     scene_numbers: tuple[int, ...]
     state: TrackerState
@@ -40,6 +41,8 @@ class TrackerItem:
             raise ValueError(f"version must be >= 1, got {self.version}")
         if not self.scene_numbers:
             raise ValueError("scene_numbers must not be empty")
+        if not self.project_id.strip():
+            raise ValueError("project_id must not be blank")
 
     def transitioned_to(self, state: TrackerState, at: str) -> "TrackerItem":
         """A new item at `state` and `version + 1`; the receiver is untouched.

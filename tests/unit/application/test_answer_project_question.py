@@ -70,6 +70,7 @@ class _RecordingTrackerStore:
 def _blocked_item() -> TrackerItem:
     return TrackerItem(
         item_id="ITEM-1",
+        project_id="proj-1",
         finding_id="EVT-001",
         scene_numbers=(12,),
         state=TrackerState.BLOCKED,
@@ -85,6 +86,7 @@ def _blocked_item() -> TrackerItem:
 def _cleared_item() -> TrackerItem:
     return TrackerItem(
         item_id="ITEM-2",
+        project_id="proj-1",
         finding_id="EVT-002",
         scene_numbers=(4,),
         state=TrackerState.CLEARED,

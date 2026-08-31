@@ -9,14 +9,12 @@ producer action. `script_versions` follows the same shape, keyed on
 `project_id`, so `latest_script` resolves to the newest uploaded version
 without a live schema read.
 
-`TrackerItem` carries no `project_id` (SDD Section 2 does not give it one, and
-neither does `TrackerStore.save`), so `latest_for_project` cannot filter at
-the storage layer -- there is no channel through which a project scope
-reaches a stored row. It returns the latest version of every tracker item in
-the table, which is correct for the hackathon's one-project-at-a-time demo
-and is the literal contract this checkpoint's acceptance criteria test. See
-this checkpoint's `Notes` in `.claude/CHECKPOINTS.md` for the gap and the
-`LoreStore.index(project_id, records)` precedent that would close it.
+`TrackerItem` carries its own `project_id` (CP-036, `.claude/CHECKPOINTS.md`
+Decision D24) rather than `TrackerStore.save` taking one as a parameter --
+`ResolveFinding` is item-scoped and has no project to hand it, so the item
+that already knows its project is the one that writes the column.
+`latest_for_project` filters on that column with a `WHERE` clause, the same
+shape `latest_script` already used for `script_versions`.
 
 Constructor parameters are typed against a narrow local `Protocol`
 (`_ChClient`) covering only the three `clickhouse_connect` client methods
@@ -36,6 +34,7 @@ from clearcut.domain.tracker import TrackerItem, TrackerState
 _TRACKER_ITEMS_DDL = """\
 CREATE TABLE IF NOT EXISTS tracker_items (
     item_id String,
+    project_id String,
     finding_id String,
     scene_numbers Array(UInt32),
     state String,
@@ -65,6 +64,7 @@ ORDER BY project_id
 
 _TRACKER_COLUMNS = [
     "item_id",
+    "project_id",
     "finding_id",
     "scene_numbers",
     "state",
@@ -148,10 +148,13 @@ class ClickHouseTrackerStore:
         return _row_to_tracker_item(latest_row)
 
     def latest_for_project(self, project_id: str) -> list[TrackerItem]:
-        rows = self._query_tracker_rows("SELECT * FROM tracker_items", None)
+        query = "SELECT * FROM tracker_items WHERE project_id = {project_id:String}"
+        rows = self._query_tracker_rows(query, {"project_id": project_id})
+        project_index = _TRACKER_COLUMNS.index("project_id")
+        matching = [row for row in rows if row[project_index] == project_id]
         latest_by_item_id: dict[str, tuple[Any, ...]] = {}
         version_index = _TRACKER_COLUMNS.index("version")
-        for row in rows:
+        for row in matching:
             item_id = row[0]
             current = latest_by_item_id.get(item_id)
             if current is None or row[version_index] > current[version_index]:
@@ -197,6 +200,7 @@ class ClickHouseTrackerStore:
 def _tracker_item_to_row(item: TrackerItem) -> list[Any]:
     return [
         item.item_id,
+        item.project_id,
         item.finding_id,
         list(item.scene_numbers),
         item.state.value,
@@ -215,6 +219,7 @@ def _row_to_tracker_item(row: tuple[Any, ...]) -> TrackerItem:
     values = dict(zip(_TRACKER_COLUMNS, row, strict=True))
     return TrackerItem(
         item_id=values["item_id"],
+        project_id=values["project_id"],
         finding_id=values["finding_id"],
         scene_numbers=tuple(int(n) for n in values["scene_numbers"]),
         state=TrackerState(values["state"]),

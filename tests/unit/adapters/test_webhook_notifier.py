@@ -22,6 +22,7 @@ _WEBHOOK_URL = "https://example.com/hooks/notify"
 
 _ITEM = TrackerItem(
     item_id="TRK-001",
+    project_id="proj-1",
     finding_id="EVT-001",
     scene_numbers=(3,),
     state=TrackerState.BLOCKED,

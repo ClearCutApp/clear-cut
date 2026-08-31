@@ -80,6 +80,7 @@ class ExplodingChClient:
 
 def _item(
     item_id: str = "EVT-001",
+    project_id: str = "proj-a",
     version: int = 1,
     state: TrackerState = TrackerState.BLOCKED,
     scene_numbers: tuple[int, ...] = (1,),
@@ -88,6 +89,7 @@ def _item(
 ) -> TrackerItem:
     return TrackerItem(
         item_id=item_id,
+        project_id=project_id,
         finding_id="EVT-001",
         scene_numbers=scene_numbers,
         state=state,
@@ -198,6 +200,55 @@ def test_latest_for_project_returns_the_highest_version_per_item_id_in_unhelpful
     assert by_id["EVT-002"].version == 1
 
 
+def test_latest_for_project_excludes_rows_belonging_to_another_project() -> None:
+    client = FakeChClient()
+    adapter = ClickHouseTrackerStore(client)
+    in_project_a = _item(item_id="EVT-001", project_id="proj-a", version=1)
+    # Higher version than anything in proj-a, so a naive highest-version-wins
+    # read that ignores project_id would surface it as proj-a's answer too.
+    in_project_b = _item(item_id="EVT-002", project_id="proj-b", version=9)
+    client.set_result(
+        [tuple(_tracker_item_to_row(in_project_a)), tuple(_tracker_item_to_row(in_project_b))]
+    )
+
+    result = adapter.latest_for_project("proj-a")
+
+    assert [item.item_id for item in result] == ["EVT-001"]
+    assert all(item.project_id == "proj-a" for item in result)
+
+
+def test_latest_for_project_returns_empty_list_for_a_project_with_no_rows() -> None:
+    client = FakeChClient()
+    adapter = ClickHouseTrackerStore(client)
+    other_project_item = _item(item_id="EVT-001", project_id="proj-b", version=1)
+    client.set_result([tuple(_tracker_item_to_row(other_project_item))])
+
+    result = adapter.latest_for_project("proj-a")
+
+    assert result == []
+
+
+def test_ensure_schema_emits_tracker_items_with_a_project_id_column() -> None:
+    client = FakeChClient()
+    adapter = ClickHouseTrackerStore(client)
+
+    adapter.ensure_schema()
+
+    tracker_ddl = next(cmd for cmd in client.commands if "tracker_items" in cmd)
+    assert "project_id String" in tracker_ddl
+
+
+def test_save_writes_the_items_own_project_id_not_a_default() -> None:
+    client = FakeChClient()
+    adapter = ClickHouseTrackerStore(client)
+
+    adapter.save([_item(project_id="proj-b")])
+
+    _, rows, columns = client.inserts[0]
+    project_index = columns.index("project_id")
+    assert rows[0][project_index] == "proj-b"
+
+
 def test_record_script_and_latest_script_round_trip_scenes_and_hashes() -> None:
     client = FakeChClient()
     adapter = ClickHouseTrackerStore(client)
@@ -257,6 +308,7 @@ def test_latest_round_trips_needs_review_draft_email_and_scene_numbers() -> None
     client = FakeChClient()
     adapter = ClickHouseTrackerStore(client)
     item = _item(
+        project_id="proj-a",
         scene_numbers=(3, 7),
         needs_review=True,
         draft_email="rights@example.com",
@@ -267,6 +319,7 @@ def test_latest_round_trips_needs_review_draft_email_and_scene_numbers() -> None
 
     assert result.needs_review is True
     assert result.draft_email == "rights@example.com"
+    assert result.project_id == "proj-a"
     assert result.scene_numbers == (3, 7)
 
 
