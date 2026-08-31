@@ -24,6 +24,13 @@ _SEARCH_LIMIT = 5
 
 _NOTHING_INDEXED = "I have nothing indexed for this project."
 
+# CHECKPOINTS.md Decision D31: a blocker answer over a project with zero
+# tracker rows must say the project is not indexed, not that nothing is
+# blocked -- an assurance an empty table has no evidence for. This is the
+# tracker-scoped counterpart to `_NOTHING_INDEXED`, kept separate so it never
+# contradicts bible facts that may already be indexed for the same project.
+_TRACKER_NOT_INDEXED = "I have no tracker data indexed for this project."
+
 # Grounding every question, including "who is in scene 4", spends a Vertex
 # AI Search call on something with no legal content (docs/plan/sdd.md
 # Section 4.2).
@@ -77,15 +84,25 @@ def _asks_about_blockers(question: str) -> bool:
     return bool(_words(question) & _BLOCKER_WORDS)
 
 
-def _blocker_text(asked: bool, jurisdiction: Jurisdiction, blocked: tuple[TrackerItem, ...]) -> str:
+def _blocker_text(asked: bool, jurisdiction: Jurisdiction, items: tuple[TrackerItem, ...]) -> str:
     """Names the territory a blocker answer covers (CHECKPOINTS.md Decision D26).
 
-    `TrackerItem` carries no jurisdiction, so this states the one territory a
-    run actually covers instead of implying a per-item filter it cannot
-    express -- for a blocked item and for an empty result alike.
+    Three cases, one rule -- assurance requires rows (Decision D31):
+
+    1. no tracker rows at all -> not indexed, no clearance claim made;
+    2. rows exist, none BLOCKED -> nothing is blocked in the named territory,
+       an assurance the rows actually earn;
+    3. rows exist, some BLOCKED -> the items are named, unchanged from D26.
+
+    `TrackerItem` carries no jurisdiction, so cases 2 and 3 state the one
+    territory a run actually covers instead of implying a per-item filter
+    they cannot express.
     """
     if not asked:
         return ""
+    if not items:
+        return _TRACKER_NOT_INDEXED
+    blocked = tuple(item for item in items if item.state == TrackerState.BLOCKED)
     if not blocked:
         return f"Nothing is blocked in {jurisdiction.display_name}."
     names = ", ".join(f"{item.item_id} ({item.required_document})" for item in blocked)
@@ -124,8 +141,8 @@ class AnswerProjectQuestion:
         facts = tuple(self._lore.search(project_id, question, _SEARCH_LIMIT))
         grounded_text, citations = self._ground_if_legal(question, jurisdiction)
         asked = _asks_about_blockers(question)
-        blocked = self._blocked_items_if_asked(project_id, asked)
-        blocker_text = _blocker_text(asked, jurisdiction, blocked)
+        items = self._tracker_items_if_asked(project_id, asked)
+        blocker_text = _blocker_text(asked, jurisdiction, items)
         text = _compose_text(facts, grounded_text, blocker_text)
         return ProjectAnswer(text=text, facts=facts, citations=citations)
 
@@ -147,8 +164,7 @@ class AnswerProjectQuestion:
             return "", ()
         return grounded.text, grounded.citations
 
-    def _blocked_items_if_asked(self, project_id: str, asked: bool) -> tuple[TrackerItem, ...]:
+    def _tracker_items_if_asked(self, project_id: str, asked: bool) -> tuple[TrackerItem, ...]:
         if not asked:
             return ()
-        items = self._tracker.latest_for_project(project_id)
-        return tuple(item for item in items if item.state == TrackerState.BLOCKED)
+        return tuple(self._tracker.latest_for_project(project_id))

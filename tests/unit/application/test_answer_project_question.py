@@ -16,6 +16,7 @@ from clearcut.application.answer_project_question import (
 )
 from clearcut.application.ports import GroundedAnswer
 from clearcut.domain.bible import BibleFact, FactKind
+from clearcut.domain.errors import SourceUnavailable
 from clearcut.domain.finding import Citation
 from clearcut.domain.jurisdiction import Jurisdiction, jurisdiction_for
 from clearcut.domain.script import Scene, Script
@@ -61,6 +62,30 @@ class _RecordingTrackerStore:
     def latest_for_project(self, project_id: str) -> list[TrackerItem]:
         self.calls.append(project_id)
         return list(self._items)
+
+    def record_script(self, script: Script) -> None:
+        return None
+
+    def latest_script(self, project_id: str) -> Script | None:
+        return None
+
+
+class _RaisingTrackerStore:
+    """A hand-written `TrackerStore` whose `latest_for_project` raises, so a
+    test can assert the exception propagates rather than reading as
+    clearance."""
+
+    def __init__(self, error: Exception) -> None:
+        self._error = error
+
+    def save(self, items: list[TrackerItem]) -> None:
+        return None
+
+    def latest(self, item_id: str) -> TrackerItem:
+        raise KeyError(item_id)
+
+    def latest_for_project(self, project_id: str) -> list[TrackerItem]:
+        raise self._error
 
     def record_script(self, script: Script) -> None:
         return None
@@ -265,6 +290,95 @@ def test_a_blocker_question_with_nothing_blocked_still_names_the_territory() -> 
 
     assert _MEXICO.display_name in answer.text
     assert answer.text != "I have nothing indexed for this project."
+
+
+def test_a_blocker_question_with_no_tracker_rows_says_the_project_is_not_indexed() -> None:
+    """D31: zero tracker rows must read as "not indexed", not as clearance.
+
+    Before this checkpoint the same input answered "Nothing is blocked in
+    Mexico." -- an assurance an empty table has no evidence for.
+    """
+    tracker = _RecordingTrackerStore([])
+    use_case = AnswerProjectQuestion(
+        lore=FakeLoreStore(),
+        grounding=_RecordingLegalGrounding(GroundedAnswer(text="", citations=())),
+        tracker=tracker,
+    )
+
+    answer = use_case.execute("proj-1", "What is still blocking release in Mexico?", _MEXICO)
+
+    assert tracker.calls == ["proj-1"]
+    assert "not blocked" not in answer.text.lower()
+    assert "nothing is blocked" not in answer.text.lower()
+
+
+def test_the_unindexed_and_nothing_blocked_answers_are_distinguishable() -> None:
+    """D31: a caller must be able to tell "unknown" from "cleared" -- a
+    dashboard cannot render one as the other.
+    """
+    unindexed = AnswerProjectQuestion(
+        lore=FakeLoreStore(),
+        grounding=_RecordingLegalGrounding(GroundedAnswer(text="", citations=())),
+        tracker=_RecordingTrackerStore([]),
+    ).execute("proj-1", "What is still blocking release in Mexico?", _MEXICO)
+    nothing_blocked = AnswerProjectQuestion(
+        lore=FakeLoreStore(),
+        grounding=_RecordingLegalGrounding(GroundedAnswer(text="", citations=())),
+        tracker=_RecordingTrackerStore([_cleared_item()]),
+    ).execute("proj-1", "What is still blocking release in Mexico?", _MEXICO)
+
+    assert unindexed.text != nothing_blocked.text
+
+
+def test_a_blocker_question_with_bible_facts_but_no_tracker_rows_names_the_tracker_gap() -> None:
+    """D31: the tracker-scoped and whole-project "nothing indexed" texts are
+    two different constants on purpose (`_TRACKER_NOT_INDEXED` vs.
+    `_NOTHING_INDEXED`). A project can have bible facts indexed and zero
+    tracker rows at the same time, and every other D31 test uses an empty
+    `FakeLoreStore`, so none of them can tell the two constants apart -- the
+    bible-empty fallback always wins and the tracker-scoped sentence is never
+    the reason the assertion passes. This test indexes one bible fact so that
+    fallback cannot fire, and checks the tracker-scoped sentence by name.
+    """
+    lore = FakeLoreStore()
+    lore.index(
+        "proj-1",
+        [
+            BibleFact(
+                fact_id="F1",
+                kind=FactKind.LORE,
+                text="The mural was painted in 1990.",
+                source="Bible p. 12",
+            )
+        ],
+    )
+    use_case = AnswerProjectQuestion(
+        lore=lore,
+        grounding=_RecordingLegalGrounding(GroundedAnswer(text="", citations=())),
+        tracker=_RecordingTrackerStore([]),
+    )
+
+    answer = use_case.execute("proj-1", "What is still blocking release in Mexico?", _MEXICO)
+
+    assert "I have no tracker data indexed for this project." in answer.text
+    assert "I have nothing indexed for this project." not in answer.text
+
+
+def test_a_tracker_outage_propagates_instead_of_reading_as_clearance() -> None:
+    """D31 failure path: an outage must not degrade to "nothing blocked" --
+    the same defect one layer over that CP-026's reviewer flagged. The catch
+    in this module is `except EnrichmentMissing` by name (D23), so
+    `SourceUnavailable` is never caught here.
+    """
+    tracker = _RaisingTrackerStore(SourceUnavailable("tracker down"))
+    use_case = AnswerProjectQuestion(
+        lore=FakeLoreStore(),
+        grounding=_RecordingLegalGrounding(GroundedAnswer(text="", citations=())),
+        tracker=tracker,
+    )
+
+    with pytest.raises(SourceUnavailable):
+        use_case.execute("proj-1", "What is still blocking release in Mexico?", _MEXICO)
 
 
 def test_a_non_blocker_question_never_calls_tracker() -> None:
