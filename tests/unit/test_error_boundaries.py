@@ -62,11 +62,14 @@ def test_every_adapter_exception_subclasses_exactly_one_domain_error_type() -> N
 def test_adapter_walk_fails_loudly_on_an_unimportable_module(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`pkgutil.walk_packages` alone swallows a package's `ImportError` and
-    silently drops it from the walk (`onerror=None` is its default) -- proven
-    here by mutating this exact function to rely on that default and watching
-    the assertion below fail to raise. The re-import in `_adapter_modules`
-    is what makes the walk fail loudly instead; this pins that down."""
+    """`pkgutil.walk_packages` yields a module's `ModuleInfo` before it tries
+    to import anything, and it only ever imports an entry when `ispkg` is
+    true (`onerror=None` is its default, silencing that import's
+    `ImportError`) -- so a broken leaf module's name always reaches
+    `_adapter_modules`'s own import, and what the swallow suppresses is
+    recursion into a broken package's children, never the broken module
+    itself. The re-import in `_adapter_modules` is what turns that
+    reached-but-unraised name into a loud failure; this pins that down."""
     package_name = f"scratch_adapters_{tmp_path.name}"
     package_dir = tmp_path / package_name
     package_dir.mkdir()
