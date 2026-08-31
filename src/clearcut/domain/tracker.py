@@ -61,6 +61,33 @@ class TrackerItem:
         """
         return replace(self, needs_review=True, updated_at=at, version=self.version + 1)
 
+    def noted(self, text: str, at: str) -> "TrackerItem":
+        """A new item carrying `text` as `note` at `version + 1`; `state` is
+        unchanged.
+
+        ADR 0007 / SDD Section 4.3: a scene removed between two script
+        versions is neither cleared away nor forgotten -- its tracker item
+        stays open with a note recording why, because a cut scene can return
+        in a later version. A blank or whitespace-only note raises
+        `ValueError` rather than writing a version that stores nothing an
+        unwritten note would also look like.
+        """
+        if not text.strip():
+            raise ValueError("note text must not be blank")
+        return replace(self, note=text, updated_at=at, version=self.version + 1)
+
+    def flagged_and_noted(self, note: str, at: str) -> "TrackerItem":
+        """A new item with `needs_review=True` and `note` set to `note`, at
+        `version + 1`; `state` is unchanged.
+
+        ADR 0007 (D37): an asset that moves to a different scene leaves the
+        item tied to its old scene open, flagged for a producer to look at
+        again, and carrying a note naming the scene it was cleared against --
+        one tracker write, not two, so version history records one event for
+        one change.
+        """
+        return replace(self, needs_review=True, note=note, updated_at=at, version=self.version + 1)
+
     def with_draft_email(self, text: str, at: str) -> "TrackerItem":
         """A new item carrying `text` as `draft_email` at `version + 1`.
 

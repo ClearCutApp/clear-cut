@@ -154,6 +154,70 @@ def test_with_draft_email_rejects_a_blank_or_whitespace_only_draft(blank_draft):
         original.with_draft_email(blank_draft, at="2026-08-31T00:00:00Z")
 
 
+def test_noted_sets_the_note_and_bumps_version():
+    original = _item(version=1)
+    updated = original.noted("scene 7 removed in version 2", at="2026-08-31T00:00:00Z")
+
+    assert updated.note == "scene 7 removed in version 2"
+    assert updated.version == 2
+    assert updated.updated_at == "2026-08-31T00:00:00Z"
+
+
+def test_noted_leaves_state_unchanged():
+    original = _item(state=TrackerState.CLEARED, version=1)
+    updated = original.noted("scene 7 removed in version 2", at="2026-08-31T00:00:00Z")
+    assert updated.state == TrackerState.CLEARED
+
+
+def test_noted_leaves_the_receiver_unchanged():
+    original = _item(version=1)
+    original.noted("scene 7 removed in version 2", at="2026-08-31T00:00:00Z")
+
+    assert original.note == ""
+    assert original.version == 1
+
+
+def test_noted_carries_project_id_unchanged():
+    original = _item(project_id="proj-a")
+    updated = original.noted("scene 7 removed in version 2", at="2026-08-31T00:00:00Z")
+
+    assert updated.project_id == original.project_id
+
+
+@pytest.mark.parametrize("blank_note", ["", "   "])
+def test_noted_rejects_a_blank_or_whitespace_only_note(blank_note):
+    original = _item(version=1)
+    with pytest.raises(ValueError):
+        original.noted(blank_note, at="2026-08-31T00:00:00Z")
+
+
+def test_flagged_and_noted_sets_note_and_needs_review_at_one_version_bump():
+    original = _item(state=TrackerState.CLEARED, version=3)
+    updated = original.flagged_and_noted("cleared against scene 2", at="2026-08-31T00:00:00Z")
+
+    assert updated.needs_review is True
+    assert updated.note == "cleared against scene 2"
+    assert updated.state == TrackerState.CLEARED
+    assert updated.version == 4
+    assert updated.updated_at == "2026-08-31T00:00:00Z"
+
+
+def test_flagged_and_noted_leaves_the_receiver_unchanged():
+    original = _item(version=1)
+    original.flagged_and_noted("cleared against scene 2", at="2026-08-31T00:00:00Z")
+
+    assert original.needs_review is False
+    assert original.note == ""
+    assert original.version == 1
+
+
+def test_flagged_and_noted_carries_project_id_unchanged():
+    original = _item(project_id="proj-a")
+    updated = original.flagged_and_noted("cleared against scene 2", at="2026-08-31T00:00:00Z")
+
+    assert updated.project_id == original.project_id
+
+
 def test_rejects_a_version_below_one():
     with pytest.raises(ValueError):
         TrackerItem(
