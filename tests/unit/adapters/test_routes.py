@@ -18,8 +18,9 @@ from flask import Flask
 from flask.testing import FlaskClient
 
 from clearcut.adapters.http.routes import create_blueprint
-from clearcut.application.analyze_script import AnalyzeScript
+from clearcut.application.analyze_script import AnalysisReport, AnalyzeScript
 from clearcut.application.answer_project_question import AnswerProjectQuestion
+from clearcut.application.evaluate_delta import EvaluateDelta
 from clearcut.application.list_tracker_items import ListTrackerItems
 from clearcut.application.ports import Confidence, GroundedAnswer, RightsClaim
 from clearcut.application.resolve_finding import ResolveFinding
@@ -147,10 +148,17 @@ class _Continuity:
 class _TrackerStore:
     """`latest`, when `items` has no matching row, raises `RecordNotFound` --
     the same domain error the real ClickHouse adapter raises (D23), so a
-    happy-path PATCH/notify test exercises the real not-found mapping too."""
+    happy-path PATCH/notify test exercises the real not-found mapping too.
 
-    def __init__(self, items: list[TrackerItem] | None = None) -> None:
+    `latest_script` returns `previous_script` unconditionally (`None` by
+    default), matching the real adapter's per-project scope closely enough
+    for these route tests, which only ever wire one project at a time."""
+
+    def __init__(
+        self, items: list[TrackerItem] | None = None, previous_script: Script | None = None
+    ) -> None:
         self._items = items if items is not None else []
+        self._previous_script = previous_script
         self.saved: list[list[TrackerItem]] = []
         self.recorded: list[Script] = []
         self.latest_calls: list[str] = []
@@ -174,7 +182,7 @@ class _TrackerStore:
         self.recorded.append(script)
 
     def latest_script(self, project_id: str) -> Script | None:
-        return None
+        return self._previous_script
 
 
 class _Notifier:
@@ -187,7 +195,7 @@ class _Notifier:
 
 class _RaisingUseCase:
     """A fake *use case* (not a fake port): whatever it is called with, it
-    raises `error`. Substituted for one of `create_blueprint`'s four
+    raises `error`. Substituted for one of `create_blueprint`'s five
     arguments to prove the route's own error-to-status mapping, independent
     of any real use case's behaviour."""
 
@@ -196,6 +204,36 @@ class _RaisingUseCase:
 
     def execute(self, *args: Any, **kwargs: Any) -> Any:
         raise self._error
+
+
+class _RecordingUseCase:
+    """A fake *use case* that records every call and returns a canned
+    `AnalysisReport`. Substituted for `analyze_script` or `evaluate_delta` to
+    prove which one the `version` branch calls, independent of either real
+    use case's behaviour."""
+
+    def __init__(self, report: AnalysisReport) -> None:
+        self._report = report
+        self.calls: list[tuple[Any, ...]] = []
+
+    def execute(self, *args: Any, **kwargs: Any) -> AnalysisReport:
+        self.calls.append(args)
+        return self._report
+
+
+def _report(version: int = 1) -> AnalysisReport:
+    return AnalysisReport(
+        script=Script(
+            script_id="scr-1",
+            project_id="proj-1",
+            version=version,
+            gcs_uri="gs://bucket/v1.pdf",
+            jurisdiction_code="MX",
+            scenes=[],
+        ),
+        findings=(),
+        tracker_items=(),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -223,8 +261,31 @@ def _analyze_script(
     )
 
 
+def _evaluate_delta(
+    ingestion: _Ingestion | None = None,
+    extractor: _Extractor | None = None,
+    grounding: _Grounding | None = None,
+    research: _Research | None = None,
+    lore: _LoreStore | None = None,
+    tracker: _TrackerStore | None = None,
+    continuity: _Continuity | None = None,
+    notifier: _Notifier | None = None,
+) -> EvaluateDelta:
+    return EvaluateDelta(
+        ingestion=ingestion if ingestion is not None else _Ingestion(),
+        extractor=extractor if extractor is not None else _Extractor(),
+        grounding=grounding if grounding is not None else _Grounding(),
+        research=research if research is not None else _Research(),
+        lore=lore if lore is not None else _LoreStore(),
+        tracker=tracker if tracker is not None else _TrackerStore(),
+        continuity=continuity if continuity is not None else _Continuity(),
+        notifier=notifier if notifier is not None else _Notifier(),
+    )
+
+
 def _client(
     analyze_script: Any = None,
+    evaluate_delta: Any = None,
     list_tracker_items: Any = None,
     resolve_finding: Any = None,
     answer_project_question: Any = None,
@@ -235,6 +296,9 @@ def _client(
             cast(AnalyzeScript, analyze_script)
             if analyze_script is not None
             else _analyze_script(),
+            cast(EvaluateDelta, evaluate_delta)
+            if evaluate_delta is not None
+            else _evaluate_delta(),
             cast(ListTrackerItems, list_tracker_items)
             if list_tracker_items is not None
             else ListTrackerItems(_TrackerStore()),
@@ -267,6 +331,7 @@ def test_create_blueprint_returns_a_flask_blueprint() -> None:
 
     bp = create_blueprint(
         _analyze_script(),
+        _evaluate_delta(),
         ListTrackerItems(_TrackerStore()),
         ResolveFinding(_TrackerStore(), _Notifier()),
         AnswerProjectQuestion(_LoreStore(), _Grounding(), _TrackerStore()),
@@ -279,6 +344,7 @@ def test_blueprint_registers_exactly_the_five_demo_routes() -> None:
     app.register_blueprint(
         create_blueprint(
             _analyze_script(),
+            _evaluate_delta(),
             ListTrackerItems(_TrackerStore()),
             ResolveFinding(_TrackerStore(), _Notifier()),
             AnswerProjectQuestion(_LoreStore(), _Grounding(), _TrackerStore()),
@@ -341,11 +407,15 @@ def test_analyze_happy_path_returns_the_full_report_body() -> None:
     assert body["tracker_items"][0]["state"] == "BLOCKED"
 
 
-def test_analyze_response_version_is_the_one_that_was_posted() -> None:
-    """D33: `version=99` must be visible in the response, not silently 1."""
-    client = _client()
+def test_analyze_response_version_is_the_one_the_use_case_reports() -> None:
+    """D33: the response's `version` echoes `AnalysisReport.script.version`,
+    not a hardcoded 1. Posts `version: 1` (the `AnalyzeScript` branch, CP-041)
+    and substitutes a fake use case reporting a different version, so the
+    assertion is about the serializer honestly reflecting the report rather
+    than about which branch a given request number selects."""
+    client = _client(analyze_script=_RecordingUseCase(_report(version=3)))
 
-    response = client.post("/api/analyze", json={**_ANALYZE_BODY, "version": 3})
+    response = client.post("/api/analyze", json={**_ANALYZE_BODY, "version": 1})
 
     assert response.get_json()["version"] == 3
 
@@ -456,6 +526,91 @@ def test_analyze_maps_a_bare_value_error_to_500() -> None:
 
     assert response.status_code == 500
     assert "blank corpus_prefix" not in response.get_json()["error"]
+
+
+# ---------------------------------------------------------------------------
+# POST /api/analyze -- version routing (CP-041, D30)
+# ---------------------------------------------------------------------------
+
+
+def test_analyze_with_version_1_calls_analyze_script_and_not_evaluate_delta() -> None:
+    analyze_script = _RecordingUseCase(_report(version=1))
+    evaluate_delta = _RecordingUseCase(_report(version=1))
+    client = _client(analyze_script=analyze_script, evaluate_delta=evaluate_delta)
+
+    response = client.post("/api/analyze", json={**_ANALYZE_BODY, "version": 1})
+
+    assert response.status_code == 200
+    assert len(analyze_script.calls) == 1
+    assert analyze_script.calls[0][2] == 1
+    assert evaluate_delta.calls == []
+
+
+def test_analyze_with_version_greater_than_1_calls_evaluate_delta_and_not_analyze_script() -> None:
+    analyze_script = _RecordingUseCase(_report(version=2))
+    evaluate_delta = _RecordingUseCase(_report(version=2))
+    client = _client(analyze_script=analyze_script, evaluate_delta=evaluate_delta)
+
+    response = client.post("/api/analyze", json={**_ANALYZE_BODY, "version": 2})
+
+    assert response.status_code == 200
+    assert len(evaluate_delta.calls) == 1
+    assert evaluate_delta.calls[0][2] == 2
+    assert analyze_script.calls == []
+
+
+def test_delta_response_carries_the_same_keys_as_the_analyze_response() -> None:
+    """D30's second half: one route, one response shape, so the SPA renders
+    both paths from a single client shape. `latest_script` returns a
+    previous version whose only scene is unchanged, so the delta run has
+    nothing to re-extract -- the branch under test is which use case
+    answers, not what it finds."""
+    previous = Script(
+        script_id="scr-0",
+        project_id="proj-1",
+        version=1,
+        gcs_uri="gs://bucket/v1.pdf",
+        jurisdiction_code="MX",
+        scenes=[_scene()],
+    )
+    client = _client(
+        evaluate_delta=_evaluate_delta(tracker=_TrackerStore(previous_script=previous))
+    )
+
+    analyze_response = client.post("/api/analyze", json=_ANALYZE_BODY)
+    delta_response = client.post("/api/analyze", json={**_ANALYZE_BODY, "version": 2})
+
+    assert analyze_response.status_code == 200
+    assert delta_response.status_code == 200
+    assert set(delta_response.get_json().keys()) == set(analyze_response.get_json().keys())
+
+
+def test_analyze_version_2_with_no_previous_version_returns_404_naming_the_project() -> None:
+    client = _client(evaluate_delta=_evaluate_delta())
+
+    response = client.post("/api/analyze", json={**_ANALYZE_BODY, "version": 2})
+
+    assert response.status_code == 404
+    assert response.content_type == "application/json"
+    assert "proj-1" in response.get_json()["error"]
+
+
+@pytest.mark.parametrize("bad_version", [None, "2", 0])
+def test_analyze_with_an_invalid_version_calls_neither_use_case(bad_version: Any) -> None:
+    analyze_script = _RecordingUseCase(_report())
+    evaluate_delta = _RecordingUseCase(_report())
+    client = _client(analyze_script=analyze_script, evaluate_delta=evaluate_delta)
+    body = dict(_ANALYZE_BODY)
+    if bad_version is None:
+        del body["version"]
+    else:
+        body["version"] = bad_version
+
+    response = client.post("/api/analyze", json=body)
+
+    assert response.status_code == 400
+    assert analyze_script.calls == []
+    assert evaluate_delta.calls == []
 
 
 # ---------------------------------------------------------------------------

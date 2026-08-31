@@ -27,6 +27,7 @@ from flask.typing import ResponseReturnValue
 
 from clearcut.application.analyze_script import AnalysisReport, AnalyzeScript
 from clearcut.application.answer_project_question import AnswerProjectQuestion, ProjectAnswer
+from clearcut.application.evaluate_delta import EvaluateDelta
 from clearcut.application.list_tracker_items import ListTrackerItems
 from clearcut.application.resolve_finding import (
     Action,
@@ -201,12 +202,13 @@ def _resolve_jurisdiction(code: str) -> Jurisdiction | ResponseReturnValue:
 
 def create_blueprint(
     analyze_script: AnalyzeScript,
+    evaluate_delta: EvaluateDelta,
     list_tracker_items: ListTrackerItems,
     resolve_finding: ResolveFinding,
     answer_project_question: AnswerProjectQuestion,
 ) -> Blueprint:
     """The five demo-path routes (SDD Section 4.2), as a Flask blueprint over
-    the four use-case instances the caller (`composition.py`) built."""
+    the five use-case instances the caller (`composition.py`) built."""
     bp = Blueprint("clearcut_api", __name__)
 
     @bp.route("/api/analyze", methods=["POST"])
@@ -226,9 +228,13 @@ def create_blueprint(
         at = _now()
 
         def build() -> JsonDict:
-            report = analyze_script.execute(
-                project_id, script_id, version, gcs_uri, jurisdiction, at
-            )
+            # version 1 is a first upload; version > 1 diffs against the
+            # stored previous one (D30). `EvaluateDelta.execute` shares
+            # `AnalyzeScript.execute`'s exact signature and return shape, so
+            # one call site and one serializer (`_analysis_report_json`)
+            # cover both branches.
+            use_case = analyze_script if version == 1 else evaluate_delta
+            report = use_case.execute(project_id, script_id, version, gcs_uri, jurisdiction, at)
             return _analysis_report_json(report)
 
         return _run_use_case(build)
