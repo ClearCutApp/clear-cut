@@ -17,7 +17,7 @@ reports the `Confidence` Parallel gave the field.
 from __future__ import annotations
 
 import httpx
-from parallel import APIStatusError, Parallel
+from parallel import APIConnectionError, APIStatusError, Parallel
 from parallel.types.citation import Citation as ParallelCitation
 from parallel.types.field_basis import FieldBasis
 from parallel.types.json_schema_param import JsonSchemaParam
@@ -69,10 +69,11 @@ class NoRightsHolderFound(EnrichmentMissing):
 
 
 class ResearchUnavailable(SourceUnavailable):
-    """Raised when the Parallel Task API responds with a non-2xx status."""
+    """Raised when the Parallel Task API could not be reached, timed out, or
+    responded with a non-2xx status."""
 
-    def __init__(self, status_code: int) -> None:
-        super().__init__(f"Parallel Task API responded with status {status_code}")
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
         self.status_code = status_code
 
 
@@ -95,7 +96,12 @@ class ParallelRightsResearch:
             )
             result = self._client.task_run.result(run.run_id)
         except APIStatusError as error:
-            raise ResearchUnavailable(error.status_code) from error
+            raise ResearchUnavailable(
+                f"Parallel Task API responded with status {error.status_code}",
+                status_code=error.status_code,
+            ) from error
+        except APIConnectionError as error:
+            raise ResearchUnavailable(f"Parallel Task API request failed: {error}") from error
 
         return _first_cited_claim(result, asset_name)
 

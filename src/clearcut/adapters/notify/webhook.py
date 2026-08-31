@@ -15,10 +15,11 @@ from clearcut.domain.tracker import TrackerItem
 
 
 class NotificationFailed(SourceUnavailable):
-    """Raised when the webhook responds with a non-2xx status."""
+    """Raised when the webhook could not be reached, timed out, or responded
+    with a non-2xx status."""
 
-    def __init__(self, status_code: int) -> None:
-        super().__init__(f"webhook responded with status {status_code}")
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
         self.status_code = status_code
 
 
@@ -32,9 +33,15 @@ class WebhookNotifier:
         self._url = webhook_url
 
     def notify(self, item: TrackerItem, reason: str) -> None:
-        response = self._client.post(self._url, json=_body(item, reason))
+        try:
+            response = self._client.post(self._url, json=_body(item, reason))
+        except httpx.TransportError as error:
+            raise NotificationFailed(f"webhook request failed: {error}") from error
         if not response.is_success:
-            raise NotificationFailed(response.status_code)
+            raise NotificationFailed(
+                f"webhook responded with status {response.status_code}",
+                status_code=response.status_code,
+            )
 
 
 def _body(item: TrackerItem, reason: str) -> dict[str, str | bool]:

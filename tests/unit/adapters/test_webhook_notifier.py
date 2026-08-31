@@ -16,6 +16,7 @@ import pytest
 
 from clearcut.adapters.notify.webhook import NotificationFailed, WebhookNotifier
 from clearcut.application.ports import Notifier
+from clearcut.domain.errors import SourceUnavailable
 from clearcut.domain.tracker import TrackerItem, TrackerState
 
 _WEBHOOK_URL = "https://example.com/hooks/notify"
@@ -75,6 +76,50 @@ def test_non_2xx_response_raises_notification_failed_with_status_code() -> None:
         adapter.notify(_ITEM, "reason")
 
     assert excinfo.value.status_code == 500
+    assert "500" in str(excinfo.value)
+
+
+def test_connect_error_raises_notification_failed_with_a_connection_message() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused")
+
+    http_client = httpx.Client(transport=httpx.MockTransport(handler))
+    adapter = WebhookNotifier(http_client, _WEBHOOK_URL)
+
+    with pytest.raises(NotificationFailed) as excinfo:
+        adapter.notify(_ITEM, "reason")
+
+    assert type(excinfo.value) is NotificationFailed
+    assert "connection refused" in str(excinfo.value)
+    assert "responded with status" not in str(excinfo.value)
+    assert excinfo.value.status_code is None
+
+
+def test_connect_error_message_differs_from_non_2xx_status_message() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused")
+
+    connect_client = httpx.Client(transport=httpx.MockTransport(handler))
+    connect_adapter = WebhookNotifier(connect_client, _WEBHOOK_URL)
+    status_adapter = _adapter(status=500)
+
+    with pytest.raises(NotificationFailed) as connect_excinfo:
+        connect_adapter.notify(_ITEM, "reason")
+    with pytest.raises(NotificationFailed) as status_excinfo:
+        status_adapter.notify(_ITEM, "reason")
+
+    assert str(connect_excinfo.value) != str(status_excinfo.value)
+
+
+def test_read_timeout_is_catchable_as_source_unavailable_alone() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("timed out")
+
+    http_client = httpx.Client(transport=httpx.MockTransport(handler))
+    adapter = WebhookNotifier(http_client, _WEBHOOK_URL)
+
+    with pytest.raises(SourceUnavailable):
+        adapter.notify(_ITEM, "reason")
 
 
 def test_blank_webhook_url_is_refused_in_constructor() -> None:

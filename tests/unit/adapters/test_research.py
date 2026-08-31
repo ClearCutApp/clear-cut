@@ -22,6 +22,7 @@ from clearcut.adapters.parallel.research import (
     ResearchUnavailable,
 )
 from clearcut.application.ports import Confidence, RightsClaim, RightsResearch
+from clearcut.domain.errors import SourceUnavailable
 from clearcut.domain.finding import Category
 from clearcut.domain.jurisdiction import jurisdiction_for
 
@@ -116,6 +117,7 @@ def test_non_2xx_response_raises_research_unavailable_with_status_code() -> None
         adapter.find(_ASSET_NAME, Category.COPYRIGHT_WORKS, _JURISDICTION)
 
     assert excinfo.value.status_code == 500
+    assert "500" in str(excinfo.value)
 
 
 def test_unrecognized_confidence_string_maps_to_low_instead_of_raising() -> None:
@@ -128,6 +130,44 @@ def test_unrecognized_confidence_string_maps_to_low_instead_of_raising() -> None
     claim = adapter.find(_ASSET_NAME, Category.COPYRIGHT_WORKS, _JURISDICTION)
 
     assert claim.confidence == Confidence.LOW
+
+
+def _adapter_with_transport_failure(error: httpx.TransportError) -> ParallelRightsResearch:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise error
+
+    http_client = httpx.Client(transport=httpx.MockTransport(handler))
+    return ParallelRightsResearch(http_client, "parallel-test-key")
+
+
+def test_read_timeout_raises_research_unavailable_with_a_distinct_message() -> None:
+    adapter = _adapter_with_transport_failure(httpx.ReadTimeout("timed out"))
+
+    with pytest.raises(ResearchUnavailable) as excinfo:
+        adapter.find(_ASSET_NAME, Category.COPYRIGHT_WORKS, _JURISDICTION)
+
+    assert type(excinfo.value) is ResearchUnavailable
+    assert "responded with status" not in str(excinfo.value)
+    assert excinfo.value.status_code is None
+
+
+def test_read_timeout_is_catchable_as_source_unavailable_alone() -> None:
+    adapter = _adapter_with_transport_failure(httpx.ReadTimeout("timed out"))
+
+    with pytest.raises(SourceUnavailable):
+        adapter.find(_ASSET_NAME, Category.COPYRIGHT_WORKS, _JURISDICTION)
+
+
+def test_connect_error_message_differs_from_non_2xx_status_message() -> None:
+    connect_adapter = _adapter_with_transport_failure(httpx.ConnectError("connection refused"))
+    status_adapter = _adapter(_result_body(), create_status=500, result_status=500)
+
+    with pytest.raises(ResearchUnavailable) as connect_excinfo:
+        connect_adapter.find(_ASSET_NAME, Category.COPYRIGHT_WORKS, _JURISDICTION)
+    with pytest.raises(ResearchUnavailable) as status_excinfo:
+        status_adapter.find(_ASSET_NAME, Category.COPYRIGHT_WORKS, _JURISDICTION)
+
+    assert str(connect_excinfo.value) != str(status_excinfo.value)
 
 
 def test_module_does_not_import_or_reference_risk_level() -> None:

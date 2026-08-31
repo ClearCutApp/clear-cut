@@ -64,7 +64,7 @@ def test_extraction_failed_is_a_source_unavailable() -> None:
 
 def test_research_unavailable_is_a_source_unavailable() -> None:
     with pytest.raises(SourceUnavailable):
-        raise ResearchUnavailable(503)
+        raise ResearchUnavailable("Parallel Task API responded with status 503", status_code=503)
 
 
 def test_continuity_check_failed_is_a_source_unavailable() -> None:
@@ -74,7 +74,7 @@ def test_continuity_check_failed_is_a_source_unavailable() -> None:
 
 def test_notification_failed_is_a_source_unavailable() -> None:
     with pytest.raises(SourceUnavailable):
-        raise NotificationFailed(500)
+        raise NotificationFailed("webhook responded with status 500", status_code=500)
 
 
 def test_tracker_item_not_found_message_still_names_the_item_id() -> None:
@@ -86,10 +86,13 @@ def test_tracker_item_not_found_message_still_names_the_item_id() -> None:
         pytest.fail("TrackerItemNotFound was not caught as RecordNotFound")
 
 
-def test_notification_failed_message_still_names_the_status_code() -> None:
-    try:
-        raise NotificationFailed(503)
-    except SourceUnavailable as error:
-        assert "503" in str(error)
-    else:
-        pytest.fail("NotificationFailed was not caught as SourceUnavailable")
+# `NotificationFailed` and `ResearchUnavailable` assemble their non-2xx
+# message at the adapter's raise site, not in their own constructor (CP-035)
+# -- unlike `TrackerItemNotFound` above, whose constructor still formats the
+# message from a bare id. A test here that raises `NotificationFailed` with a
+# hand-written message and then asserts the status code is in that same
+# message would only prove the literal string it just supplied. That
+# coverage lives instead in
+# `test_webhook_notifier.py::test_non_2xx_response_raises_notification_failed_with_status_code`
+# and `test_research.py::test_non_2xx_response_raises_research_unavailable_with_status_code`,
+# which assert against the adapter's own f-string.

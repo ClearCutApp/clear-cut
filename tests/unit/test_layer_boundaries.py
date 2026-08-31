@@ -20,6 +20,7 @@ FORBIDDEN_APPLICATION_PREFIXES = (
     "clickhouse_connect",
     "requests",
     "clearcut.adapters",
+    "httpx",
 )
 
 
@@ -94,6 +95,10 @@ def test_domain_guard_rejects_a_flask_import():
 
 def test_application_guard_rejects_a_flask_import():
     assert _application_violations("import flask\n") == ["flask"]
+
+
+def test_application_guard_rejects_an_httpx_import():
+    assert _application_violations("import httpx\n") == ["httpx"]
 
 
 def test_domain_guard_resolves_a_same_package_relative_import():
