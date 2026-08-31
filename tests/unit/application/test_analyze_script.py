@@ -187,6 +187,7 @@ class _Tracker:
     def __init__(self, log: list[str] | None = None) -> None:
         self._log = log
         self.saved: list[list[TrackerItem]] = []
+        self.recorded: list[Script] = []
 
     def save(self, items: list[TrackerItem]) -> None:
         if self._log is not None:
@@ -200,7 +201,9 @@ class _Tracker:
         return []
 
     def record_script(self, script: Script) -> None:
-        return None
+        if self._log is not None:
+            self._log.append("record_script")
+        self.recorded.append(script)
 
     def latest_script(self, project_id: str) -> Script | None:
         return None
@@ -258,6 +261,16 @@ def test_execute_returns_an_analysis_report_carrying_script_findings_and_tracker
     assert report.script.script_id == "scr-1"
     assert len(report.findings) == 1
     assert len(report.tracker_items) == 1
+
+
+def test_the_reports_script_carries_the_runs_version_gcs_uri_and_jurisdiction() -> None:
+    use_case = _use_case()
+
+    report = use_case.execute("proj-1", "scr-1", 3, "gs://bucket/v3.pdf", _MEXICO, _AT)
+
+    assert report.script.version == 3
+    assert report.script.gcs_uri == "gs://bucket/v3.pdf"
+    assert report.script.jurisdiction_code == _MEXICO.code
 
 
 def test_extract_is_called_once_with_every_scene() -> None:
@@ -389,6 +402,69 @@ def test_continuity_findings_skip_the_rights_research_lookup() -> None:
     assert research.calls == []
 
 
+def test_continuity_and_policy_findings_skip_the_legal_grounding_lookup() -> None:
+    ip_categories = (
+        (Category.INDUSTRIAL_PROPERTY, NerLabel.BRAND),
+        (Category.COPYRIGHT_WORKS, NerLabel.MUSIC_EXISTING),
+        (Category.PERSONALITY_IMAGE, NerLabel.REAL_PERSON),
+        (Category.INTEGRATED_VISUAL, NerLabel.MEDIA_AV),
+        (Category.LOCATIONS_PERMITS, NerLabel.LOCATION_PUB),
+        (Category.SPECIAL_SYMBOLS, NerLabel.SPECIAL_SYMBOL),
+    )
+    ip_findings = [
+        _finding(finding_id=f"uuid-{index}", raw_text="Quilmes", category=category, ner_label=label)
+        for index, (category, label) in enumerate(ip_categories)
+    ]
+    continuity_finding = _finding(
+        finding_id="uuid-continuity",
+        raw_text="The mural was already destroyed in scene 3.",
+        category=Category.CONTINUITY,
+        ner_label=None,
+        required_document="",
+    )
+    policy_finding = _finding(
+        finding_id="uuid-policy",
+        raw_text="A visible cigarette brand violates local policy.",
+        category=Category.POLICY,
+        ner_label=None,
+        required_document="",
+    )
+    grounding = _Grounding()
+    use_case = _use_case(
+        findings=[*ip_findings, continuity_finding, policy_finding], grounding=grounding
+    )
+
+    use_case.execute("proj-1", "scr-1", 1, "gs://bucket/v1.pdf", _MEXICO, _AT)
+
+    assert len(grounding.calls) == 6
+    called_categories = {query.split(" clearance:")[0] for query, _ in grounding.calls}
+    assert called_categories == {category.value for category, _ in ip_categories}
+
+
+def test_a_continuity_finding_reaches_the_report_with_no_citations() -> None:
+    citation = Citation(uri="https://law.example/mx", title="Ley Federal", snippet="...")
+    grounding = _Grounding(answer=GroundedAnswer(text="grounded text", citations=(citation,)))
+    continuity_finding = Finding(
+        finding_id="placeholder-uuid",
+        scene_number=1,
+        page=1,
+        raw_text="The mural was already destroyed in scene 3.",
+        category=Category.CONTINUITY,
+        ner_label=None,
+        risk_level=RiskLevel.MEDIUM,
+        required_document="",
+        contradicts="F1",
+    )
+    use_case = _use_case(
+        findings=[], continuity=_Continuity(finding=continuity_finding), grounding=grounding
+    )
+
+    report = use_case.execute("proj-1", "scr-1", 1, "gs://bucket/v1.pdf", _MEXICO, _AT)
+
+    assert len(report.findings) == 1
+    assert report.findings[0].citations == ()
+
+
 def test_every_scene_is_written_to_the_lore_store() -> None:
     scenes = [_scene(1), _scene(2)]
     lore = _LoreStore()
@@ -400,6 +476,19 @@ def test_every_scene_is_written_to_the_lore_store() -> None:
     indexed_project, indexed_records = lore.indexed[0]
     assert indexed_project == "proj-1"
     assert list(indexed_records) == scenes
+
+
+def test_record_script_is_called_once_with_the_runs_script_after_save() -> None:
+    tracker = _Tracker()
+    use_case = _use_case(tracker=tracker)
+
+    use_case.execute("proj-1", "scr-1", 1, "gs://bucket/v1.pdf", _MEXICO, _AT)
+
+    assert len(tracker.recorded) == 1
+    recorded = tracker.recorded[0]
+    assert recorded.project_id == "proj-1"
+    assert recorded.version == 1
+    assert recorded.gcs_uri == "gs://bucket/v1.pdf"
 
 
 def test_every_finding_becomes_a_blocked_tracker_item_at_version_1_scoped_to_project() -> None:
@@ -524,6 +613,7 @@ def test_pipeline_runs_ports_in_sdd_order() -> None:
     assert log.index("ground") < log.index("research")
     assert log.index("research") < log.index("lore.index")
     assert log.index("lore.index") < log.index("tracker.save")
+    assert log.index("tracker.save") < log.index("record_script")
 
 
 class _PositionalOnlyIngestion:

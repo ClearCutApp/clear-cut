@@ -188,7 +188,7 @@ an existing GCS URI). Ordered flow:
      gemini-3.1-flash-lite call compares scene against facts and emits a
      CONTINUITY or POLICY finding when they contradict. flash-lite also
      writes the one-line scene summary stored as row metadata. These bible
-     findings skip the RightsResearch lookup.
+     findings skip the RightsResearch and LegalGrounding lookups.
 6. **Embed.** Each scene is written to the LoreStore so later episodes can
    retrieve it as history.
 7. **Track.** Every finding becomes a TrackerItem at BLOCKED, written to

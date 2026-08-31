@@ -5,12 +5,15 @@ The ordered flow SDD Section 4.1 describes: parse the script into scenes,
 extract raw findings once over every scene, run the per-scene continuity
 check against the bible, dedupe the combined findings by asset (CP-019), then
 for each deduped finding ground it in the jurisdiction's law and research its
-rights holder -- skipping research for a CONTINUITY or POLICY finding, which
-names a bible contradiction rather than an asset with a rights holder to
-resolve. The confidence-to-risk rule is CP-021's `resolve_risk`, not
-reimplemented here. Every scene is written to the LoreStore and every finding
-becomes a BLOCKED tracker item at `version = 1`, scoped to the run's
-`project_id` (CHECKPOINTS.md Decision D24).
+rights holder -- skipping both lookups for a CONTINUITY or POLICY finding,
+which names a bible contradiction rather than an asset with a rights holder
+or a legal question to resolve (Decision D32). The confidence-to-risk rule is
+CP-021's `resolve_risk`, not reimplemented here. Every scene is written to
+the LoreStore and every finding becomes a BLOCKED tracker item at
+`version = 1`, scoped to the run's `project_id` (CHECKPOINTS.md Decision
+D24). The run's `Script` is recorded to `TrackerStore.latest_script` after
+`tracker.save`, so `EvaluateDelta` has a previous version to diff against
+(CHECKPOINTS.md Decision D30).
 
 `finding_id` is minted here as `EVT-NNN`, sequential in first-appearance
 order, discarding the extractor's placeholder UUID: an adapter cannot know a
@@ -54,8 +57,8 @@ from clearcut.domain.tracker import TrackerItem, TrackerState
 _LORE_SEARCH_LIMIT = 5
 
 # A CONTINUITY or POLICY finding names a bible contradiction, not an asset
-# with a rights holder (D11, SDD Section 4.1 step 5).
-_NO_RESEARCH_CATEGORIES = frozenset({Category.CONTINUITY, Category.POLICY})
+# with a rights holder or a legal question (D11, D32, SDD Section 4.1 step 5).
+_NO_LOOKUP_CATEGORIES = frozenset({Category.CONTINUITY, Category.POLICY})
 
 _DedupedFinding = tuple[Finding, tuple[int, ...]]
 
@@ -155,6 +158,7 @@ class AnalyzeScript:
         records: list[BibleFact | Scene] = list(scenes)
         self._lore.index(project_id, records)
         self._tracker.save(items)
+        self._tracker.record_script(script)
 
         return AnalysisReport(script=script, findings=tuple(findings), tracker_items=tuple(items))
 
@@ -193,6 +197,8 @@ class AnalyzeScript:
         return findings, items
 
     def _citations_for(self, finding: Finding, jurisdiction: Jurisdiction) -> tuple[Citation, ...]:
+        if finding.category in _NO_LOOKUP_CATEGORIES:
+            return ()
         try:
             grounded = self._grounding.ground(_grounding_query(finding), jurisdiction)
         except EnrichmentMissing:
@@ -203,7 +209,7 @@ class AnalyzeScript:
         return grounded.citations
 
     def _claim_for(self, finding: Finding, jurisdiction: Jurisdiction) -> RightsClaim | None:
-        if finding.category in _NO_RESEARCH_CATEGORIES:
+        if finding.category in _NO_LOOKUP_CATEGORIES:
             return None
         try:
             return self._research.find(finding.raw_text, finding.category, jurisdiction)
