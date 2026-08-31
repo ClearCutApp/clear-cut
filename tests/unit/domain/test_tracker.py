@@ -117,6 +117,43 @@ def test_flagged_for_review_carries_project_id_unchanged():
     assert updated.project_id == original.project_id
 
 
+def test_with_draft_email_sets_the_draft_and_bumps_version():
+    original = _item(version=1)
+    updated = original.with_draft_email("Dear rights holder...", at="2026-08-31T00:00:00Z")
+
+    assert updated.draft_email == "Dear rights holder..."
+    assert updated.version == 2
+    assert updated.updated_at == "2026-08-31T00:00:00Z"
+
+
+def test_with_draft_email_leaves_state_unchanged():
+    original = _item(state=TrackerState.CLEARED, version=1)
+    updated = original.with_draft_email("Dear rights holder...", at="2026-08-31T00:00:00Z")
+    assert updated.state == TrackerState.CLEARED
+
+
+def test_with_draft_email_leaves_the_receiver_unchanged():
+    original = _item(version=1)
+    original.with_draft_email("Dear rights holder...", at="2026-08-31T00:00:00Z")
+
+    assert original.draft_email is None
+    assert original.version == 1
+
+
+def test_with_draft_email_carries_project_id_unchanged():
+    original = _item(project_id="proj-a")
+    updated = original.with_draft_email("Dear rights holder...", at="2026-08-31T00:00:00Z")
+
+    assert updated.project_id == original.project_id
+
+
+@pytest.mark.parametrize("blank_draft", ["", "   "])
+def test_with_draft_email_rejects_a_blank_or_whitespace_only_draft(blank_draft):
+    original = _item(version=1)
+    with pytest.raises(ValueError):
+        original.with_draft_email(blank_draft, at="2026-08-31T00:00:00Z")
+
+
 def test_rejects_a_version_below_one():
     with pytest.raises(ValueError):
         TrackerItem(

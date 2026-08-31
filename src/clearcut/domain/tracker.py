@@ -60,3 +60,16 @@ class TrackerItem:
         nor silently dropped — it is flagged for a producer to look at again.
         """
         return replace(self, needs_review=True, updated_at=at, version=self.version + 1)
+
+    def with_draft_email(self, text: str, at: str) -> "TrackerItem":
+        """A new item carrying `text` as `draft_email` at `version + 1`.
+
+        `state` is unchanged: drafting outreach is not a state transition on
+        its own (docs/plan/agentic-workflow.md Section 5 — a human approves
+        before the item moves BLOCKED to IN_PROGRESS). A blank or
+        whitespace-only draft raises `ValueError` rather than writing a
+        version that stores nothing an unwritten draft would also look like.
+        """
+        if not text.strip():
+            raise ValueError("draft_email text must not be blank")
+        return replace(self, draft_email=text, updated_at=at, version=self.version + 1)
