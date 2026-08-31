@@ -27,21 +27,33 @@ _NOTHING_INDEXED = "I have nothing indexed for this project."
 # Grounding every question, including "who is in scene 4", spends a Vertex
 # AI Search call on something with no legal content (docs/plan/sdd.md
 # Section 4.2).
-_LEGAL_TOPIC_WORDS = frozenset(
+#
+# Stems, not whole words (CHECKPOINTS.md Decision D25): CP-027's reviewer
+# measured this vocabulary against `docs/plan/agentic-workflow.md` Section
+# 6's own examples and found it missed "permission" (only "permit" was
+# listed), "cleared" (only "clearance" was listed), and the canonical "Can we
+# show the mural in scene 12?" outright, which names no legal word in any
+# form. A false positive here costs one Vertex AI Search call; a false
+# negative costs the Q&A demo beat, so the stems below also reach the
+# depiction verbs a clearance question is often phrased with -- what a scene
+# proposes to *do* with an asset, not just its legal name.
+_LEGAL_TOPIC_STEMS = frozenset(
     {
         "law",
-        "laws",
         "legal",
-        "license",
-        "licence",
-        "licensing",
+        "licen",  # license, licence, licensing, licensed
         "copyright",
         "trademark",
         "statute",
-        "regulation",
-        "permit",
-        "rights",
-        "clearance",
+        "regulat",  # regulation, regulate, regulatory
+        "permi",  # permit, permitted, permission
+        "right",  # rights
+        "clear",  # clear, cleared, clearance
+        "show",
+        "use",
+        "depict",
+        "feature",
+        "display",
     }
 )
 
@@ -56,7 +68,8 @@ def _words(question: str) -> set[str]:
 
 def _names_legal_topic(question: str) -> bool:
     """Whether `question` is worth a Vertex AI Search call (SDD Section 4.2)."""
-    return bool(_words(question) & _LEGAL_TOPIC_WORDS)
+    stems = tuple(_LEGAL_TOPIC_STEMS)
+    return any(word.startswith(stems) for word in _words(question))
 
 
 def _asks_about_blockers(question: str) -> bool:
@@ -64,17 +77,29 @@ def _asks_about_blockers(question: str) -> bool:
     return bool(_words(question) & _BLOCKER_WORDS)
 
 
-def _compose_text(
-    facts: tuple[BibleFact, ...], grounded_text: str, blocked: tuple[TrackerItem, ...]
-) -> str:
+def _blocker_text(asked: bool, jurisdiction: Jurisdiction, blocked: tuple[TrackerItem, ...]) -> str:
+    """Names the territory a blocker answer covers (CHECKPOINTS.md Decision D26).
+
+    `TrackerItem` carries no jurisdiction, so this states the one territory a
+    run actually covers instead of implying a per-item filter it cannot
+    express -- for a blocked item and for an empty result alike.
+    """
+    if not asked:
+        return ""
+    if not blocked:
+        return f"Nothing is blocked in {jurisdiction.display_name}."
+    names = ", ".join(f"{item.item_id} ({item.required_document})" for item in blocked)
+    return f"Blocked in {jurisdiction.display_name}: {names}"
+
+
+def _compose_text(facts: tuple[BibleFact, ...], grounded_text: str, blocker_text: str) -> str:
     parts: list[str] = []
     if facts:
         parts.append("\n".join(f"{fact.text} (source: {fact.source})" for fact in facts))
     if grounded_text:
         parts.append(grounded_text)
-    if blocked:
-        names = ", ".join(f"{item.item_id} ({item.required_document})" for item in blocked)
-        parts.append(f"Blocked: {names}")
+    if blocker_text:
+        parts.append(blocker_text)
     return "\n\n".join(parts) if parts else _NOTHING_INDEXED
 
 
@@ -98,8 +123,10 @@ class AnswerProjectQuestion:
     def execute(self, project_id: str, question: str, jurisdiction: Jurisdiction) -> ProjectAnswer:
         facts = tuple(self._lore.search(project_id, question, _SEARCH_LIMIT))
         grounded_text, citations = self._ground_if_legal(question, jurisdiction)
-        blocked = self._blocked_items_if_asked(project_id, question)
-        text = _compose_text(facts, grounded_text, blocked)
+        asked = _asks_about_blockers(question)
+        blocked = self._blocked_items_if_asked(project_id, asked)
+        blocker_text = _blocker_text(asked, jurisdiction, blocked)
+        text = _compose_text(facts, grounded_text, blocker_text)
         return ProjectAnswer(text=text, facts=facts, citations=citations)
 
     def _ground_if_legal(
@@ -120,8 +147,8 @@ class AnswerProjectQuestion:
             return "", ()
         return grounded.text, grounded.citations
 
-    def _blocked_items_if_asked(self, project_id: str, question: str) -> tuple[TrackerItem, ...]:
-        if not _asks_about_blockers(question):
+    def _blocked_items_if_asked(self, project_id: str, asked: bool) -> tuple[TrackerItem, ...]:
+        if not asked:
             return ()
         items = self._tracker.latest_for_project(project_id)
         return tuple(item for item in items if item.state == TrackerState.BLOCKED)

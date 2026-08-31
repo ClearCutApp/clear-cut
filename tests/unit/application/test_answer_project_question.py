@@ -154,9 +154,68 @@ def test_a_non_legal_question_never_calls_grounding() -> None:
     assert grounding.calls == []
 
 
+def test_a_scene_roster_question_never_calls_grounding() -> None:
+    """D25: the widened vocabulary must not regress CP-027's zero-call case."""
+    grounding = _RecordingLegalGrounding(GroundedAnswer(text="unused", citations=()))
+    use_case = AnswerProjectQuestion(
+        lore=FakeLoreStore(), grounding=grounding, tracker=_RecordingTrackerStore([])
+    )
+
+    use_case.execute("proj-1", "Who is in scene 4?", _MEXICO)
+
+    assert grounding.calls == []
+
+
+def test_a_scene_count_question_never_calls_grounding() -> None:
+    """D25: the widened vocabulary must not regress CP-027's zero-call case."""
+    grounding = _RecordingLegalGrounding(GroundedAnswer(text="unused", citations=()))
+    use_case = AnswerProjectQuestion(
+        lore=FakeLoreStore(), grounding=grounding, tracker=_RecordingTrackerStore([])
+    )
+
+    use_case.execute("proj-1", "How many scenes are there?", _MEXICO)
+
+    assert grounding.calls == []
+
+
 def test_names_legal_topic_true_and_false_branches() -> None:
     assert _names_legal_topic("What does Mexican copyright law say about this?") is True
     assert _names_legal_topic("Who is in scene 4?") is False
+
+
+def test_names_legal_topic_true_for_the_agentic_workflow_mural_example() -> None:
+    """D25: `docs/plan/agentic-workflow.md` Section 6's own canonical example.
+
+    No word in the sentence is a legal word in any form; it is a clearance
+    question because of what it proposes to *do* with the mural, so the
+    vocabulary has to reach depiction verbs, not just legal nouns.
+    """
+    assert _names_legal_topic("Can we show the mural in scene 12?") is True
+
+
+def test_names_legal_topic_true_for_the_permission_question() -> None:
+    """D25: `permission` does not share a prefix with `permit` alone."""
+    assert _names_legal_topic("Do we need permission for the Coca-Cola bottle?") is True
+
+
+def test_names_legal_topic_true_for_the_cleared_question() -> None:
+    """D25: `cleared` is a form of `clear`, not of `clearance`."""
+    assert _names_legal_topic("Is the song cleared for streaming?") is True
+
+
+def test_names_legal_topic_false_for_a_scene_roster_question() -> None:
+    assert _names_legal_topic("Who is in scene 4?") is False
+
+
+def test_names_legal_topic_false_for_a_scene_count_question() -> None:
+    assert _names_legal_topic("How many scenes are there?") is False
+
+
+def test_permit_permission_and_permitted_all_match_the_same_stem() -> None:
+    """D25: morphology is handled by one stem, not by enumerating inflections."""
+    assert _names_legal_topic("Do we have a permit?") is True
+    assert _names_legal_topic("Do we need permission?") is True
+    assert _names_legal_topic("Was this permitted?") is True
 
 
 def test_a_territory_blocker_question_reads_tracker_and_names_blocked_items() -> None:
@@ -172,6 +231,40 @@ def test_a_territory_blocker_question_reads_tracker_and_names_blocked_items() ->
     assert tracker.calls == ["proj-1"]
     assert "ITEM-1" in answer.text
     assert "ITEM-2" not in answer.text
+
+
+def test_a_blocker_answer_names_the_jurisdiction_it_covers() -> None:
+    """D26: `TrackerItem` carries no jurisdiction, so the answer names the one
+    territory a run actually covers instead of implying a per-item filter it
+    cannot express.
+    """
+    tracker = _RecordingTrackerStore([_blocked_item()])
+    use_case = AnswerProjectQuestion(
+        lore=FakeLoreStore(),
+        grounding=_RecordingLegalGrounding(GroundedAnswer(text="", citations=())),
+        tracker=tracker,
+    )
+
+    answer = use_case.execute("proj-1", "What is still blocking release in Mexico?", _MEXICO)
+
+    assert _MEXICO.display_name in answer.text
+
+
+def test_a_blocker_question_with_nothing_blocked_still_names_the_territory() -> None:
+    """D26 failure path: an empty result is still about a stated territory,
+    not a bare "nothing found".
+    """
+    tracker = _RecordingTrackerStore([_cleared_item()])
+    use_case = AnswerProjectQuestion(
+        lore=FakeLoreStore(),
+        grounding=_RecordingLegalGrounding(GroundedAnswer(text="", citations=())),
+        tracker=tracker,
+    )
+
+    answer = use_case.execute("proj-1", "What is still blocking release in Mexico?", _MEXICO)
+
+    assert _MEXICO.display_name in answer.text
+    assert answer.text != "I have nothing indexed for this project."
 
 
 def test_a_non_blocker_question_never_calls_tracker() -> None:
