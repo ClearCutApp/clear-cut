@@ -229,18 +229,26 @@ script version. After step 2 (parse plus hash), the use case runs
 
 - UNCHANGED scenes are skipped entirely. Findings, embeddings, and tracker
   items survive as they are.
-- ADDED and CHANGED scenes are re-extracted, re-enriched, and re-embedded
-  (the old rows for a CHANGED scene are deleted from the LoreStore first).
+- ADDED and CHANGED scenes are re-extracted, re-enriched, and re-embedded.
+  The design calls for deleting a CHANGED scene's old LoreStore rows first.
+  That part is not built, because the `LoreStore` port has no `delete`
+  method, so a changed scene leaves a stale row that later retrieval can
+  return as history.
 - REMOVED scenes keep their open tracker items with a note; nothing is
   deleted, because a cut scene can return in v3.
-- Carry-forward matches by asset identity: a re-extracted finding that names
-  the same asset (same category plus normalized asset name) as an existing
-  one keeps its `finding_id` and its tracker state, even when the asset moved
-  to a different scene. Findings and permissions on unchanged scenes carry
-  forward as they are. A CHANGED scene whose tracker item was CLEARED keeps
-  its state but gets `needs_review` set to true and a notification, matching
-  ADR 0007: the clearance is neither silently kept nor dropped. Only
-  genuinely new assets get new EVT ids and start at BLOCKED.
+- Carry-forward matches by scene: a re-extracted finding on a CHANGED scene
+  takes over the `finding_id` and the tracker state of an existing item
+  whose `scene_numbers` overlap the changed set. Matching on the asset
+  itself would need a stored category and normalized text per finding, and
+  no table holds them (section 6 of `infrastructure.md` defines none), so an
+  asset that moves to a different scene arrives as a new item at BLOCKED
+  while its old item stays open, flagged for re-review with a note.
+  Findings and permissions on unchanged scenes carry forward as they are. A
+  CHANGED scene whose tracker item was CLEARED keeps its state but gets
+  `needs_review` set to true and a notification, matching ADR 0007: the
+  clearance is neither silently kept nor dropped. New assets, and assets the
+  pipeline can no longer tell apart from new ones, get new EVT ids and start
+  at BLOCKED.
 
 This is the concrete algorithm behind what the legacy architecture document
 called the Dynamic Scalability Module.
