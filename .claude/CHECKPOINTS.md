@@ -1465,6 +1465,58 @@ CP-030's criterion 7 chose "absent means live" precisely so a forgotten variable
 never serves planted data, and an incomplete live branch that refuses to start
 honours that better than one that silently falls back to mock.
 
+### Settled 2026-08-31, one deferred finding from CP-048's PASS (D39)
+
+**D39. The layer gate is narrowed to same-package siblings, as a checkpoint
+rather than a Backlog line. CP-050.**
+
+*The finding, reproduced.* `tests/unit/test_layer_boundaries.py:157` skips every
+file whose parents include the adapters directory, so
+`test_composition_is_the_only_module_importing_adapters` never examines an
+adapter importing another adapter's package. CP-048's reviewer proved it by
+planting `from clearcut.adapters.demo.in_memory import InMemoryTrackerStore` at
+the top of `adapters/http/routes.py` and watching the suite stay green.
+
+*Why a checkpoint and not the Backlog, seven days out.* CP-048's criterion 8
+says the extension "turns §2 rule 4 from a convention into a gate", and CP-048
+passed partly on that claim. Across packages the gate is nominal, so the
+criterion currently promises more than it delivers — that is a contract
+violation, not polish, which is the test my own filing rule applies. This
+project has already ruled this exact class once: D29 filed CP-038 to make two
+error-boundary guards fail on what they were written to catch, and the Active
+note that carried it said a gate that cannot fail is the one kind of test worth
+fixing before the deadline rather than after it. Nothing about that reasoning
+has weakened.
+
+*What it protects, concretely.* A live route holding a demo store is D36's exact
+failure — the mocked service mistaken for a live one — and after CP-048 the demo
+adapters are real, importable modules in the same tree as the live ones. This
+gate is the only structural check standing between that import and a green
+suite.
+
+*The shape, and the trap in it.* Allow same-package, reject cross-package.
+Exactly one legitimate adapter-to-adapter import exists today —
+`adapters/demo/in_memory.py:26`, `from clearcut.adapters.demo import scenario` —
+and it is written in **absolute** form, not relative. So the allowance has to
+compare package identity, computed from the importing file, against the imported
+dotted name. A narrowing that whitelists relative-import syntax instead would
+fail on the tree the moment it lands, and one that bans all adapter imports
+would fail on the same line.
+
+*One thing folded in, and it is coupling rather than creep.* The Backlog's
+`_package_for` pin moves into this block. The narrowed comparison is computed
+*through* `_package_for`, so that function being correct stops being a coverage
+nicety and becomes a prerequisite: under mutant C (`".".join(parts)`), which
+survived all seven tests during CP-001's review, the new comparison
+misclassifies packages silently and the gate goes quietly wrong in the direction
+of permissive. Same file, same turn, one assertion.
+
+*Ordering.* CP-050 is dependency-free and test-only, so it dispatches beside
+CP-046 today. It goes **before CP-031**, because both edit
+`tests/unit/test_layer_boundaries.py` and CP-031 adds `opentelemetry` to the
+forbidden application prefixes in that same module. That is a file collision,
+not a dependency.
+
 ---
 
 ## Active
@@ -1618,6 +1670,128 @@ half of the wiring the demo needs: **CP-049 is now cuttable and CP-048 is not.**
 Mock mode carries the entire demo (D36), so if the clock forces a choice the
 live adapter wiring is what slips, and what ships is a mocked MVP that runs.
 CP-031 stays off the list, for the reason D14's amendment gives.
+
+**One more on 2026-08-31, from D39, and it changes the order by one slot.**
+CP-050 comes out of CP-048's PASS: the layer gate it added does not catch a
+cross-package adapter import. It is dependency-free, test-only, and opens
+`tests/unit/test_layer_boundaries.py`, which nothing in flight touches — so it
+**dispatches immediately, beside CP-046**, and moves nothing already queued.
+
+It goes **before CP-031**, which is the one slot that changes: both edit that
+same test module, and CP-031 adds `opentelemetry` to the forbidden application
+prefixes there. A file collision, not a dependency. The order is therefore
+CP-046 and CP-050 now, then CP-031, then CP-049 last as the cuttable one.
+
+CP-050 is not on the cut list. It costs one implementer turn against a gate that
+three landed checkpoints (CP-030's criterion, CP-048's criterion 8, and D36's
+whole argument) are currently trusting to be stricter than it is.
+
+### CP-050 — Narrow the adapters exclusion in the layer gate to same-package siblings
+- Status: IN_REVIEW
+- Attempts: 1/3
+- Depth: 0
+- Layer: tests
+- Depends on: -
+- Acceptance:
+  - [x] `test_composition_is_the_only_module_importing_adapters` fails when
+        `from clearcut.adapters.demo.in_memory import InMemoryTrackerStore` is
+        planted at the top of `src/clearcut/adapters/http/routes.py`. That exact
+        plant leaves the suite green today, and the reviewer's report is the
+        red-first evidence: reproduce it, watch it pass, then make it fail.
+  - [x] The one legitimate adapter-to-adapter import in the tree stays legal and
+        the suite is green on an unmodified checkout:
+        `src/clearcut/adapters/demo/in_memory.py:26` does
+        `from clearcut.adapters.demo import scenario`. A gate that banned every
+        adapter import would fail on arrival against this line.
+  - [x] The allowance is decided on package identity, not import syntax: the
+        importing file's own package (through `_package_for`) is compared
+        against the imported dotted name. Two tests pin both halves — an
+        **absolute** same-package import is allowed, an absolute cross-package
+        one is rejected — so an implementation that only whitelists relative
+        imports fails, which is the trap the `in_memory.py` line above sets.
+  - [x] `composition.py` keeps its single named exception, and
+        `test_composition_imports_the_adapters_it_wires` still guards the
+        exclusivity test against passing vacuously. Neither is weakened to make
+        the narrowing fit.
+  - [x] Regression guard, unchanged behaviour: a module outside `adapters/` that
+        imports any adapter still fails the gate. A test plants an adapter
+        import in an application module and asserts the gate names it.
+  - [x] `_package_for` is pinned, absorbed from the Backlog (D39): a test
+        asserts that a regular module and an `__init__.py` both map to their
+        true package, killing mutant C (`".".join(parts)`), which survived all
+        seven tests during CP-001's review. The narrowed comparison runs through
+        this function, so it is a prerequisite here rather than the coverage gap
+        it was filed as.
+  - [x] Every new assertion is proven non-vacuous by planting the violation and
+        reverting it, in the mutation style this repo's reviews already use.
+        State which mutant each assertion kills.
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: tests/unit/test_layer_boundaries.py
+- Notes: From CP-048's PASS, filed under D39 — read the reasoning there,
+  including why this is a checkpoint rather than a Backlog line and what the
+  same-package rule has to compare.
+
+  **Test-only. No file under `src/` was touched** — confirmed byte-identical
+  to HEAD before this report; the tree was already compliant with the
+  narrowed rule, and exactly one import exercises the allowance.
+
+  **The narrowed comparison.** `test_composition_is_the_only_module_importing_adapters`
+  no longer skips every file under `adapters/`; it now runs a new
+  `_adapter_import_violations(path, source)` helper for every file except
+  `composition.py`. That helper computes `_package_for(path)` and drops an
+  `_imports_adapters` name from the violation list only when it is exactly
+  equal to that package (`name != package`) — package identity, not
+  `adapters/` membership or import syntax.
+
+  **Red-first reproduction, on the real tree, reverted.** Planted
+  `from clearcut.adapters.demo.in_memory import InMemoryTrackerStore` at the
+  top of `src/clearcut/adapters/http/routes.py`: against the unmodified test
+  file, `pytest tests/unit/test_layer_boundaries.py` stayed green (10 passed),
+  reproducing the reviewer's report exactly. Against the narrowed test file,
+  the same plant made `test_composition_is_the_only_module_importing_adapters`
+  fail, naming `clearcut.adapters.demo.in_memory`. Reverted with
+  `git checkout --`; `diff` against a pre-plant copy confirms `routes.py` is
+  byte-identical to HEAD.
+
+  **New tests and the mutant each kills**, verified live by editing the
+  helper, running the suite, and reverting (never landing a mutant):
+  - `test_reviewer_plant_is_now_flagged` and
+    `test_cross_package_absolute_adapter_import_is_rejected` — inline-source
+    pins of the reviewer's plant and of an unrelated adapter pair
+    (`gcp/document_ai.py` importing `bigquery`). Both kill **Mutant A**, the
+    wholesale-skip restored (`if ADAPTERS_DIR in path.parents: return []`) —
+    today's bug, reproduced and killed.
+  - `test_same_package_absolute_adapter_import_is_allowed` — the real
+    `in_memory.py:26` line. Kills **Mutant B**, a total ban
+    (`return list(_imports_adapters(...))`, no allowance at all): under this
+    mutant the pin fails, and so does the unmodified-checkout run of
+    `test_composition_is_the_only_module_importing_adapters` itself — the
+    exact "fails on arrival against this line" trap criterion 2 names.
+  - `test_package_for_drops_only_the_module_name` — kills **Mutant C**,
+    `_package_for` returning `".".join(parts)` instead of
+    `".".join(parts[:-1])`, the mutant that survived all seven tests during
+    CP-001's review. Confirmed the coupling the Notes claimed: under Mutant C
+    this pin fails directly, and so do
+    `test_composition_is_the_only_module_importing_adapters` and
+    `test_same_package_absolute_adapter_import_is_allowed`, through the
+    shared dependency on `_package_for`.
+  - `test_gate_still_rejects_an_adapter_import_outside_adapters` — an
+    application module (`evaluate_delta.py`) importing `clearcut.adapters.demo`.
+    Kills **Mutant D**, the comparison direction inverted
+    (`if name == package` instead of `if name != package`): under this mutant
+    five tests fail, including this one, and the unmodified-checkout run of
+    the main test also fails on `in_memory.py`.
+
+  Full gate on the clean tree: `pytest -q` 432 passed, `ruff check .` all
+  checks passed, `ruff format --check .` 112 files already formatted,
+  `mypy src tests infra` no issues in 86 source files, `./.claude/init.sh
+  check` 4/4.
+
+  This absorbs the Backlog's `_package_for` entry, which is struck there and
+  carried by the sixth criterion.
+
+  Landed in one attempt: the split noted for a possible 3/3 (narrowed
+  exclusion vs. `_package_for` pin as separate checkpoints) was not needed.
 
 ### CP-049 — Wire the eight live adapters, and keep the wiring testable offline
 - Status: TODO
@@ -1785,42 +1959,64 @@ CP-031 stays off the list, for the reason D14's amendment gives.
 
 ### CP-046 — Serve the built SPA from the same service that serves the API
 - Status: TODO
-- Attempts: 0/3
+- Attempts: 1/3
 - Depth: 0
 - Layer: adapters
 - Depends on: CP-048
 - Acceptance:
-  - [ ] `create_app()` serves the `web/` build: `GET /` returns that build's
+  - [x] `create_app()` serves the `web/` build: `GET /` returns that build's
         `index.html` with an HTML content type. A test points the app at a
         temporary directory holding a stub `index.html`, so reviewing this
         needs no `npm run build`.
-  - [ ] A client-side route deep-links: any path not under `/api` that matches
+  - [x] A client-side route deep-links: any path not under `/api` that matches
         no static file returns the same `index.html` at status 200, because the
         SPA router owns it. One test each for `/tracker` and `/script/abc`.
-  - [ ] `/api` paths never fall through to the SPA. `GET /api/nope` returns a
+  - [x] `/api` paths never fall through to the SPA. `GET /api/nope` returns a
         JSON 404 carrying an `error` key with an `application/json` content
         type, not `index.html`. A test asserts both. This is the criterion that
         matters most: an HTML 200 where a JSON 404 belongs turns every frontend
         bug into a silent success.
-  - [ ] The static root is passed in as an argument and read from no
+  - [x] The static root is passed in as an argument and read from no
         module-level constant computed at import time, so a test can point it
         anywhere without depending on the repo's on-disk layout.
-  - [ ] Failure path: the build directory does not exist — nobody ran
+  - [x] Failure path: the build directory does not exist — nobody ran
         `npm run build` — and the service still starts, every `/api` route
         still answers, and `GET /` returns a 404 naming the missing build
         rather than a traceback. Two tests. The demo must not die because the
         frontend was not compiled.
-  - [ ] The SPA blueprint is its own module beside the API one and holds no use
+  - [x] The SPA blueprint is its own module beside the API one and holds no use
         case, no port, and no business rule: it maps a path to a file and
         nothing else. `routes.py` is not touched, so CP-029's frozen
         five-parameter factory and CP-030's layer gate are both unaffected.
-  - [ ] No new runtime dependency — Flask's own static handling does this, so
+  - [x] No new runtime dependency — Flask's own static handling does this, so
         CP-017's undeclared-import guard stays green with no `pyproject.toml`
         edit.
-  - [ ] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
 - Files: src/clearcut/adapters/http/spa.py, src/clearcut/composition.py,
   tests/unit/adapters/test_spa.py
-- Notes: **Found by audit on 2026-08-31, and it is in no other block.** ADR 0010
+- Notes: **Implementer, 2026-08-31.** RED confirmed first: all ten tests in
+  the not-yet-created `tests/unit/adapters/test_spa.py` failed collection or
+  assertion (`TypeError: create_app() got an unexpected keyword argument
+  'build_dir'`, `FileNotFoundError` for the not-yet-created `spa.py`); all ten
+  green after `create_spa_blueprint` and the `composition.py` wiring landed.
+
+  First implementation caught `werkzeug.exceptions.NotFound` to fall back
+  from a missing static file to `index.html`, which broke CP-017's
+  undeclared-import guard (`werkzeug` is a transitive Flask dependency, never
+  declared directly). Replaced with a plain `Path.is_file()` check before
+  calling `send_from_directory`, so `spa.py` imports only `flask` and
+  `pathlib` — no new import, no `pyproject.toml` edit, guard stays green.
+
+  `create_app(build_dir: Path | None = None)`: `None` resolves to
+  `_default_build_dir()` (`web/dist` off the repo root), computed inside the
+  function on every call rather than as a module-level constant, so importing
+  `composition.py` still touches no filesystem and a test can point it
+  anywhere. The `/api` prefix check lives in the SPA blueprint's own
+  catch-all handler, not just inferred from Werkzeug's route-matching order,
+  so `GET /api/nope` is a JSON 404 by construction rather than by an
+  accident of registration order.
+
+  **Found by audit on 2026-08-31, and it is in no other block.** ADR 0010
   says "One Cloud Run service serves the JSON API and the static web/ build from
   the same container" and SDD §5 repeats it, but searching the whole loop state
   for `static_folder`, `send_from_directory` or `web/dist` returns nothing:
@@ -1859,9 +2055,12 @@ written down so the next turn re-decides on evidence rather than re-litigating.
   keeps the loop's only Python module outside both ruff gates.
 - ~~Make `tests/integration/` survive a commit.~~ Absorbed by CP-012 (D4),
   which puts an `__init__.py` in every directory under `tests/`.
-- Pin `_package_for` in `tests/unit/test_layer_boundaries.py` with a test
-  asserting that both a regular module and an `__init__.py` map to
-  `clearcut.domain`. Mutant C (returning `".".join(parts)`) survived all seven
+- ~~Pin `_package_for` in `tests/unit/test_layer_boundaries.py`.~~ **Absorbed by
+  CP-050 (D39)**, which narrows the adapters exclusion to same-package siblings
+  and therefore computes its allowance through this function — promoting the pin
+  from a coverage gap to a prerequisite. The original entry, kept for its
+  evidence: a test asserting that both a regular module and an `__init__.py` map
+  to `clearcut.domain`. Mutant C (returning `".".join(parts)`) survived all seven
   tests during review because the three relative-import tests pass the package
   string literally and never route through `_package_for`. Under that mutant,
   `from ..adapters import x` in `domain/jurisdiction.py` resolves to
@@ -2252,6 +2451,70 @@ _Terminal checkpoints (`DONE` / `SUPERSEDED`), newest first._
   exclusion to same-subpackage imports would close it. Not blocking here: every
   module the criterion targets is gated, and the criterion's literal premise is
   already false against committed CP-043 code.
+
+  **Second review, 2026-08-31, independent — PASS, zero blocking findings.**
+  Run without sight of the review above, which landed (commits `15e6f5a`,
+  `a0f1949`) while this one was in progress; it is recorded because the two
+  agree on a checkpoint that turns the MVP on, and because it kills two mutants
+  the first did not. Gates re-run on the committed tree: `pytest -q` 417 passed,
+  `mypy src tests infra` clean over 84 source files, `ruff check .` clean,
+  `ruff format --check .` 110 files, `./.claude/init.sh verify` 87 passed.
+
+  Mutation copy under `.mutation-review/`, never the repository, with
+  `__pycache__` cleared and `PYTHONDONTWRITEBYTECODE=1`. The editable-install
+  shadow was ruled out rather than assumed: this project has no editable install
+  at all, `clearcut` resolves purely through `pythonpath = ["src", "."]` against
+  the rootdir holding `pyproject.toml`, and a probe test asserted from inside
+  pytest that `clearcut.composition.__file__` came from the copy while
+  `flask.__file__` came from the real `.venv`. Independently killed: the safety
+  inversion (absent default flipped `live` -> `mock`); the live branch returning
+  `_build_mock_use_cases()` instead of raising (3 tests); the unrecognized-mode
+  `ValueError` replaced by a mock fallback; **`ValueError` -> `RuntimeError` and
+  `RuntimeError` -> `ValueError`, each caught, so the two failure shapes
+  criteria 4 and 5 name are genuinely distinct and separately pinned**; the
+  accepted-value pair dropped from the message; the `WARNING` downgraded and
+  duplicated; a foreign object substituted for `InMemoryLegalGrounding`; an
+  unshared tracker; a module-level singleton graph; `analyze_script` and
+  `evaluate_delta` transposed in `create_blueprint`; the blueprint never
+  registered; a required `os.environ[...]` read in the mock builder (6 tests);
+  and adapter imports planted in `application/`, `domain/` and
+  `src/clearcut/__init__.py`, plus `composition.py` stripped of its adapter
+  imports (the sanity test fires).
+
+  Criterion 3 was also confirmed at the OS level rather than through
+  `monkeypatch`: `env -i CLEARCUT_MODE=mock` with `socket.socket` and
+  `socket.create_connection` hard-blocked ran `create_app()`, `POST /api/analyze`
+  and `GET /api/tracker` to 200/200, returning `INDUSTRIAL_PROPERTY` p3,
+  `COPYRIGHT_WORKS` p5, `CONTINUITY` p8 and three `BLOCKED` items, with zero
+  sockets constructed. SDD §8(d)'s promise is real, and it runs on nothing.
+
+  *The subtree exclusion, second opinion.* Reached independently and confirmed
+  by the same `routes.py` plant; concurring with the ruling above that it is
+  **non-blocking**. Adding evidence the leader will want when it fixes this: the
+  narrowing is cheap and provably sufficient today. `adapters/demo/in_memory.py:26`
+  is the *only* intra-`adapters` import in the entire tree, so scoping the
+  exclusion to a module's own adapter sub-package passes the clean tree
+  unchanged (10 passed) while catching the `routes.py` cross-package plant, an
+  `application/` plant, a `src/clearcut/__init__.py` plant, and a
+  `demo/in_memory.py -> adapters.gemini` plant. Verified in the copy.
+
+  *One new non-blocking observation.* The first review killed
+  `os.environ["GOOGLE_CLOUD_PROJECT"]` in the mock builder; the **defensive**
+  variant survives — `os.environ.get("CLICKHOUSE_HOST", "")` leaves all ten
+  composition tests green, as does a real (locally successful) socket. Neither
+  is a defect: no such read or socket exists, and the `env -i` probe proves the
+  mock path needs nothing. What is missing is only a regression guard, and
+  CP-049 is about to add live wiring beside this code. It belongs with the
+  narrowing above, in one small tests-only checkpoint.
+
+  *Process note, not a code finding.* This block was moved to `DONE` and
+  archived, and its code committed, before this reviewer returned a verdict —
+  an `IN_REVIEW -> DONE` transition AGENT.md §7 assigns to the reviewer alone.
+  The outcome is unaffected: the working tree was byte-identical to `HEAD` for
+  all four files, so the bytes reviewed here are the bytes committed, and both
+  reviews independently reach `PASS`. Recorded so the conductor does not repeat
+  it — a second reviewer arriving at `CHANGES_REQUESTED` would have had nowhere
+  to put the verdict.
 
 ### CP-047 — Put the scenes the analyze response already holds into its body
 - Status: DONE
