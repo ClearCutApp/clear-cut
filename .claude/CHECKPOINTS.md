@@ -1686,63 +1686,6 @@ CP-050 is not on the cut list. It costs one implementer turn against a gate that
 three landed checkpoints (CP-030's criterion, CP-048's criterion 8, and D36's
 whole argument) are currently trusting to be stricter than it is.
 
-### CP-049 — Wire the eight live adapters, and keep the wiring testable offline
-- Status: TODO
-- Attempts: 0/3
-- Depth: 1
-- Layer: adapters
-- Depends on: CP-022, CP-023, CP-024, CP-048
-- Acceptance:
-  - [ ] The `live` branch builds the eight concrete adapters and injects them
-        into the five use cases, replacing CP-048's named failure. A test
-        asserts each of the eight by type.
-  - [ ] Every credential, endpoint, and model id is read from the environment
-        here and passed as a constructor argument: `GOOGLE_CLOUD_PROJECT`,
-        `DOCAI_PROCESSOR_ID`, both Gemini model ids, `PARALLEL_API_KEY`, the
-        three `CLICKHOUSE_*` values, the data store id, and the webhook URL. A
-        test asserts no adapter module contains `os.environ` or `os.getenv`.
-  - [ ] The two vendor clients that connect during construction —
-        `clickhouse_connect.get_client(...)` and `BigQueryVectorStore(...)` —
-        are accepted by the live wiring as an argument whose default builds the
-        real thing (D38). A test passes fakes satisfying the adapters' existing
-        `_ChClient` and `_VectorStore` protocols, builds the entire live graph,
-        and asserts all eight adapters by type while opening no socket. This is
-        the criterion that replaces CP-030's unsatisfiable sixth.
-  - [ ] The seam is a plain parameter with a real default. No lazy proxy, no
-        deferred-construction wrapper, no factory registry, no mode object for
-        the clients — D38 declines all of them, and §4 bans an abstraction with
-        one caller. A reviewer finding any of these shapes should reject the
-        diff rather than negotiate it.
-  - [ ] Failure path: a missing required variable fails at startup naming that
-        variable, not at the first request. A demo that 500s on the first upload
-        because a secret was never set is the failure this criterion exists to
-        prevent.
-  - [ ] Failure path: with no fakes injected and unreachable dummy credentials,
-        `create_app()` in live mode fails during construction rather than
-        returning an app that breaks on its first request. A test asserts the
-        failure is raised and names the dependency. Eager connect is the chosen
-        behaviour here, not an accident (D38).
-  - [ ] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
-- Files: src/clearcut/composition.py, tests/unit/test_composition.py
-- Notes: **Born 2026-08-31 from CP-030's supersede (D38), at `Depth: 1`.** If
-  this blocks again the loop stops for a human — it is not split a second time.
-
-  Read D38 before starting. The obstacle that blocked CP-030 is real and was
-  reproduced twice: `HttpClient.__init__` hardcodes `autoconnect=True` and does
-  not accept the parameter, and `BigQueryVectorStore`'s pydantic after-validator
-  calls `bigquery.Client`, `embed_query("test")`, `create_dataset` and
-  `create_table` inside `__init__`. Neither can be opted out of.
-
-  What makes this tractable is that the adapters were already built right:
-  `ClickHouseTrackerStore` takes a `_ChClient` and `BigQueryLoreStore` takes a
-  `_VectorStore` and an `_Embedder`, all narrow local `Protocol`s, and neither
-  performs I/O in its constructor. CP-023 and CP-024 pushed vendor construction
-  out of the adapter; this block pushes it out of the wiring function the same
-  way. Nothing new is invented, no port changes, and no `DONE` block reopens.
-
-  The mock branch is CP-048's and is finished before this starts. Do not touch
-  it, and do not let a live criterion above widen into it.
-
 ---
 
 ## Backlog
@@ -1992,6 +1935,534 @@ a mock is, and no criterion required otherwise.
 ## Archive
 
 _Terminal checkpoints (`DONE` / `SUPERSEDED`), newest first._
+
+### CP-049 — Wire the eight live adapters, and keep the wiring testable offline
+- Status: DONE
+- Attempts: 3/3
+- Depth: 1
+- Layer: adapters
+- Depends on: CP-022, CP-023, CP-024, CP-048
+- Acceptance:
+  - [x] The `live` branch builds the eight concrete adapters and injects them
+        into the five use cases, replacing CP-048's named failure. A test
+        asserts each of the eight by type.
+  - [x] Every credential, endpoint, and model id is read from the environment
+        here and passed as a constructor argument: `GOOGLE_CLOUD_PROJECT`,
+        `DOCAI_PROCESSOR_ID`, both Gemini model ids, `PARALLEL_API_KEY`, the
+        three `CLICKHOUSE_*` values, the data store id, and the webhook URL. A
+        test asserts no adapter module contains `os.environ` or `os.getenv`.
+  - [x] The two vendor clients that connect during construction —
+        `clickhouse_connect.get_client(...)` and `BigQueryVectorStore(...)` —
+        are accepted by the live wiring as an argument whose default builds the
+        real thing (D38). A test passes fakes satisfying the adapters' existing
+        `_ChClient` and `_VectorStore` protocols, builds the entire live graph,
+        and asserts all eight adapters by type while opening no socket. This is
+        the criterion that replaces CP-030's unsatisfiable sixth.
+  - [x] The seam is a plain parameter with a real default. No lazy proxy, no
+        deferred-construction wrapper, no factory registry, no mode object for
+        the clients — D38 declines all of them, and §4 bans an abstraction with
+        one caller. A reviewer finding any of these shapes should reject the
+        diff rather than negotiate it.
+  - [x] Failure path: a missing required variable fails at startup naming that
+        variable, not at the first request. A demo that 500s on the first upload
+        because a secret was never set is the failure this criterion exists to
+        prevent.
+  - [x] Failure path: with no fakes injected and unreachable dummy credentials,
+        `create_app()` in live mode fails during construction rather than
+        returning an app that breaks on its first request. A test asserts the
+        failure is raised and names the dependency. Eager connect is the chosen
+        behaviour here, not an accident (D38).
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: src/clearcut/composition.py, tests/unit/test_composition.py,
+  pyproject.toml, tests/unit/test_declared_dependencies.py
+- Notes: **Born 2026-08-31 from CP-030's supersede (D38), at `Depth: 1`.** If
+  this blocks again the loop stops for a human — it is not split a second time.
+
+  Read D38 before starting. The obstacle that blocked CP-030 is real and was
+  reproduced twice: `HttpClient.__init__` hardcodes `autoconnect=True` and does
+  not accept the parameter, and `BigQueryVectorStore`'s pydantic after-validator
+  calls `bigquery.Client`, `embed_query("test")`, `create_dataset` and
+  `create_table` inside `__init__`. Neither can be opted out of.
+
+  **Implemented 2026-09-01.** The seam: `_build_live_use_cases(*, ch_client:
+  _ChClient | None = None, vector_store: _VectorStore | None = None)`. A `None`
+  sentinel with a real construction inside the function body, not a literal
+  default expression — Python evaluates a literal default once, at module
+  import, which would connect at import time (breaking every test that merely
+  imports `composition.py`, mock-mode included) and would make two `create_app()`
+  calls in live mode share one client. This is plain constructor injection with
+  no new class, not one of D38's four declined shapes: no proxy wraps the real
+  client, construction is not deferred past this function call, there is no
+  registry, and there is no mode object — the `if x is None` line is the whole
+  mechanism. `embeddings` (`VertexAIEmbeddings`) is not seamed: verified by hand
+  (`google.genai.Client()` construction touches no network even with no
+  credentials at all, and `VertexAIEmbeddings.__init__` only builds one of
+  those) — it is D38's two named clients that connect eagerly, not this third
+  one, so seaming it too would be an unrequested abstraction.
+
+  Two deviations from the `Files:` list, both required by the gates this
+  checkpoint names and both proportionate:
+  - `pyproject.toml` gains `clickhouse-connect==1.7.2` and
+    `langchain-google-vertexai==3.2.4` in `[project] dependencies`. CP-017's
+    `test_every_third_party_import_in_src_is_declared` (pre-existing, not
+    written this turn) failed the instant `composition.py` imported them for
+    real — both were already installed in `.venv` but never declared, an
+    existing gap this checkpoint's own imports were the first to expose.
+  - `tests/unit/test_declared_dependencies.py`:
+    `test_removing_unimported_declared_dependency_reports_nothing` pinned
+    `langchain-google-community` as CP-017's example of "declared but never
+    imported from `src/`" — true then, false now that `composition.py`
+    constructs a real `BigQueryVectorStore`. After this checkpoint every
+    real dependency is genuinely imported somewhere in `src/`, so no real
+    example of that fact is left; renamed to
+    `test_declaring_an_unimported_dependency_reports_nothing` and rewritten to
+    add a fabricated package name to the declared set rather than remove a
+    real one, preserving the exact thing it proves (used→declared only, never
+    the reverse) without asserting a fact that is no longer true.
+
+  `VERTEX_SEARCH_DATA_STORE_ID` is a new environment variable, named but not
+  spelled out anywhere: infrastructure.md Section 5 names `AGENT_BUILDER_AGENT_ID`
+  (a different id, the Agent Builder agent app) and never gives the data store
+  itself an env var name. Chose this name for symmetry with the existing
+  `AGENT_BUILDER_AGENT_ID`/`DOCAI_PROCESSOR_ID` style; not added to
+  `.env.example` since that file is outside `Files:` and no criterion here
+  exercises it — worth a follow-up line to add it there.
+
+  `documentai.DocumentProcessorServiceClient()` was not named as one of D38's
+  two eagerly-connecting clients, and is not seamed here, but its GAPIC-generated
+  constructor resolves `google.auth.default()` eagerly — unlike
+  `google.genai.Client()`, which defers auth entirely to the first real call
+  (verified by hand, both ways, against this repo's own `.venv`). With zero
+  local credentials that falls through to a GCE metadata-server probe that
+  hangs for several seconds in a sandbox with no route to it. The no-socket
+  test (criterion 3) works around this without touching `composition.py`'s
+  shape: it points `GOOGLE_APPLICATION_CREDENTIALS` at a syntactically valid
+  but entirely fabricated `authorized_user` ADC file, which `google.auth.default()`
+  resolves locally with no network call at all — the standard fix for this
+  exact class of test hang, not a secret of any kind. The unreachable-credentials
+  test (criterion 6) sidesteps the same risk differently: `ch_client` is built
+  first in `_build_live_use_cases`, before `documentai`/`genai` construction, so
+  a deliberately unreachable `CLICKHOUSE_HOST` (a reserved `.invalid` domain,
+  RFC 2606 — resolution fails fast and deterministically, never a real connect
+  timeout) raises before those lines are ever reached.
+
+  `clickhouse_connect.Client.query`'s declared return type carries
+  `result_rows: Sequence[Sequence[Any]]`, one step wider than `_ChClient`'s own
+  `_QueryResult.result_rows: list[tuple[Any, ...]]` — true at runtime, invisible
+  to mypy strict structurally, and never exercised until this checkpoint became
+  the first code anywhere in `src/` to assign a real `Client` to a
+  `_ChClient`-typed variable. One `cast(_ChClient, ...)` at the construction
+  site clears it; a plain `# type: ignore[assignment]` does not, because mypy
+  then declines to narrow `ch_client` away from `_ChClient | None` afterward
+  (verified both ways). `_ChClient`/`_QueryResult` themselves are CP-023's,
+  outside `Files:`, and untouched.
+
+  A live route holding a demo store is D36's failure and CP-050's gate now
+  catches it; this checkpoint adds no adapter-to-adapter import, so that gate
+  stays green throughout.
+
+  **Corrected 2026-09-01, attempt 2. The paragraph above stands unedited; this
+  is the correction.** CP-050's gate does not catch it. That gate is
+  `test_composition_is_the_only_module_importing_adapters`
+  (`tests/unit/test_layer_boundaries.py:176-183`): it `continue`s on
+  `composition.py` outright and inspects imports, not instances --
+  `composition.py` must import the demo adapters anyway for mock mode, so a
+  demo store swapped into a live use case passes that gate untouched. The
+  reviewer proved this with the exact named mutant
+  (`answer_project_question=AnswerProjectQuestion(InMemoryLoreStore(), ...)`)
+  on the 2026-09-01 attempt-1 review below. What catches it now is the
+  live-graph collaborator assertions this attempt adds:
+  `test_build_live_use_cases_wires_answer_project_question_to_the_live_collaborators`
+  in `tests/unit/test_composition.py` asserts `answer_project_question`'s
+  three collaborators are the live `BigQueryLoreStore` / `VertexSearchGrounding`
+  / `ClickHouseTrackerStore` instances, which that same mutant fails.
+
+  **Reviewed 2026-09-01 — CHANGES_REQUESTED, attempt 1/3.** Gates all green on
+  the working tree (`./.claude/init.sh check`: ruff, ruff format 114 files,
+  mypy 88 files, pytest 464 passed; `./.claude/init.sh verify`: 87 passed).
+  Most of the wiring is genuinely covered — mutation-checked on a throwaway
+  copy, all killed: dropping an adapter (`ClickHouseTrackerStore` →
+  `InMemoryTrackerStore`), swapping the two same-shape Gemini adapters,
+  `_required_env` returning `""` instead of raising (13 failures), deferring
+  the ClickHouse connect behind a lazy proxy (killed by criterion 6's test
+  exactly), and all three mock-fallback shapes (`create_app`'s live branch,
+  an early `return _build_mock_use_cases()`, and a late one after the env
+  reads). `_forbid_sockets` has real teeth: with the `ch_client` fake removed
+  and a resolvable host it fires with `a live adapter tried to open a socket
+  to ('127.0.0.1', 8443)`. The live tests are CI-safe — they pass under
+  `env -i` with no `HOME`, no gcloud config, and no ambient credential.
+
+  Two rulings recorded so they are not re-litigated:
+
+  - *Criterion 4's "plain parameter with a real default" — the `None`-sentinel
+    idiom is faithful, not a violation.* The literal-default reading the words
+    naively suggest is not merely inferior in Python, it is impossible here:
+    a default expression is evaluated in the enclosing scope at `def` time, so
+    it cannot reference `clickhouse_host`/`clickhouse_user`/
+    `clickhouse_password`, which are locals read inside the function body
+    (`NameError`, probed). It is also evaluated exactly once per process
+    (probed: 3 calls, 1 evaluation), which would connect at module import and
+    share one client across every `create_app()`. `if x is None: x = <real
+    construction>` is the only correct realization of the criterion's intent,
+    and it is none of D38's four declined shapes: no proxy wraps the client,
+    construction happens inside this call rather than deferred past it, no
+    registry, no mode object. The criterion's wording is imprecise; the code
+    is right. No change required — this is a spec-wording note for the leader.
+
+  - *Criterion 2's environment count reconciles, and one variable is orphaned.*
+    `rg "os.environ|os.getenv" src/clearcut/` hits `composition.py` only, at
+    four sites and nowhere else in `src/` — no adapter, application, or domain
+    module reads the environment. Twelve distinct variables are read there:
+    the ten via `_required_env`, plus `CLEARCUT_MODE` in `create_app` and
+    `OTEL_EXPORTER_OTLP_ENDPOINT` in `_span_exporter`/`_metric_exporter`. That
+    is not the same twelve as infrastructure.md Section 8's table. Of that
+    table, nine are required live variables and all nine fail loudly by name
+    when missing (the parametrized test proves each; the `_required_env`
+    mutant kills it). `OTEL_EXPORTER_OTLP_HEADERS` is read by the OTLP
+    exporters themselves, deliberately and per CP-031, not by this module.
+    **`AGENT_BUILDER_AGENT_ID` is the variable that is neither required nor
+    read**: it is in `.env.example:11`, in Section 8, and emitted by
+    `infra/provision_retrieval_plane.sh:197`, but no code in `src/` consumes
+    it. That is a pre-existing gap this checkpoint surfaced (CP-022 built
+    `VertexSearchGrounding` around a data store id, not an agent id), not one
+    it created — deferred, not blocking.
+
+  Blocking findings:
+
+  1. `src/clearcut/composition.py:234-252` and
+     `tests/unit/test_composition.py:307-325` — the live graph's value
+     plumbing and its fifth use case have no assertion. Five independent
+     mutants leave the **whole** 464-test suite green (each re-run against
+     the complete tree, `infra/` and `docs/` included, after an incomplete
+     first copy produced false positives):
+     `answer_project_question=AnswerProjectQuestion(InMemoryLoreStore(), ...)`;
+     `WebhookNotifier(httpx.Client(), "https://hardcoded.example.com/hook")`;
+     `VertexSearchGrounding(genai_client.models, "hardcoded-store")`;
+     `DocumentAIIngestion(documentai_client, "hardcoded-processor")`; and
+     `GeminiSceneExtractor(genai_client, gemini_model_lite)` — the two Gemini
+     model ids silently swapped. The first is D36's exact named failure, a
+     demo store on a live route, and defeats criterion 1's own first clause
+     ("injects them into the five use cases"); the mock counterpart
+     `test_build_mock_use_cases_wires_the_demo_adapters_by_type` already
+     asserts all five use cases twenty lines above, so the live test is
+     strictly weaker than its own sibling for no stated reason. The other four
+     defeat criterion 2's second clause: every value must be read from the
+     environment here **and passed as a constructor argument**. The read half
+     is proven; the reaches-the-adapter half is asserted nowhere.
+     **Required change:** in the test that already builds the live graph (or
+     one beside it), assert `answer_project_question`'s three collaborators
+     are the live instances, matching what the mock test does; and assert each
+     env-read value reached its adapter, by comparing the adapter's stored
+     attribute against its `_LIVE_ENV_VALUES` entry. No production change is
+     needed — the wiring is correct, only unasserted.
+
+  2. `.claude/CHECKPOINTS.md:1810-1812` — "A live route holding a demo store is
+     D36's failure and CP-050's gate now catches it" is false as written.
+     CP-050's gate is `test_composition_is_the_only_module_importing_adapters`
+     (`tests/unit/test_layer_boundaries.py:176-183`), which `continue`s on
+     `composition.py` outright and inspects imports, not instances — and
+     `composition.py` must import the demo adapters anyway for mock mode.
+     Mutant 1 above passes that gate untouched. **Required change:** correct
+     the claim to say what actually guards it once finding 1 lands.
+
+  Non-blocking, for the leader (these do not send the work back): the live
+  env-var set is not reconciled across `.env.example`,
+  `docs/plan/infrastructure.md` Section 8, and
+  `infra/provision_retrieval_plane.sh` — `VERTEX_SEARCH_DATA_STORE_ID` is
+  required at startup but documented and provisioned nowhere, so a deployer
+  who sets every documented variable still gets a loud startup failure, while
+  `AGENT_BUILDER_AGENT_ID` is documented and provisioned but read by nothing
+  (implementer disclosed the first half). And `VertexAIEmbeddings` emits a
+  `LangChainDeprecationWarning` on every live build — deprecated in LangChain
+  3.2.0, removed in 4.0.0, and the pin `langchain-google-vertexai==3.2.4` is
+  already past it.
+
+  Verified clean, no action: both new pins match the installed versions
+  exactly (`clickhouse-connect` 1.7.2, `langchain-google-vertexai` 3.2.4) and
+  follow the file's `==` convention. The fabricated ADC file is written to
+  pytest's `tmp_path`, never the repo, and carries no real-looking secret
+  material — `authorized_user` type, so no private key is involved at all;
+  `_required_env`'s error names the variable and never its value, so no
+  credential can reach a startup log. CP-031's `test_observability.py` is
+  byte-identical to `HEAD` and green (11 passed); CP-048's cleared-env mock
+  tests are untouched and green (8 passed). Importing `composition.py` opens
+  no socket, confirmed directly. The rewritten
+  `test_declaring_an_unimported_dependency_reports_nothing` did not weaken
+  CP-017: restoring the original alongside it fails on the current tree
+  exactly as the Notes claim (`langchain_google_community` is now genuinely
+  imported by `composition.py`), so its premise really did become false; both
+  the original and the rewrite kill a checker mutated to flag
+  declared-but-unimported, and the rewrite additionally names a package that
+  provably is not imported, so it is the stronger of the two. CP-017's gate
+  still fails on a planted `import yaml` in `src/`, and on dropping either new
+  pin. No layer violation, no Section 4 shape introduced, no prose in the diff.
+
+  What makes this tractable is that the adapters were already built right:
+  `ClickHouseTrackerStore` takes a `_ChClient` and `BigQueryLoreStore` takes a
+  `_VectorStore` and an `_Embedder`, all narrow local `Protocol`s, and neither
+  performs I/O in its constructor. CP-023 and CP-024 pushed vendor construction
+  out of the adapter; this block pushes it out of the wiring function the same
+  way. Nothing new is invented, no port changes, and no `DONE` block reopens.
+
+  The mock branch is CP-048's and is finished before this starts. Do not touch
+  it, and do not let a live criterion above widen into it.
+
+  **Implemented, attempt 2 (2026-09-01) -- test-and-notes-only, per the
+  reviewer's own scoping.** Both attempt-1 rulings stand, unchallenged: the
+  `None`-sentinel seam is faithful, and the environment count reconciles. Only
+  the two blocking findings are addressed; nothing else changed, and
+  `src/clearcut/composition.py` is byte-identical to the attempt-1 diff.
+
+  Two new tests beside the existing fakes-built live-graph test in
+  `tests/unit/test_composition.py`:
+
+  - `test_build_live_use_cases_wires_answer_project_question_to_the_live_collaborators`
+    -- asserts `answer_project_question._lore`, `._grounding`, and `._tracker`
+    are `BigQueryLoreStore`, `VertexSearchGrounding`, and `ClickHouseTrackerStore`
+    respectively, the live-branch counterpart to the mock sibling twenty lines
+    above (`test_build_mock_use_cases_wires_the_demo_adapters_by_type`).
+  - `test_build_live_use_cases_passes_each_env_read_value_to_its_adapter` --
+    binds `evaluate_delta._notifier`, `analyze_script._grounding`,
+    `analyze_script._ingestion`, and `analyze_script._extractor` to local
+    variables, narrows each with `isinstance` (mypy strict needs the narrowing
+    before it accepts an adapter-specific attribute on a port-typed value —
+    probed directly: without it, `mypy src tests infra` fails with four
+    `attr-defined` errors), then compares the stored attribute against its
+    `_LIVE_ENV_VALUES` entry: `notifier._url`, `grounding._data_store_id`,
+    `ingestion._processor_id`, `extractor.model`.
+
+  Both tests reuse the existing `_clear_env` / `_write_fake_adc` /
+  `_forbid_sockets` fixtures and the existing `_LIVE_ENV_VALUES` /
+  `_FakeChClient` / `_FakeVectorStore` doubles; no new fixture, no new
+  fake, no production change.
+
+  **Mutant kill table**, each mutant applied one at a time to a throwaway copy
+  of `composition.py` (never `src/`) and run against the real test functions
+  through pytest (`PYTHONPATH=<throwaway copy> python -m pytest -o pythonpath=
+  ...`, since `pyproject.toml`'s own `pythonpath = ["src", "."]` ini setting
+  would otherwise shadow the throwaway copy back to the real one). Sanity
+  checked both ways: all new assertions pass against the unmutated code, and
+  the rest of the suite (466 tests) is unaffected.
+
+  | # | Mutant (verbatim from the reviewer's finding) | Assertion that kills it | Result |
+  |---|---|---|---|
+  | 1 | `answer_project_question=AnswerProjectQuestion(InMemoryLoreStore(), grounding, tracker)` | `isinstance(graph.answer_project_question._lore, BigQueryLoreStore)` | RED -- `AssertionError` at the `isinstance` line |
+  | 2 | `notifier = WebhookNotifier(httpx.Client(), "https://hardcoded.example.com/hook")` | `notifier._url == _LIVE_ENV_VALUES["NOTIFY_WEBHOOK_URL"]` | RED -- `'https://hardcoded.example.com/hook' == 'https://notify.example.invalid/webhook'` fails |
+  | 3 | `grounding = VertexSearchGrounding(genai_client.models, "hardcoded-store")` | `grounding._data_store_id == _LIVE_ENV_VALUES["VERTEX_SEARCH_DATA_STORE_ID"]` | RED -- `'hardcoded-store' == 'dummy-data-store'` fails |
+  | 4 | `ingestion = DocumentAIIngestion(documentai_client, "hardcoded-processor")` | `ingestion._processor_id == _LIVE_ENV_VALUES["DOCAI_PROCESSOR_ID"]` | RED -- `'hardcoded-processor' == 'projects/.../processors/dummy'` fails |
+  | 5 | `extractor = GeminiSceneExtractor(genai_client, gemini_model_lite)` | `extractor.model == _LIVE_ENV_VALUES["GEMINI_MODEL"]` | RED -- `'gemini-3.1-flash-lite' == 'gemini-3.7-flash'` fails |
+
+  Each assertion was also confirmed silent (GREEN) with no mutation applied --
+  the sanity check that rules out a vacuous or an accidentally always-failing
+  assertion.
+
+  The Notes correction for finding 2 is inline above, immediately after the
+  paragraph it corrects, per the file's D19/D37 amendment convention: the
+  original sentence stands unedited, the correction is a new paragraph marked
+  with the date and attempt number.
+
+  Gates: `./.claude/init.sh check` (ruff check, ruff format 114 files, mypy 88
+  source files, pytest 466 passed) and `./.claude/init.sh verify` (87 passed),
+  both green. `git diff --stat` confirms `src/clearcut/composition.py`'s diff
+  is unchanged from attempt 1 (114 insertions, same as before this turn) --
+  only `tests/unit/test_composition.py` and this file moved.
+
+  **Reviewed 2026-09-01 — CHANGES_REQUESTED, attempt 2/3.** Gates green on the
+  working tree: `./.claude/init.sh check` (ruff check, ruff format 114 files,
+  mypy 88 source files, pytest 466 passed) and `./.claude/init.sh verify` (87
+  passed). Scope confirmed: `git diff --name-only HEAD` lists exactly five
+  paths, and `tests/unit/test_observability.py` (CP-031, 11 passed) and
+  `tests/unit/test_layer_boundaries.py` (CP-050) are byte-identical to `HEAD`.
+  `src/clearcut/composition.py`, `pyproject.toml` and
+  `tests/unit/test_declared_dependencies.py` were not touched this attempt:
+  their mtimes (11:54:43, 11:49:24, 11:50:30) all precede
+  `tests/unit/test_composition.py` (12:18:06) and this file (12:23:01); the
+  suite moved 464 -> 466, exactly the two added tests and no removal; and
+  attempt 1's cited `composition.py:234-252` still lands precisely on the eight
+  adapter constructions plus the five-use-case return. No mock test hunk
+  changed, so CP-048's branch is untouched.
+
+  The fix works. Six mutants re-run independently on a byte-identical throwaway
+  copy of the whole tree (sha256-verified; `PYTHONPATH=<copy>/src pytest -o
+  pythonpath=`, module resolution confirmed to point at the copy), each against
+  the full 466-test suite, each killed by exactly one test and no collateral:
+  mutant 1 (`InMemoryLoreStore` into `AnswerProjectQuestion`, D36's named
+  failure) at `test_composition.py:379`; mutants 2/3/4/5 (hardcoded webhook
+  URL, data store id, processor id, and the lite model id on the extractor) at
+  `test_composition.py:415/416/417/418`; and a sixth of my own -- both Gemini
+  ids swapped at once -- also killed at 418. Two further mutants confirm the
+  other two collaborator assertions are not decorative: a demo grounding kills
+  at line 380, a demo tracker at 381. Vacuity checked: unmutated, the copy is
+  466 green and the new assertions are silent. All five private attributes the
+  new tests read resolve today -- `AnswerProjectQuestion._lore/._grounding/
+  ._tracker` (assigned at `answer_project_question.py:136-138`),
+  `WebhookNotifier._url` (`webhook.py:33`), `VertexSearchGrounding._data_store_id`
+  (`vertex_search.py:65`), `DocumentAIIngestion._processor_id`
+  (`document_ai.py:106`), and `GeminiSceneExtractor.model` (a public dataclass
+  field, `extractor.py:155`). The Notes correction is accurate: CP-050's gate is
+  `test_composition_is_the_only_module_importing_adapters` at
+  `test_layer_boundaries.py:176-183`, it `continue`s on `composition.py` at
+  178-179 and inspects imports via `_adapter_import_violations`, never
+  instances; the original sentence stands unedited above it. No production
+  change, no new fixture, no new fake, no Section 4 shape, no prose in the diff.
+
+  Blocking finding:
+
+  1. `tests/unit/test_composition.py:387-391` and `:409-418` --
+     `test_build_live_use_cases_passes_each_env_read_value_to_its_adapter`
+     claims coverage it does not have, and one reachable value is left
+     unasserted. The docstring says the test proves "every credential,
+     endpoint, and model id must reach its adapter" and is "Proven by comparing
+     each live adapter's stored attribute against its `_LIVE_ENV_VALUES`
+     entry". `GeminiContinuityCheck` is a live adapter with a stored `model`
+     attribute (`continuity.py:109`, a public dataclass field, the same shape
+     as `GeminiSceneExtractor.model` the test already compares) and it is not
+     compared. `GEMINI_MODEL_LITE` is named by criterion 2 in its own words --
+     "both Gemini model ids" -- and it has no test that would fail without the
+     wiring: the mutant `continuity = GeminiContinuityCheck(genai_client,
+     gemini_model)` (continuity silently handed the pro model, extractor left
+     correct -- a copy-paste, not the swap mutant 5 already covers) leaves the
+     entire 466-test suite green, reproduced on the throwaway copy.
+     **Required change, three lines, test-only:** in that same test, bind
+     `graph.analyze_script._continuity`, narrow it with `isinstance(...,
+     GeminiContinuityCheck)` beside the four narrowings already there
+     (`GeminiContinuityCheck` is already imported at `test_composition.py:52`),
+     and assert its `model` equals `_LIVE_ENV_VALUES["GEMINI_MODEL_LITE"]`; or,
+     if the assertion is declined, correct the docstring to say which values it
+     actually covers. Verified achievable before requiring it: that exact
+     remedy applied to the throwaway copy keeps the suite at 466 green
+     unmutated and turns the mutant above red. **Nothing else is in scope for
+     attempt 3** -- the three surviving mutants below are ruled out of it, and
+     no production change is needed.
+
+  Non-blocking, for the leader (these do not send the work back, and must not
+  widen attempt 3):
+
+  - *Three env values stay unproven because no adapter stores them, which is
+    outside attempt 1's prescribed "compare the adapter's stored attribute"
+    method.* All three survive the full suite, reproduced: a hardcoded
+    `PARALLEL_API_KEY` (`ParallelRightsResearch.__init__`, `research.py:95-100`,
+    keeps only the constructed `Parallel` client, never the key), and a
+    hardcoded `GOOGLE_CLOUD_PROJECT` in either `genai.Client`
+    (`composition.py:231`) or `VertexAIEmbeddings` (`composition.py:221`) --
+    both vendor objects. Closing these needs a vendor-internal attribute read
+    or a small adapter change; the leader decides whether either is worth it.
+    The three `CLICKHOUSE_*` values are not in this list: they are consumed by
+    the seamed client the test fakes, and criterion 6's test kills a hardcoded
+    substitution for them.
+  - *`answer_project_question`'s tracker is asserted by type, not by identity.*
+    Wiring it to a second `ClickHouseTrackerStore(ch_client)` instead of the
+    shared one leaves the suite green.
+    `test_build_live_use_cases_shares_the_seamed_clients_across_use_cases`
+    covers `analyze_script`, `list_tracker_items` and `resolve_finding` but not
+    the fifth use case. Not a defect in this attempt: attempt 1's required
+    change said "matching what the mock test does", and the mock sibling
+    asserts by type too, so the implementer built exactly what was asked.
+
+  Attempt 1's two deferred items stand unchanged and are not re-raised here:
+  the live env-var set is still unreconciled across `.env.example`,
+  `docs/plan/infrastructure.md` Section 8 and
+  `infra/provision_retrieval_plane.sh` (`VERTEX_SEARCH_DATA_STORE_ID` required
+  but undocumented, `AGENT_BUILDER_AGENT_ID` documented but unread), and
+  `VertexAIEmbeddings` still emits a `LangChainDeprecationWarning` on every live
+  build. Both attempt-1 rulings also stand and were not re-litigated: the
+  `None`-sentinel seam is faithful to criterion 4, and the environment count
+  reconciles.
+
+  **Implemented 2026-09-01, attempt 3 (final) -- test-only, per the reviewer's
+  own scoping ("Nothing else is in scope for attempt 3").** Only the one
+  blocking finding is addressed: three lines added to
+  `test_build_live_use_cases_passes_each_env_read_value_to_its_adapter` in
+  `tests/unit/test_composition.py`, binding `graph.analyze_script._continuity`,
+  narrowing it with `isinstance(continuity, GeminiContinuityCheck)` beside the
+  four narrowings already there, and asserting `continuity.model ==
+  _LIVE_ENV_VALUES["GEMINI_MODEL_LITE"]`. `graph.analyze_script._continuity`
+  confirmed as the correct attribute path by reading
+  `analyze_script.py:117-133` before writing the assertion (`AnalyzeScript.
+  __init__` assigns `self._continuity = continuity`). The docstring needed no
+  correction and was left untouched: its claim -- "every credential, endpoint,
+  and model id must reach its adapter... including the two same-shape Gemini
+  model ids" -- is now true rather than aspirational, and the reviewer offered
+  the docstring fix as the alternative remedy, not an additional one. No
+  production change; `src/clearcut/composition.py` remains byte-identical to
+  attempt 1.
+
+  Mutant re-run on a byte-identical throwaway copy of the whole tree
+  (sha256-verified against the working tree before mutating;
+  `PYTHONPATH=<copy>/src pytest -o pythonpath=`, module resolution confirmed to
+  hit the copy): the reviewer's named mutant, `continuity =
+  GeminiContinuityCheck(genai_client, gemini_model)` (continuity silently
+  handed the pro model, extractor left correct), turns RED at the new
+  assertion -- `AssertionError: assert 'gemini-3.7-flash' ==
+  'gemini-3.1-flash-lite'` -- with exactly one failure and no collateral (465
+  passed, 1 failed). Vacuity checked: unmutated, the copy is 466 green and the
+  new assertion is silent.
+
+  Gates: `./.claude/init.sh check` (ruff check, ruff format 114 files unchanged,
+  mypy 88 source files, pytest 466 passed), all green.
+
+  Attempt 2's non-blocking items (three env values unproven because no
+  adapter stores them, and `answer_project_question`'s tracker asserted by
+  type rather than identity) were explicitly ruled out of attempt 3's scope
+  and are untouched.
+
+  **Reviewed 2026-09-01 — PASS, attempt 3/3.** Gates green on the working tree:
+  `./.claude/init.sh check` (ruff check, ruff format 114 files, mypy 88 source
+  files, pytest 466 passed) and `./.claude/init.sh verify` (87 passed).
+
+  Attempt 2's blocking finding is closed, verified rather than taken on report.
+  The killing mutant — `continuity = GeminiContinuityCheck(genai_client,
+  gemini_model)` at `composition.py:238` with the extractor left correct at
+  `:235` — was re-applied to a throwaway copy of the tree (`composition.py` and
+  `test_composition.py` sha256-identical to the working tree before mutating;
+  `PYTHONPATH=<copy>/src pytest -o pythonpath=`, with
+  `clearcut.composition.__file__` printed to confirm resolution lands on the
+  copy). It dies at exactly one assertion and takes nothing with it: `1 failed,
+  465 passed`, at `test_composition.py:421`, `AssertionError: assert
+  'gemini-3.7-flash' == 'gemini-3.1-flash-lite'`. Vacuity checked: the same copy
+  unmutated is 466 green, so the new assertion is silent when the wiring is
+  right. One further mutant of my own shows the new `isinstance` line is not
+  decorative either — `continuity = InMemoryContinuityCheck()` on the live route
+  (D36's failure shape, applied to the eighth adapter) fails at
+  `test_composition.py:415` as well as at the eight-adapter type test.
+
+  The three-line claim holds, checked two ways. `git status` still lists the
+  same five paths and no sixth, and mtimes place `composition.py` (11:54:43),
+  `pyproject.toml` (11:49:24) and `test_declared_dependencies.py` (11:50:30)
+  well before `test_composition.py` (12:36:40) and this file (12:39:09) — so
+  only the test module and the Notes moved this attempt. Arithmetic pins the
+  delta exactly: removing lines 410 (`continuity = graph.analyze_script.
+  _continuity`), 415 (the `isinstance` narrowing) and 421 (the model
+  comparison) restores every line number attempt 2 cited — the sibling
+  collaborator assertions still stand untouched at 379/380/381, and the four
+  value assertions fall back to 415/416/417/418 from today's 417–420. Nothing
+  else in the file moved, the suite is still 466 (three lines inside an existing
+  test add no test), and the docstring at 387–391 is byte-identical to the one
+  attempt 2 read. Leaving it that way was right: attempt 2 offered the docstring
+  correction as the alternative remedy if the assertion were declined, and the
+  assertion was made instead.
+
+  The attribute path is real, not guessed: `AnalyzeScript.__init__` assigns
+  `self._continuity = continuity` at `application/analyze_script.py:133`, and
+  `GeminiContinuityCheck` stores the constructor's model — the mutant kill
+  above is the proof, since a class-level default would have survived it.
+
+  Attempts stays at 3/3 and the checkpoint lands on its last permitted turn. No
+  deferral was smuggled into it: `.env.example`, `docs/plan/infrastructure.md`,
+  `infra/provision_retrieval_plane.sh` and every adapter module are unmodified,
+  and `test_build_live_use_cases_shares_the_seamed_clients_across_use_cases`
+  still covers three use cases, not the fourth — so attempt 2's tracker-identity
+  item, its three unprovable env values (`PARALLEL_API_KEY` and the two
+  `GOOGLE_CLOUD_PROJECT` readers), attempt 1's env-var reconciliation item
+  (`VERTEX_SEARCH_DATA_STORE_ID` required but undocumented,
+  `AGENT_BUILDER_AGENT_ID` documented but unread) and the `VertexAIEmbeddings`
+  deprecation all remain open and the leader's to file or drop. Both attempt-1
+  rulings stand and were not reopened.
+
+  One bookkeeping item for the leader, not a defect in this diff: archiving this
+  block empties `## Active` of checkpoints, and the section's preamble still
+  describes a fifteen-checkpoint queue and a cut list. It is the leader's text
+  and outside a reviewer's one editable block.
 
 ### CP-031 — Trace the five pipeline stages and export them to Grafana Cloud
 - Status: DONE
