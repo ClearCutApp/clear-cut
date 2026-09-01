@@ -15,6 +15,7 @@
       "Bash(git show:*)",
       "Bash(git add:*)",
       "Bash(git branch:*)",
+      "Bash(gh:*)",
       "Bash(ls:*)",
       "Bash(cat:*)",
       "Bash(head:*)",
@@ -24,7 +25,11 @@
       "Bash(rg:*)",
       "Bash(find:*)",
       "Bash(mkdir:*)",
-      "Bash(./.claude/init.sh:*)"
+      "Bash(./.claude/init.sh:*)",
+      "mcp__plugin_engram_engram__mem_search",
+      "mcp__plugin_engram_engram__mem_get_observation",
+      "mcp__plugin_engram_engram__mem_save",
+      "mcp__plugin_engram_engram__mem_update"
     ],
     "ask": [
       "Bash(git commit:*)",
@@ -45,6 +50,19 @@
       "Bash(rm -rf:*)",
       "Bash(git reset --hard:*)",
       "Bash(git clean -fd:*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -c 'if ((.tool_input.command // \"\") | gsub(\"\\\\.env\\\\.example\"; \"\") | test(\"\\\\.env($|[^A-Za-z0-9_])\")) then {\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"ask\",\"permissionDecisionReason\":\"Command references a .env secret file; only .env.example is exempt\"}} else empty end'"
+          }
+        ]
+      }
     ]
   },
   "env": {
