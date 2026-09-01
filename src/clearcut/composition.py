@@ -21,6 +21,7 @@ build a fresh `_UseCaseGraph`, so they never share state.
 import logging
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 from flask import Flask
 
@@ -35,6 +36,7 @@ from clearcut.adapters.demo.in_memory import (
     InMemoryTrackerStore,
 )
 from clearcut.adapters.http.routes import create_blueprint
+from clearcut.adapters.http.spa import create_spa_blueprint
 from clearcut.application.analyze_script import AnalyzeScript
 from clearcut.application.answer_project_question import AnswerProjectQuestion
 from clearcut.application.evaluate_delta import EvaluateDelta
@@ -97,9 +99,21 @@ def _build_live_use_cases() -> _UseCaseGraph:
     )
 
 
-def create_app() -> Flask:
+def _default_build_dir() -> Path:
+    """`web/dist`, the Vite build output ADR 0010 says this container serves
+    -- computed here, inside the function, on every call, rather than as a
+    module-level constant: importing this module must never touch the
+    filesystem, and a test must be free to point `create_app` at any
+    directory it likes instead."""
+    return Path(__file__).resolve().parent.parent.parent / "web" / "dist"
+
+
+def create_app(build_dir: Path | None = None) -> Flask:
     """The Cloud Run entry point. Builds a fresh `_UseCaseGraph` per call and
-    mounts it through CP-029's frozen five-argument `create_blueprint`."""
+    mounts it through CP-029's frozen five-argument `create_blueprint`,
+    alongside CP-046's SPA blueprint serving `build_dir` (default
+    `web/dist`) -- one origin for the JSON API and the static build (ADR
+    0010), so no CORS configuration is ever needed."""
     mode = os.environ.get(_MODE_ENV_VAR, _LIVE_MODE)
     if mode == _MOCK_MODE:
         logger.warning(
@@ -123,5 +137,8 @@ def create_app() -> Flask:
             use_cases.resolve_finding,
             use_cases.answer_project_question,
         )
+    )
+    app.register_blueprint(
+        create_spa_blueprint(build_dir if build_dir is not None else _default_build_dir())
     )
     return app
