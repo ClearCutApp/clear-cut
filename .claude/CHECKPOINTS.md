@@ -8,7 +8,10 @@ Rules and status machine: `.claude/AGENT.md` §6–§7.
 - Only the agent named in the status machine may change a `Status`.
 - Never delete a checkpoint. Move terminal ones (`DONE`, `SUPERSEDED`) to
   *Archive* at the bottom.
-- `Attempts` is `n/3`. At `3/3` the checkpoint becomes `BLOCKED`.
+- `Attempts` is `n/3`, counting `CHANGES_REQUESTED` verdicts and nothing else
+  (AGENT.md §6 step 4). A checkpoint that passes its first review stays at
+  `0/3`. At `3/3` the checkpoint becomes `BLOCKED`. Settled by D49; four
+  archived blocks predate that ruling and are left as they were written.
 - `BLOCKED` never returns to `TODO`. The `leader` either marks it `SUPERSEDED`
   and creates smaller `Depth: 1` checkpoints, or stops for a human.
 - `Depth` is `0` for a planned checkpoint, `1` for one born from a split. A
@@ -1517,174 +1520,427 @@ CP-046 today. It goes **before CP-031**, because both edit
 forbidden application prefixes in that same module. That is a file collision,
 not a dependency.
 
+### Settled 2026-09-01, the ten-item deferred queue and the empty board (D40–D49)
+
+CP-049 landed on its third attempt (HEAD `8034344`) and emptied `## Active` of
+checkpoints for the first time since CP-001. Every SDD phase-4 and phase-5
+checkpoint is `DONE`. What is left is the subject of this turn: ten non-blocking
+findings recorded across the last two days of reviews, sitting in archived Notes,
+that no leader turn ever ruled on. A finding parked in a `DONE` block is the one
+thing this loop's own rule forbids — a non-blocking finding becomes a checkpoint
+or a dated declination, never a silence — so all ten are ruled below. One becomes
+a checkpoint, six become dated Backlog entries, one is declined outright, and two
+are editorial corrections to this file made in this turn.
+
+The tiebreak is the one this file has used since 2026-08-30: does it protect the
+2026-09-07 demo? Six days out, with the demo running mocked (D36), a live-path
+polish item faces a **higher** bar than it did a week ago, not a lower one. An
+empty board is not spare capacity looking for work. Every item promoted now costs
+an implementer turn and a reviewer turn that the submission itself may need, and
+the reviewer turn is the scarcer of the two — CP-049 spent three of them on one
+checkpoint.
+
+**D40. The env-var reconciliation is the only one of the ten that becomes a
+checkpoint. CP-051.**
+
+*The finding, reproduced.* `composition.py:196-205` reads exactly ten variables
+through `_required_env`. `.env.example` holds twelve names and
+`VERTEX_SEARCH_DATA_STORE_ID` is not among them; `docs/plan/infrastructure.md`
+section 8's table holds the same twelve and is also missing it. So a deployer who
+sets every documented variable gets the loud startup failure CP-049's criterion 5
+built on purpose, naming a variable no document mentions. CP-049's implementer
+disclosed this in the same turn that created the name, and both of its reviews
+carried it forward untouched.
+
+*And the same gap runs the other way.* `AGENT_BUILDER_AGENT_ID` is in
+`.env.example:11`, in the section 8 table, and printed as a `.env` line by
+`infra/provision_retrieval_plane.sh:218` — and nothing under `src/` reads it.
+CP-022 built `VertexSearchGrounding` around a data store id, not an agent id. A
+deployer is being told to obtain a value that changes nothing.
+
+*A third surface, found while ruling this and folded in.* Section 9's deploy
+command carries `GOOGLE_CLOUD_PROJECT`, `GEMINI_MODEL` and `GEMINI_MODEL_LITE` in
+`--set-env-vars`, and `PARALLEL_API_KEY` and `CLICKHOUSE_PASSWORD` in
+`--set-secrets`. That is five of the ten required. Fixing the table and leaving
+that command as it stands would move the deployer's failure from the first
+variable to the sixth, which is not fixing it. It is in scope because the
+checkpoint's whole claim is that following the documents works.
+
+*Why a checkpoint, six days out, when nothing else on this queue was promoted.*
+This is the only item of the ten that breaks a person rather than a test.
+Everything else is a coverage gap, a duplicated helper, or a warning — real, but
+its victim is a future maintainer, and it fails in a direction someone will
+notice. This one fails silently until the moment a deployment is attempted, which
+on this calendar is the worst possible moment to discover it. The cost is also
+small and mostly already paid: the provisioning script already computes the value
+it fails to print (`DATA_STORE_ID="clearcut-legal-corpus"`, line 31) and already
+prints one `.env` line at 218. It prints the wrong variable, not a missing one.
+
+*Why the guard is bidirectional, and it is not scope creep.* A one-way test
+(every required name is documented) fixes today's failure and leaves the door
+open on the side `AGENT_BUILDER_AGENT_ID` came through. Both halves are the same
+rule stated once — the documented set and the required set are the same set —
+which is one behaviour, not two. The reverse half has exactly one honest
+exception: `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_HEADERS` are
+read by the OTLP exporters themselves rather than by our code, deliberately, per
+CP-031's criterion 1 and CP-049's attempt-1 ruling. The test names them in an
+exception set with a comment each, rather than pretending they are unread.
+
+*What this turn deliberately does not decide.* Whether `AGENT_BUILDER_AGENT_ID`
+should be struck from the documented set or kept with a sentence explaining it.
+Deleting the variable is not the same as deleting the provisioning step that
+creates the Agent Builder app, and whether Vertex AI Search needs that engine for
+the data store `VertexSearchGrounding` queries is a question for whoever holds
+the console, not for a planning turn that cannot run the API. CP-051's criterion
+therefore requires a decision and its one sentence, and puts the provisioning
+call itself explicitly out of scope. A leader guessing here would be inventing
+infrastructure facts to close a bookkeeping gap.
+
+*Prose is in scope and blocking.* `docs/plan/infrastructure.md` is a document, so
+`.claude/WRITING.md` governs the lines this checkpoint changes and its findings
+block CP-051 rather than deferring, in the same way they blocked CP-045.
+
+**D41. Three live env values no test can prove reach their adapter: Backlog, not
+a checkpoint.**
+
+*The finding.* CP-049's attempt-2 review found three hardcoding mutants that
+survive the full suite: `PARALLEL_API_KEY` (`research.py:95-100` builds a
+`Parallel` client and keeps only the client, never the key), and
+`GOOGLE_CLOUD_PROJECT` in either `genai.Client` (`composition.py:231`) or
+`VertexAIEmbeddings` (`composition.py:221`), both vendor objects. Closing them
+needs a vendor-internal attribute read or a small adapter change.
+
+*Why it waits, and the discriminator is what the mutant models.* Every mutant
+CP-049 did close modelled **silence**: a demo store wired into a live use case
+serves planted data and looks perfectly healthy, which is D36's entire argument.
+These three model something else. A hardcoded `PARALLEL_API_KEY` fails
+authentication on the first research call. A hardcoded project id either fails on
+the first Vertex call or — in the realistic form, where a developer hardcodes
+`clearcut-hack`, the one project this system has — behaves correctly by accident.
+A surviving mutant whose most likely instance is indistinguishable from correct
+behaviour is a weak reason to read vendor privates or to store a credential on an
+attribute purely so a test can compare it.
+
+*Recorded with the entry so a later turn does not re-derive it:* the two shapes
+available are a vendor-internal read (`client.api_key`, `VertexAIEmbeddings`'s
+pydantic `project` field — version-coupled, though the pins are exact `==`) or an
+adapter change storing the value. The three `CLICKHOUSE_*` values are not in this
+class and need nothing: they are consumed by the seamed client the test fakes,
+and CP-049's criterion 6 kills a hardcoded substitution for them.
+
+**D42. `answer_project_question`'s tracker asserted by type rather than identity:
+Backlog, not a checkpoint.**
+
+*The finding.* Wiring that use case to a second `ClickHouseTrackerStore(ch_client)`
+instead of the shared instance leaves the suite green;
+`test_build_live_use_cases_shares_the_seamed_clients_across_use_cases` covers
+three use cases and not the fifth.
+
+*Why it waits.* `ClickHouseTrackerStore` holds the client and no other state, so
+two stores over one seamed client behave identically at runtime. The surviving
+mutant is a no-op, not a latent defect the test failed to catch. The mutant that
+*would* matter — a store over a second, real client — opens a socket and dies on
+`_forbid_sockets` today. So the gap is one line of test strength against a
+behaviour that cannot currently go wrong, which does not justify an implementer
+turn and a reviewer turn on this calendar.
+
+*Recorded because it protects CP-049's record:* attempt 1's required change said
+"matching what the mock test does", and the mock sibling asserts by type too. The
+implementer built exactly what was asked. Nothing was under-delivered.
+
+**D43. The `VertexAIEmbeddings` deprecation warning: Backlog, not a checkpoint.**
+
+`langchain-google-vertexai` is pinned `==3.2.4`, in a file whose convention is
+exact pins, so the removal in 4.0.0 cannot reach this repo until a human edits
+that line. Nothing before 2026-09-07 edits it. What the warning costs today is
+one line on every live `create_app()`, on a path the demo does not run (D36). The
+Backlog entry exists so that whoever performs the bump reads the reason first
+rather than meeting it as an `ImportError`.
+
+**D44. The six `_record_stage` duplicates, and `test_observability.py`'s copies
+of the `conftest.py` helpers: Backlog, not a checkpoint.**
+
+*The finding.* CP-031's reviews found `_record_stage` near-identically in five
+modules plus a sixth variant `_record_stage_latency` in the extractor,
+`_refresh_tracker_items_gauge` in two, and then — after the fix round —
+`test_observability.py:61` and `:251` as byte-for-byte duplicates of the
+`conftest.py` helpers that same attempt extracted.
+
+*Why it waits, and the rule is being read correctly rather than conveniently.*
+This is under-abstraction. Section 4 bans the opposite, and the reviewer said so
+when filing it. "Duplicate twice, extract on the third" is a guide for code being
+written; it is not a warrant to rewrite six modules that are finished. The
+consolidation would touch five live adapters and the demo module, every one
+`DONE` and mutation-verified, for zero observable behaviour change — the upside
+is a shorter tree, the downside is reopening the instrumentation that took CP-031
+two rounds and roughly sixty mutants to prove. That trade is wrong six days out
+and it is wrong in a way that only shows up if it goes badly. The trigger that
+makes it worth doing is a seventh span site.
+
+**D45. A stage that raises records no latency: DECLINED, and the semantic is now
+deliberate rather than accidental.**
+
+CP-031's reviewer noted that every `_record_stage` call sits after its `with`
+block, so `clearcut_stage_latency_ms` measures successful stage duration only,
+and asked for a deliberate decision rather than a change. Here it is: **the
+current behaviour is correct and stays.** Three reasons, in the order they carry
+weight.
+
+1. *The failure is not invisible.* The span is still opened and still recorded,
+   and the exception marks it, so a failing stage appears in the trace view — which
+   is the surface SDD section 8(d) actually puts in front of a judge.
+2. *Recording failure durations into the same histogram would be worse than
+   omitting them.* Without a `status` label a thirty-second timeout lands in the
+   same distribution as a working stage and corrupts its percentiles. A metric that
+   silently mixes two populations is a worse instrument than one with a stated
+   scope.
+3. *Adding that label is a spec change, not a fix.* CP-031's sixth criterion pins
+   the four metrics to "those exact names and label sets", and SDD section 6 names
+   them. Widening one is a decision about the specification, and no evidence on
+   this queue argues for it.
+
+Recorded here so the next reviewer who notices the asymmetry finds a decision
+instead of an oversight. It is not filed to the Backlog: there is no work behind
+it.
+
+**D46. CP-046's criterion-4 import-time property, still unpinned: Backlog, not a
+checkpoint.**
+
+*The finding.* Hoisting `_default_build_dir()`'s body to a module-level constant
+leaves the suite green, because the test that pins the parameter passes both
+directories explicitly and cannot see the difference.
+
+*Why it waits, and the comparison that decides it.* What the surviving mutant
+costs is bounded and nearly nothing: the default build directory would be
+computed once per process instead of once per call, and the repository root does
+not move during a process. The criterion's stated purpose — a test can point the
+build anywhere — is met and mutation-proven; only the "computed at import time"
+half is unpinned. The instructive comparison is the `_package_for` pin, which was
+also an import-time coverage gap and *was* promoted, by D39. It was promoted
+because CP-050 made it load-bearing: the narrowed gate computes its allowance
+through that function, so a wrong `_package_for` silently makes the gate
+permissive. Nothing makes this one load-bearing for anything. The test shape is
+recorded with the entry (importing `clearcut.composition` touches no filesystem)
+so a later turn inherits it.
+
+**D47. Widening the same-package adapter allowance to sibling modules: Backlog,
+not a checkpoint — and it carries CP-050's other two notes.**
+
+*The finding.* CP-050's gate compares the importing file's package against the
+imported dotted name by exact equality, which is what its criterion 3 asked for.
+The consequence is that a same-package sibling written any other way —
+`from .scenario import DEMO`, `from clearcut.adapters.demo.scenario import DEMO` —
+is reported as a violation it did not earn.
+
+*Why it waits.* The gate errs strict, and strict is the right side to be wrong on
+here. The failure mode of the current shape is a red gate on a legitimate import,
+which stops a person for a minute and tells them exactly what it thinks is wrong.
+The failure mode of widening it carelessly is a permitted cross-package import,
+which is the silent failure D36's whole argument is built against and CP-050 was
+filed to end. And the trigger cannot fire before the deadline: with `## Active`
+holding one documentation checkpoint, nothing between now and 2026-09-07 writes
+an adapter at all.
+
+*Two things folded into the same entry, because one turn in that file should
+settle all three.* CP-050's note 2: a parent-package import is rejected from
+inside a module's own subpackage as well, where the criteria are silent — same
+strict direction, worth one sentence wherever note 1 is settled. And
+`tests/unit/test_layer_boundaries.py:6-9`'s module docstring still attaches the
+carve-out to the `adapters/` package, which is the shape of the wholesale skip
+CP-050 removed. It reads correctly if "its own siblings" is taken per module, so
+it was recorded rather than raised — but it is stale prose describing a gate that
+no longer works that way, and it should be corrected in the same turn.
+
+**D48. The `## Active` preamble is rewritten, and the text it replaces is not
+preserved.**
+
+That preamble accreted across eight leader turns. It described nineteen
+checkpoints, then fifteen, a parallel dispatch plan, a cut list ordered by what
+the demo could survive losing, and two supersedes. Every checkpoint it names is
+now `DONE` or `SUPERSEDED`, and the cut list has nothing left to cut — so as of
+CP-049's archival it described a board that does not exist, which for a file
+whose entire job is to be the loop's state is the worst kind of stale.
+
+It is replaced rather than kept as history. Keeping it would make this file a
+second account of a history the Archive already holds, and the Archive is the
+account with the review evidence attached; two records of the same events is how
+they drift apart, which is the reason this file forbids duplicating checkpoint
+state into memory. The dispatch reasoning worth keeping was never really here
+anyway — why CP-031 could not be re-cut is D14's amendment, why CP-049 became
+cuttable and CP-048 did not is D38 — and those are decisions, in the section for
+decisions, where they were argued.
+
+**D49. `Attempts` counts rejections, not rounds. The archive is not renumbered.**
+
+*The discrepancy, measured rather than asserted.* CP-031's second-round reviewer
+flagged that the archive holds both conventions and asked the leader to settle
+it. Counted across all fifty archived blocks: twenty-three record `0/3` and were
+never sent back; twenty-two record `1/3` after exactly one `CHANGES_REQUESTED`;
+CP-014 records `2/3` after two. That is forty-six. The other four use the ordinal
+reading — CP-045 and CP-050 record `1/3` having never been rejected at all,
+CP-046 records `2/3` after one rejection, CP-049 records `3/3` after two.
+Forty-six to four.
+
+*One block settles it on its own.* CP-028 was `BLOCKED` by its reviewer rather
+than sent back, and that reviewer wrote the counter's meaning out in the verdict
+line: "BLOCKED, routed to the leader. **Not an attempt.**" The block sits at
+`0/3` after a full review round. A field that a completed review can leave at
+zero is counting rejections, not rounds.
+
+*The dominant convention is also the only permitted one, so there is no conflict
+to escalate.* AGENT.md section 6 step 4 increments `Attempts` on
+`CHANGES_REQUESTED` and on nothing else, and section 7's table writes the edge as
+`IN_REVIEW → TODO (+1 attempt)`. A leader rules inside that contract, never
+against it. Both grounds point the same way.
+
+*The rule, now stated in this file's Editing rules where an implementer will
+actually meet it:* `Attempts: n/3` is the number of `CHANGES_REQUESTED` verdicts
+the checkpoint has received. A checkpoint that passes its first review stays at
+`0/3`. The third rejection sends it to `BLOCKED`.
+
+*Archived counters are left exactly as written.* Renumbering them would mean
+editing terminal blocks a reviewer signed, to correct a bookkeeping field whose
+value changed no outcome in any of the four cases. One consequence is worth
+recording so a retrospective does not misread it: CP-049's reviewer wrote that it
+"lands on its last permitted turn" at `3/3`, and under the settled convention it
+had taken two rejections and landed with one turn still in hand. It passed either
+way. The margin was one turn wider than the block says.
+
+### Settled 2026-09-01, the three findings CP-051's PASS deferred (D50–D52)
+
+CP-051 passed on its first attempt with zero blocking findings, and its reviewer
+recorded three non-blocking ones. AGENT.md section 6 is explicit that a leader
+adds checkpoints only for a new human goal or a `BLOCKED` checkpoint, **never in
+response to a `PASS`** — so however good these are, none of them can reopen the
+board this turn. That rule is not a formality. It is one of the two edges whose
+absence would let the loop run forever, and a leader who routes around it because
+a finding looks worthwhile has removed a termination guarantee to save a
+document.
+
+So all three are ruled here, and none is declined. Each changes what a maintainer
+or a deployer actually meets, which is the test this file has applied since D40;
+none is taste. Each carries the trigger that would justify promoting it, so
+whoever picks one up is deciding on the trigger rather than on the fact that it
+is still sitting here.
+
+**D50. `infra/README.md:40` tells a deployer to copy a variable that no longer
+exists: Backlog, bound to the D17 entry already open on that file.**
+
+*The finding.* Step 7 still says to copy `AGENT_BUILDER_AGENT_ID` from the
+script's output into `.env`. CP-051 struck that variable from `.env.example`,
+from the section 8 table, and from the script's `.env` line, so the instruction
+now names a value the output no longer prints and nothing reads. The implementer
+disclosed it and correctly left it alone — criterion 4 named three surfaces and
+that file was in neither them nor `Files`.
+
+*Why it is not the same class as the gap CP-051 just closed, which is the whole
+question.* CP-051's gap was a deployer setting every documented variable and
+still getting a startup failure: a hard stop, discovered at the worst possible
+moment. This one fails safe. A deployer follows step 7, looks for a variable that
+is not in the output, and is confused — but the service starts, because nothing
+requires that variable, which is precisely why it was struck. Wasted minutes, not
+a broken deployment. That difference is the reason this is a Backlog line and
+CP-051 was a checkpoint, and it is worth stating rather than leaning on the
+section 6 prohibition alone: the rule decides the routing this turn, but the
+severity decides whether a human should care.
+
+*Bound rather than free-floating.* The Backlog already holds a fix for this exact
+file and this exact numbered list — D17, attached to the Cloud Run deploy entry:
+the run order jumps to `gcloud storage ls "gs://clearcut-legal-corpus/**"`
+without ever telling a human to upload the legal PDFs into that bucket first.
+Two stale steps in one procedure, so one turn in that file should fix both. Same
+reasoning as D47, which folded three notes into one entry for one turn in
+`test_layer_boundaries.py`.
+
+**D51. The environment guard's AST filter skips five call shapes in silence:
+Backlog, with the fix shape recorded.**
+
+*The finding.* `tests/unit/test_environment_contract.py:44-53` matches only a
+string-literal first argument to a bare `_required_env` name. The reviewer
+measured five shapes that are each skipped without a word: a variable argument,
+an f-string, `name=` passed as a keyword, a loop over a tuple of names, and a
+module-qualified call. The docstring says "literal name", which is true, and does
+not say what happens to everything else.
+
+*Why this is the sharpest of the three, and still not a checkpoint.* The failure
+direction is the bad one. A guard that silently stops covering a call site goes
+quietly permissive, and what it stops covering is the exact drift CP-051 was
+filed to end — a required variable outrunning its documentation. This is the same
+shape as D39's mutant C, where `_package_for` returning the wrong package made
+the layer gate silently permissive; that one was promoted, but only because
+CP-050 made it load-bearing for a gate's correctness in the same turn. Nothing
+makes this one load-bearing today, for a reason I verified rather than assumed:
+all ten `_required_env` call sites in `composition.py` are bare calls passing a
+string literal (`composition.py:196-205`), so the filter's coverage is complete
+as the tree stands. The hole is entirely in the future.
+
+*The fix shape, recorded so it is not re-derived, and it is the reviewer's rather
+than mine.* Do not widen the parser to understand five more shapes. Assert that
+every `_required_env` call site passes a string literal, and let the unhandled
+shapes announce themselves. That keeps the parser simple and converts silence
+into a loud failure, which is the property that was missing — a gate that cannot
+cover something should say so rather than skip it.
+
+**D52. Section 9's deploy command is guarded by nothing, and the reverse
+direction keys on the wrong thing: Backlog, one entry, both halves.**
+
+*Half one.* The new guard covers `.env.example` and the section 8 table. Section
+9's deploy command is a third surface, it is correct today, and nothing holds it
+there. That matters more than a third surface usually would, because section 9 is
+the surface D40 found last and found **by inspection** — it drifted once already,
+unnoticed, while the other two were being reconciled. What limits the risk is
+that section 9 lives in the same document as the table the guard does cover, so a
+maintainer adding a variable gets a loud failure that drags them into the right
+file, three sections from the command. That is a weaker guarantee than a test and
+a stronger one than nothing.
+
+*Half two, and it is a trap with a misleading message.* The reverse direction
+keys on `_required_env` rather than on "read anywhere under `src/`". So a
+maintainer who documents `CLEARCUT_MODE` — which `composition.py:78` genuinely
+reads — gets a failure saying nothing requires it. Loud rather than silent, which
+is the right direction, but the message asserts the opposite of the truth, and a
+loud failure that misdescribes its own cause costs more than a quiet one that
+does not fire. `OPTIONAL_ENV_VARS` is the one-line fix the reviewer names.
+
+*One entry, because one turn in that file should settle both.* They are the same
+test module and the same question — what the guard's authority actually covers —
+and splitting them would guarantee the second is rediscovered while the first is
+being fixed.
+
 ---
 
 ## Active
 
-Nineteen when this section was written, fifteen now — four landed, and four more
-arrived on 2026-08-30 from D22 through D26. Still over `leader.md`'s soft cap of
-eight, for the same reason the turn before ran to fourteen: the cap exists
-against vague checkpoints, and the conductor dispatches these in parallel. Six
-had no dependency and went out together; the phase-4 graph below fans out from
-CP-018 and converges on CP-030. Delivering only the first eight would cost a whole leader round trip
-before the routes and the wiring could be dispatched, and there are eight days
-to 2026-09-07.
+**No checkpoints. The loop is complete.**
 
-Three of the sixteen (CP-015 to CP-017) clear the transversal queue the five
-adapter reviews left behind. The rest are phase 4 and the first half of phase 5.
+CP-051 passed review on 2026-09-01 with zero blocking findings and moved to the
+Archive; its code is committed as `4f23aac`. Nothing is `TODO`, `IN_PROGRESS` or
+`IN_REVIEW`, which is AGENT.md section 6 step 5's stopping condition — the
+conductor reports to the human and stops looking for a next block. Fifty-one
+checkpoints, forty-nine `DONE` and two `SUPERSEDED` (CP-028 and CP-030, each
+split once into `Depth: 1` replacements that landed), CP-001 through CP-051 with
+no gaps, every one of them behind a review that ran the gates.
 
-**Dispatchable in parallel right now, no dependencies, no shared files:**
-CP-015, CP-017, CP-018, CP-019, CP-020, CP-021. *All six have since landed;
-as of 2026-08-30 the dependency-free set is CP-033, plus CP-016 once CP-015
-clears.*
+This section is empty on purpose, and two rules in section 6 keep it that way.
+A leader adds checkpoints only for a new human goal or a `BLOCKED` checkpoint,
+never in response to a `PASS` — so a passing review cannot reopen the board
+however good the finding it noticed. And `BLOCKED` never returns to `TODO`.
+Between them there is no path from "the work is finished" back into "the work is
+in progress" that any agent can take on its own. That is not bureaucracy; it is
+the reason this loop terminates, and `./.claude/init.sh verify` proves it from
+the section 7 table on every run.
 
-**On the SDD §8(d) end-to-end path:** CP-016, CP-018, CP-019, CP-021, CP-022,
-CP-023, CP-026, CP-029, CP-030, and — added 2026-08-30 by D23 and D24 —
-CP-034 and CP-036. Everything else is either quality (CP-015, CP-017) or a
-second demo beat (CP-020, CP-027, CP-028).
+**The Backlog below is not a queue this loop drains.** Every entry is a ruled
+deferral carrying its date, its reasoning, and the trigger that would justify
+promoting it, and no trigger fires before 2026-09-07. Promoting one is a human
+starting a new goal — deliberately, not by drift.
 
-**Cuttable if the clock tightens, in this order:** CP-028 (phase 5),
-CP-027 (Q&A surface), CP-015 (regression guard, protects no demo path).
-CP-031 is not on that list and does not go back on it. The user ruled
-observability a launch requirement, and D14's amendment records why a leader
-cannot re-cut it.
-
-The seventeenth is CP-031, the OpenTelemetry instrumentation, added after the
-user overturned D14. It sits at the end of the graph behind CP-030 rather than
-at the front, because that is where instrumentation actually attaches.
-
-**Two more on 2026-08-30, from D20 and D21.** CP-032 and CP-033 are both
-dependency-free and both dispatchable immediately, so nothing already queued
-moves. Neither is on the SDD §8(d) end-to-end path and neither blocks a
-checkpoint that is. They are sequenced only by what would have to be redone
-later: CP-032 before CP-023 persists a `scene_numbers` tuple with repeats in it,
-and CP-033 before CP-031 adds the three `opentelemetry` distributions the gate
-cannot currently tell apart. Both are cuttable, after CP-028 and before CP-027
-in the order above.
-
-**Four more on 2026-08-30, from D22 through D26.** CP-034, CP-035, CP-036 and
-CP-037. Two of them are new serial nodes in front of the centrepiece, and that
-is deliberate: **CP-036 then CP-034 both land before CP-026.** Neither is
-dispatchable today — CP-036 waits on the CP-023 and CP-024 fixes now in flight,
-CP-034 waits on CP-036, CP-016 and CP-022 — so nothing already queued moves,
-and nothing that could go out today is held back. The order among the four is
-CP-036, CP-034, then CP-035 and CP-037 in either order.
-
-CP-036 goes first because it is the smallest and it unblocks the most: it opens
-`domain/tracker.py`, which CP-025 also needs (D22), and `clickhouse/tracker.py`,
-which CP-034 also needs. CP-034 goes second because CP-026 and CP-029 cannot be
-written consistently until the adapter-error convention has a name (D23) — CP-029
-and CP-030 contradict each other as written, which is the finding that made this
-worth two turns rather than a Backlog line.
-
-CP-035 and CP-037 are cuttable and go at the end of the cut list above, after
-CP-027. CP-034 and CP-036 are not cuttable: CP-034 is the precondition for
-CP-029's error mapping, and CP-036 closes a window that shuts the moment CP-026
-writes its `save` call.
-
-**One more on 2026-08-30, from D29.** CP-038, out of CP-034's review. It is the
-only one of that review's four findings that became a checkpoint: two were ruled
-into CP-029's criteria (D27) and one was declined with its evidence (D28).
-Dependency-free, tests-only, and parallel-safe with CP-026, CP-035 and CP-037 —
-it opens `tests/unit/test_error_boundaries.py`, which no other checkpoint names.
-Dispatchable immediately, and it moves nothing already queued. Not on the SDD
-§8(d) path, but it is not on the cut list either: both guards it repairs can
-currently report green on the failure they exist to catch, and a gate that
-cannot fail is the one kind of test worth fixing before the deadline rather than
-after it.
-
-**Four more on 2026-08-30, from D30 through D35, and the shape of the endgame.**
-CP-039, CP-040, CP-041 and CP-042. Everything before CP-028 is now `DONE`, so
-the remaining graph is small enough to state whole:
-
-- **Dispatchable immediately, in parallel, no shared files:** CP-029
-  (`adapters/http/`, `pyproject.toml`), CP-028 (`evaluate_delta.py`, ADR 0007),
-  CP-039 (`analyze_script.py`), CP-040 (`answer_project_question.py`), CP-042
-  (two test files). Five disjoint file sets; none of the five waits on another.
-- **Then CP-041**, which needs CP-028's use case and CP-029's route module.
-- **Then CP-030**, so `composition.py` is wired once against a route factory
-  whose parameter list has stopped changing. Landing CP-041 after CP-030 would
-  reopen the convergence checkpoint for one constructor argument.
-- **Then CP-031**, where it has always sat.
-
-Three of the four new ones are one file each. CP-039 and CP-040 are on the
-promise rather than the plumbing (D30, D31) and are **not** cuttable: without
-CP-039 the delta beat has no data to run against, and without CP-040 a
-clearance question over an empty project answers with an assurance nothing
-supports. CP-041 is not cuttable either — it is the only caller `EvaluateDelta`
-gets, so cutting it cuts CP-028 with it. CP-042 is cuttable and goes last on
-that list, since both halves are record accuracy rather than behaviour.
-
-**One more on 2026-08-31, and it is the user's decision rather than a leader's
-(D36).** CP-043 seeds the demo scenario behind the eight ports so the MVP runs
-mocked until the real services are connected. It is dependency-free, it opens a
-package no other checkpoint names (`src/clearcut/adapters/demo/`) plus one new
-test file, and it is dispatchable immediately: CP-028 is the only other
-checkpoint that can go out today, and the two share no file. It moves the order
-in exactly one place — **CP-030 now waits on CP-043 as well**, so `create_app()`
-is written once with both wiring modes rather than reopened for the second.
-That is the same reasoning that put CP-041 in front of CP-030 instead of behind
-it.
-
-CP-043 is not cuttable and does not go on the cut list. Without it the MVP has
-nothing to run against until twelve credentials exist, which is the situation
-the decision was made to end. The remaining order is CP-029 (in review), then
-CP-041, then CP-030, then CP-031, with CP-043 and CP-028 running beside them.
-
-**Four left, after the first supersede of the project (2026-08-31, D37).**
-CP-029 and CP-043 are `DONE`. CP-028 is `SUPERSEDED` and archived; CP-044 and
-CP-045 replace it at `Depth: 1`, which means either of them blocking stops the
-loop for a human rather than splitting again.
-
-- **Dispatch now:** CP-044. It is the only dependency-free block left, and
-  three checkpoints queue behind it.
-- **Then CP-041**, which needed CP-028 and now needs CP-044. Then CP-030, then
-  CP-031, where it has always sat.
-- **CP-045 runs beside CP-041**, once CP-044 passes. It opens `docs/plan/` and
-  nothing else, so it collides with no block in flight and sits on no critical
-  path.
-
-The cut list is unchanged in shape: CP-044 first (and cutting it cuts CP-041 and
-CP-045 with it), then CP-027 — already `DONE` — then the rest as written above.
-CP-031 stays off it, for the reason D14's amendment gives.
-
-**Five left, after the second supersede of the project (2026-08-31, D38).**
-CP-041 is `DONE` and CP-047 is `IN_REVIEW`. CP-030 is `SUPERSEDED` and archived;
-CP-048 and CP-049 replace it at `Depth: 1`, so either of them blocking again
-stops the loop for a human rather than splitting a second time. CP-046 and
-CP-047 arrived earlier the same day from the coverage audit.
-
-- **Dispatch now, in parallel:** reviewer on CP-047, and implementer on CP-048.
-  CP-048 is the only dependency-free block left and three checkpoints queue
-  behind it; CP-047 touches `routes.py` only, which CP-048 never opens.
-- **Then CP-049, then CP-031, then CP-046.** All three need CP-048's
-  `create_app()`, none needs either of the others, and they are serial only
-  because all three edit `composition.py`. That file is the reason they queue,
-  not a real dependency between them, so a later turn may reorder them freely.
-- **CP-049 before CP-031** because instrumentation attaches to wiring that has
-  stopped moving, which is the same reasoning that has kept CP-031 last since it
-  was written.
-
-The cut list gains one entry and it is worth stating, because D38 changed which
-half of the wiring the demo needs: **CP-049 is now cuttable and CP-048 is not.**
-Mock mode carries the entire demo (D36), so if the clock forces a choice the
-live adapter wiring is what slips, and what ships is a mocked MVP that runs.
-CP-031 stays off the list, for the reason D14's amendment gives.
-
-**One more on 2026-08-31, from D39, and it changes the order by one slot.**
-CP-050 comes out of CP-048's PASS: the layer gate it added does not catch a
-cross-package adapter import. It is dependency-free, test-only, and opens
-`tests/unit/test_layer_boundaries.py`, which nothing in flight touches — so it
-**dispatches immediately, beside CP-046**, and moves nothing already queued.
-
-It goes **before CP-031**, which is the one slot that changes: both edit that
-same test module, and CP-031 adds `opentelemetry` to the forbidden application
-prefixes there. A file collision, not a dependency. The order is therefore
-CP-046 and CP-050 now, then CP-031, then CP-049 last as the cuttable one.
-
-CP-050 is not on the cut list. It costs one implementer turn against a gate that
-three landed checkpoints (CP-030's criterion, CP-048's criterion 8, and D36's
-whole argument) are currently trusting to be stricter than it is.
+**Where the record is.** Each checkpoint's evidence sits with its block in the
+Archive, newest first: the criteria as written, what the implementer built, and
+what the reviewer re-ran rather than took on trust. Each decision that shaped the
+plan is in `## Decisions`, D1 through D52, with the reasoning that produced it,
+because the next person to read this file is the one who will want to reopen one
+of them and a decision without its reasoning gets re-litigated.
 
 ---
 
@@ -1930,11 +2186,361 @@ the demo stores are project-scoped on `latest_script` and `search` only; the
 five unconditional read-only ports, continuity included, are not. That is what
 a mock is, and no criterion required otherwise.
 
+**Placed 2026-09-01: the deferred queue CP-031, CP-046, CP-049 and CP-050 left
+behind (D41–D47).**
+
+Ten findings sat unruled in archived Notes from the last two days of reviews. One
+became CP-051 (D40), one was declined outright with its reasoning (D45, latency
+on the failure path), two were editorial fixes to this file (D48, D49). The six
+below are deferred, each with the date, the reason, and — because an empty board
+invites promotion for its own sake — **the trigger that would make it worth
+promoting**. None is on the SDD section 8(d) path and none affects the mocked
+demo, which is the run the judges watch (D36).
+
+- **Three live env values no test can prove reach their adapter.** D41, from
+  CP-049's attempt-2 review. A hardcoded `PARALLEL_API_KEY`
+  (`research.py:95-100` keeps the constructed `Parallel` client, never the key)
+  and a hardcoded `GOOGLE_CLOUD_PROJECT` in either `genai.Client`
+  (`composition.py:231`) or `VertexAIEmbeddings` (`composition.py:221`) all
+  survive the full suite. Closing them needs a vendor-internal attribute read
+  (`client.api_key`, `VertexAIEmbeddings`'s pydantic `project` field — coupled to
+  the version, though both pins are exact `==`) or an adapter change that stores
+  the value. Deferred because of what the mutants model: every mutant CP-049 did
+  close modelled silence, while these fail loudly at the first live call — or, in
+  the most likely instance, a developer hardcoding `clearcut-hack`, behave
+  correctly by accident. The three `CLICKHOUSE_*` values are not in this class;
+  criterion 6's test already kills a hardcoded substitution for them.
+  *Trigger:* a second Google Cloud project, or an adapter that needs the key for
+  anything besides constructing its client.
+- **`answer_project_question`'s tracker is asserted by type, not identity.** D42,
+  from CP-049's attempt-2 review. Wiring it to a second
+  `ClickHouseTrackerStore(ch_client)` rather than the shared instance leaves the
+  suite green; `test_build_live_use_cases_shares_the_seamed_clients_across_use_cases`
+  covers three use cases and not the fifth. Deferred because that store holds the
+  client and no other state, so the surviving mutant is a runtime no-op; the
+  mutant that would matter, a store over a second real client, opens a socket and
+  dies on `_forbid_sockets`. One line when someone next opens that test.
+  *Trigger:* any per-instance state landing on `ClickHouseTrackerStore`.
+- **`VertexAIEmbeddings` emits a `LangChainDeprecationWarning` on every live
+  build.** D43, from CP-049's attempt-1 review. Deprecated in LangChain 3.2.0,
+  removed in 4.0.0, and `langchain-google-vertexai` is pinned `==3.2.4` — so the
+  removal cannot reach this repo until a human edits that pin, and nothing before
+  2026-09-07 does. Costs one warning line per live `create_app()`, on a path the
+  demo does not run. Recorded so whoever performs the bump reads this first
+  instead of meeting it as an `ImportError`. *Trigger:* the pin moving.
+- **Six near-identical `_record_stage` helpers, and `test_observability.py`'s
+  copies of the `conftest.py` ones.** D44, from both CP-031 reviews.
+  `_record_stage` in `gcp/document_ai.py`, `gcp/vertex_search.py`,
+  `parallel/research.py`, `clickhouse/tracker.py` and `demo/in_memory.py`, a
+  sixth variant `_record_stage_latency` in `gemini/extractor.py`,
+  `_refresh_tracker_items_gauge` in two, plus `test_observability.py:61` and
+  `:251` as byte-for-byte duplicates of `install_in_memory_telemetry` and
+  `metric_attributes_by_name`. Deferred because this is under-abstraction, which
+  Section 4 does not ban, and because consolidating it touches five live adapters
+  and the demo module — all `DONE`, all mutation-verified — for zero observable
+  behaviour change. "Duplicate twice, extract on the third" guides code being
+  written; it is not a warrant to rewrite code that is finished, six days out.
+  *Trigger:* a seventh span site.
+- **CP-046's criterion-4 import-time property is unpinned.** D46, from CP-046's
+  attempt-1 review. Hoisting `_default_build_dir()`'s body to a module-level
+  constant leaves the suite green, because
+  `test_create_app_serves_whichever_build_dir_is_passed_in` passes both
+  directories explicitly and cannot see the difference. The parameter itself is
+  pinned; only "computed at import time" is not. Deferred because the surviving
+  mutant costs almost nothing — the default would be computed once per process
+  instead of once per call, and the repo root does not move during a process. The
+  instructive comparison is the `_package_for` pin, the same class of gap, which
+  D39 *did* promote because CP-050 made it load-bearing for a gate's correctness;
+  nothing makes this one load-bearing. The test shape, recorded so it is not
+  re-derived: assert that importing `clearcut.composition` touches no filesystem.
+  *Trigger:* anything in `composition.py` growing a second import-time
+  computation.
+- **The layer gate's same-package allowance covers the package name and no
+  deeper form.** D47, carrying all three of CP-050's non-blocking notes. Exact
+  equality is what criterion 3 asked for, so inside `adapters/demo/in_memory.py`
+  the ordinary `from .scenario import DEMO` and
+  `from clearcut.adapters.demo.scenario import DEMO` both come back as
+  violations they did not earn; a parent-package import is likewise rejected from
+  inside a module's own subpackage, where the criteria are silent. Deferred
+  because the gate errs strict, and strict is the right side to be wrong on: a
+  red gate on a legitimate import stops a person for a minute and says what it
+  thinks is wrong, while a carelessly widened one permits the cross-package
+  import that is D36's silent failure and CP-050's whole reason to exist. The
+  trigger cannot fire before the deadline either — nothing left on the board
+  writes an adapter. Folded into the same entry, for one turn in that file:
+  `tests/unit/test_layer_boundaries.py:6-9`'s module docstring still attaches the
+  carve-out to the `adapters/` package, which is the wholesale skip CP-050
+  removed. *Trigger:* the next adapter written, or any sibling import in that
+  package that is not the package form.
+
+**Placed 2026-09-01: the three findings CP-051's PASS deferred (D50–D52).**
+
+CP-051 passed with zero blocking findings and reported three non-blocking ones.
+AGENT.md section 6 forbids a checkpoint in response to a `PASS`, so all three are
+ruled here rather than promoted. None is declined — each changes what a
+maintainer or a deployer meets. This is the last entry the loop adds; everything
+below this line is now a human's to pick up or leave.
+
+- **`infra/README.md:40` tells a deployer to copy a variable that no longer
+  exists.** D50, from CP-051's review. Step 7 still says to copy
+  `AGENT_BUILDER_AGENT_ID` from the script's output into `.env`; CP-051 struck
+  that variable from all three surfaces it owned, so the instruction names a
+  value the output no longer prints and nothing reads. Deferred because it fails
+  safe, which is what separates it from the gap CP-051 closed: the service still
+  starts — nothing requires the variable, which is why it was struck — so the
+  cost is a confused deployer, not a broken deployment. **Fix it in the same turn
+  as D17**, which is already open against this exact file and this exact numbered
+  list: the run order jumps to `gcloud storage ls "gs://clearcut-legal-corpus/**"`
+  without telling a human to upload the legal PDFs into that bucket first. Two
+  stale steps in one procedure. *Trigger:* anyone opening `infra/README.md`, or
+  the Cloud Run deploy entry above being promoted, whichever comes first.
+- **The environment guard's AST filter skips five call shapes in silence.** D51,
+  from CP-051's review. `tests/unit/test_environment_contract.py:44-53` matches
+  only a string-literal first argument to a bare `_required_env` name; a variable
+  argument, an f-string, a `name=` keyword, a loop over a tuple, and a
+  module-qualified call are each skipped without a word. The failure direction is
+  the bad one — a guard that quietly stops covering a call site lets back exactly
+  the drift CP-051 was filed to end. Deferred because the hole is entirely in the
+  future: all ten call sites in `composition.py:196-205` are bare calls passing a
+  string literal, verified this turn, so coverage is complete as the tree stands.
+  **The fix is the reviewer's, and it is not a wider parser:** assert that every
+  `_required_env` call site passes a string literal, so an unhandled shape
+  announces itself instead of being skipped. *Trigger:* the first `_required_env`
+  call written in any other shape, or any refactor of that block.
+- **Section 9's deploy command is guarded by nothing, and the reverse direction
+  keys on `_required_env` rather than on reads under `src/`.** D52, from CP-051's
+  review, both halves in one entry because one turn in that file should settle
+  both. The guard covers `.env.example` and the section 8 table; section 9 is a
+  third surface, correct today and held there by nothing — and it is the surface
+  D40 found last and by inspection, so it has drifted once already. What limits
+  the risk is that it shares a document with the table the guard does cover, so a
+  maintainer adding a variable gets a loud failure three sections away from the
+  command. The second half is a trap with a misleading message: documenting
+  `CLEARCUT_MODE`, which `composition.py:78` genuinely reads, fails with a message
+  saying nothing requires it. `OPTIONAL_ENV_VARS` is the one-line fix.
+  *Trigger:* any variable added to the section 9 command, or the first optional
+  variable someone tries to document.
+
 ---
 
 ## Archive
 
 _Terminal checkpoints (`DONE` / `SUPERSEDED`), newest first._
+
+### CP-051 — Make the documented environment and the required environment the same set
+- Status: DONE
+- Attempts: 0/3
+- Depth: 0
+- Layer: infra
+- Depends on: -
+- Acceptance:
+  - [x] A test derives the required set from `composition.py` itself — the names
+        passed to `_required_env` — rather than from a hand-copied list, and
+        fails when one of them is missing from `.env.example`. It fails today on
+        `VERTEX_SEARCH_DATA_STORE_ID`: run it before the fix and watch it fail,
+        which is this checkpoint's red-first evidence.
+  - [x] The same test fails when a required name is missing from the variable
+        table in `docs/plan/infrastructure.md` section 8. Same source of truth,
+        second surface.
+  - [x] The reverse direction, which is the half that keeps this from happening
+        again: a name in `.env.example` or that table which nothing under `src/`
+        reads fails the test, unless it appears in a named exception set carrying
+        a one-line comment saying what consumes it.
+        `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_HEADERS` are the
+        known exceptions — read by the OTLP exporters themselves, not by our
+        code (CP-031 criterion 1, and CP-049's attempt-1 ruling). Planting a
+        fabricated name in `.env.example` fails the test.
+  - [x] `AGENT_BUILDER_AGENT_ID` is resolved one of exactly two ways, and this
+        block records which and why: struck from `.env.example`, the section 8
+        table and the script's `.env` line; or kept, with one sentence naming
+        what reads it and when. **Out of scope either way: the provisioning step
+        that creates the Agent Builder app.** Whether Vertex AI Search needs that
+        engine for the data store `VertexSearchGrounding` queries is a console
+        question this repo cannot answer from a test — do not delete the API
+        call, only the claim that a deployer must set a variable nothing reads.
+  - [x] `infra/provision_retrieval_plane.sh` prints `VERTEX_SEARCH_DATA_STORE_ID`
+        in its `.env` block, with the value it already computes at line 31
+        (`DATA_STORE_ID="clearcut-legal-corpus"`). A test asserts the `--dry-run`
+        output carries that line with a non-empty value, in the shape CP-013 and
+        CP-014 established and beside the assertion that already exists for the
+        agent id.
+  - [x] Section 9's deploy command carries every required variable across
+        `--set-env-vars` and `--set-secrets`. It carries five of the ten today,
+        so a deployer copying it fails on the other five even once the table is
+        correct, which is the same failure one document section over. Secrets
+        stay in `--set-secrets`, non-secrets in `--set-env-vars`.
+  - [x] Failure path: adding a fabricated `_required_env("CLEARCUT_UNDOCUMENTED")`
+        call to a throwaway copy of `composition.py` fails the test naming that
+        variable. This is the drift that produced the finding — a new required
+        variable outrunning its documentation — so the guard has to catch it in
+        the direction it actually happened, not only in today's fixed state.
+  - [x] Prose. The changed lines in `docs/plan/infrastructure.md` are
+        documentation, so `.claude/WRITING.md` governs them and its findings are
+        **blocking** for this checkpoint rather than deferred. The new section 8
+        row says what the variable holds and where it comes from, in the register
+        the other eleven rows use; the `AGENT_BUILDER_AGENT_ID` sentence, if it
+        stays, says what reads it rather than restating what it is.
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: .env.example, docs/plan/infrastructure.md,
+  infra/provision_retrieval_plane.sh, tests/unit/infra/test_provision_retrieval_plane.py,
+  tests/unit/test_environment_contract.py (new)
+- Notes: Filed 2026-09-01 by D40, out of CP-049's attempt-1 review, carried
+  untouched through attempts 2 and 3. Read D40 before starting — particularly
+  why the guard runs in both directions and why the Agent Builder provisioning
+  call is out of scope.
+
+  **A collision to expect, so it is not mistaken for a weakened test.**
+  `tests/unit/infra/test_provision_retrieval_plane.py:73`,
+  `test_dry_run_registers_agent_and_prints_env_line`, asserts the script prints
+  an `AGENT_BUILDER_AGENT_ID=` line with a non-empty value. If criterion 4 is
+  resolved by striking that variable, this test changes with it and that is
+  correct rather than a regression — but say so explicitly in the diff, because
+  a reviewer is right to treat a deleted assertion as suspect by default.
+
+  **The source of truth is `_required_env`, not a list.** A test that hardcodes
+  the ten names is the same hand-maintained copy that drifted in the first place,
+  one directory over. Parse the call sites — `test_declared_dependencies.py` and
+  `test_layer_boundaries.py` both already read `src/` this way, so the technique
+  is established here and needs no new dependency.
+
+  **What the ten are, as of HEAD `8034344`**, recorded so the red-first run can
+  be checked against something: `GOOGLE_CLOUD_PROJECT`, `DOCAI_PROCESSOR_ID`,
+  `GEMINI_MODEL`, `GEMINI_MODEL_LITE`, `PARALLEL_API_KEY`, `CLICKHOUSE_HOST`,
+  `CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD`, `VERTEX_SEARCH_DATA_STORE_ID`,
+  `NOTIFY_WEBHOOK_URL`. `CLEARCUT_MODE` and the two `OTEL_*` variables are read
+  outside `_required_env` and are deliberately not required (CP-031's last
+  failure path, and D38's "absent means live").
+
+  **No production change.** Nothing under `src/clearcut/` is touched: the wiring
+  is correct and CP-049 proved it. This checkpoint changes two documents, one
+  shell script's output block, and the tests that hold them to each other.
+
+  If this reaches 3/3, the split axis is the bidirectional test in one block and
+  the three document surfaces in another. Recorded so a later turn inherits the
+  seam instead of inventing one under pressure.
+
+  **Attempt 1, IN_REVIEW.** The `AGENT_BUILDER_AGENT_ID` decision: struck, not
+  kept. `VertexSearchGrounding.__init__` (`src/clearcut/adapters/gcp/vertex_search.py`)
+  takes only `data_store_id` and passes it to `types.VertexAISearch(datastore=...)`
+  — the Vertex AI Search grounding tool call names the data store directly, never
+  the Agent Builder engine, so nothing under `src/` has a place to put an agent
+  app id even if one were supplied.
+
+  `tests/unit/test_environment_contract.py` (new) parses `_required_env(...)`
+  call sites out of `composition.py`'s AST, `.env.example` by line, and
+  `docs/plan/infrastructure.md` section 8's table by row, then diffs both
+  ways. Run cold against HEAD before any fix, it failed in both directions at
+  once: `missing == {'VERTEX_SEARCH_DATA_STORE_ID'}` against both documents,
+  and `undocumented == {'AGENT_BUILDER_AGENT_ID'}` against both — the same two
+  findings D40 recorded, reproduced mechanically rather than by inspection.
+  Two more tests prove the guard itself is non-vacuous, the same shape as
+  `test_declared_dependencies.py`'s `test_check_is_non_vacuous...`: one grows
+  a throwaway copy of `composition.py` by one `_required_env("CLEARCUT_UNDOCUMENTED")`
+  call and shows it surfaces as `missing`; the other plants
+  `CLEARCUT_FABRICATED` in a copy of `.env.example`'s name set and shows it
+  surfaces as `undocumented`.
+
+  The collision at `tests/unit/infra/test_provision_retrieval_plane.py:73`
+  landed as expected: `test_dry_run_registers_agent_and_prints_env_line` split
+  into `test_dry_run_registers_the_agent_builder_app` (the API call stays —
+  the dry run still prints the `engines?engineId=clearcut-project-qa` create
+  request) and `test_dry_run_prints_vertex_search_data_store_id_env_line` (the
+  `.env` line now names the variable the service reads, with the value
+  `provision_retrieval_plane.sh:31` already computes). A deleted assertion,
+  called out rather than left for the reviewer to notice on its own.
+
+  Section 9's deploy command now carries all ten names: `PARALLEL_API_KEY`
+  and `CLICKHOUSE_PASSWORD` stay the only `--set-secrets` entries (the only
+  two that are literal credentials); the other eight move to
+  `--set-env-vars`, four of them (`DOCAI_PROCESSOR_ID`, `CLICKHOUSE_HOST`,
+  `CLICKHOUSE_USER`, `NOTIFY_WEBHOOK_URL`) as `$SHELL_VAR` references because
+  no fixed value for them exists anywhere in this document, the rest as the
+  literal values already fixed elsewhere in it.
+
+  Not touched, and worth a follow-up: `infra/README.md:40` still tells a
+  deployer to "Copy `AGENT_BUILDER_AGENT_ID` from the script's output into
+  `.env`" — a real staleness this checkpoint's fix produces, but that file is
+  not in this checkpoint's `Files` list, so it is reported here rather than
+  edited.
+
+  Gate: `pytest -q` 471 passed; `ruff check .` clean; `ruff format --check .`
+  clean; `mypy src tests infra` clean (89 source files).
+
+  **Reviewed 2026-09-01, attempt 1: PASS, zero blocking findings.** Every claim
+  in the note above was re-derived rather than read.
+
+  *Red-first, reproduced independently.* HEAD `8034344`'s `.env.example` and
+  `docs/plan/infrastructure.md`, copied into a throwaway tree beside the current
+  `composition.py`, fail the new guard four ways at once:
+  `missing == {'VERTEX_SEARCH_DATA_STORE_ID'}` against both surfaces, and
+  `undocumented` carrying `AGENT_BUILDER_AGENT_ID` against both. The two findings
+  D40 recorded, reproduced mechanically.
+
+  *Non-vacuity probed, not trusted.* On throwaway copies: appending
+  `_required_env("CLEARCUT_UNDOCUMENTED")` to `composition.py` fails both surface
+  tests naming that variable; appending `CLEARCUT_FABRICATED=` to `.env.example`
+  fails the reverse direction; and a planted table row naming
+  `CLEARCUT_DOC_ONLY_FABRICATION` fails the section 8 test, so
+  criterion 3's "or that table" half is genuinely covered even though the
+  dedicated non-vacuity test only plants into `.env.example`.
+
+  *Both halves of the split provisioning test bite, on their own reasons.*
+  Dropping `print_curl_post_cmd` from `create_engine_call` fails only
+  `test_dry_run_registers_the_agent_builder_app`; emitting an empty value, or
+  restoring the old `AGENT_BUILDER_AGENT_ID=` line, fails only
+  `test_dry_run_prints_vertex_search_data_store_id_env_line`. One deleted
+  assertion, two that each catch something the other does not.
+
+  *The strike stands on its evidence.* `rg AGENT_BUILDER_AGENT_ID src/` returns
+  nothing. `VertexSearchGrounding.__init__` takes `(client, data_store_id)` and
+  passes the id to `types.VertexAISearch(datastore=...)` at
+  `vertex_search.py:91-92`. Section 5 still tells the Agent Builder story whole --
+  create the agent app, attach the data store as a grounding source, the script
+  provisions it -- without asking a deployer to wire an id anywhere; `sdd.md:149`,
+  `agentic-workflow.md:182` and `infrastructure.md:166` agree with it and none of
+  them names an environment variable.
+
+  *Section 9, re-derived rather than counted by eye.* Parsing the command back
+  out of the document and diffing it against the AST-derived required set: ten of
+  ten present, nothing extra, no overlap between `--set-secrets`
+  (`PARALLEL_API_KEY`, `CLICKHOUSE_PASSWORD`) and `--set-env-vars`. The four
+  `$SHELL_VAR` references are exactly the four names this document fixes no value
+  for. `bash -n` parses it, and it expands correctly with those four exported.
+
+  *Prose.* WRITING.md section 4 over the fifteen added lines: no banned word, no
+  empty phrase, no section 2 pattern, no emoji. One `--` em dash, the only one in
+  the document, inside the "at most 1-2 in a long doc" allowance and carrying the
+  correction the change exists to make. The new table row matches the register of
+  the `DOCAI_PROCESSOR_ID` row. Every added sentence names a ClearCut artifact,
+  so none is portable.
+
+  *Gates re-run on the working tree.* `./.claude/init.sh check`: `ruff check`
+  clean, `ruff format --check` 115 files clean, `mypy` clean over 89 files,
+  `pytest -q` 471 passed. `./.claude/init.sh verify`: 87 passed, 0 failed.
+
+  **Three non-blocking findings, for the leader to rule into the Backlog.**
+  AGENT.md section 6 forbids adding checkpoints in response to a `PASS`, so none
+  of these re-opens the board.
+
+  1. `infra/README.md:40` -- step 7 still tells a deployer to copy
+     `AGENT_BUILDER_AGENT_ID` from the script's output, which this change made
+     false. Disclosed by the implementer and correctly left alone: criterion 4
+     named three surfaces and that file is in neither them nor `Files`.
+  2. `tests/unit/test_environment_contract.py:44-53` -- the AST filter matches
+     only a string-literal first argument to a bare `_required_env` name.
+     Measured on throwaway copies: a variable argument, an f-string, `name=` as a
+     keyword, a loop over a tuple of names, and a module-qualified call are each
+     skipped in silence. The docstring's "literal name" is true but does not say
+     what happens to the rest; an assertion that every call site passes a literal
+     would close the hole rather than describe it.
+  3. Section 9's deploy command is correct today and guarded by nothing -- the
+     test covers `.env.example` and the section 8 table only, and section 9 is
+     the surface D40 found last and by inspection. Related boundary: the reverse
+     direction keys on `_required_env` rather than "read anywhere under `src/`",
+     so documenting `CLEARCUT_MODE` (which `composition.py:78` does read) fails
+     with a message saying nothing requires it. Loud rather than silent, and
+     `OPTIONAL_ENV_VARS` is the one-line fix, but the next maintainer meets it
+     before the docstring explains it.
 
 ### CP-049 — Wire the eight live adapters, and keep the wiring testable offline
 - Status: DONE
