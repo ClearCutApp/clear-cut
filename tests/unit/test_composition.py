@@ -5,14 +5,37 @@ The headline test (`test_mock_mode_...`) clears the environment down to
 `CLEARCUT_MODE=mock` and drives `POST /api/analyze` then `GET /api/tracker`
 through a real Flask test client -- the whole of D36 in one test, per
 CHECKPOINTS.md's own framing: the MVP runs today, on nothing.
+
+The live-branch tests below (CP-049) fake only the two vendor clients that
+connect during construction -- `_ChClient` and `_VectorStore` (D38) -- and let
+the rest of the live graph build for real. Every other vendor constructor in
+that graph is provably non-connecting at construction time (verified by hand
+against this repo's own `.venv` before writing these tests):
+`google.genai.Client`, `VertexAIEmbeddings` (which builds a `genai.Client`
+internally), `parallel.Parallel`, and `httpx.Client` all defer authentication
+and I/O to the first real call. The one exception is
+`documentai.DocumentProcessorServiceClient`, whose GAPIC-generated
+constructor resolves `google.auth.default()` eagerly -- with no local
+credential, that falls through to a GCE metadata-server probe that hangs for
+several seconds in a sandbox with no route to it. `_write_fake_adc` points
+`GOOGLE_APPLICATION_CREDENTIALS` at a syntactically valid but entirely
+fabricated `authorized_user` ADC file so that resolves locally instead,
+keeping the suite fast and deterministic without touching `composition.py`'s
+own shape.
 """
 
+import json
 import logging
 import os
+import socket
+from pathlib import Path
+from typing import Any, NoReturn
 
 import pytest
 from flask import Flask
 
+from clearcut.adapters.bigquery.lore_store import BigQueryLoreStore
+from clearcut.adapters.clickhouse.tracker import ClickHouseTrackerStore
 from clearcut.adapters.demo.in_memory import (
     InMemoryContinuityCheck,
     InMemoryLegalGrounding,
@@ -23,6 +46,12 @@ from clearcut.adapters.demo.in_memory import (
     InMemoryScriptIngestion,
     InMemoryTrackerStore,
 )
+from clearcut.adapters.gcp.document_ai import DocumentAIIngestion
+from clearcut.adapters.gcp.vertex_search import VertexSearchGrounding
+from clearcut.adapters.gemini.continuity import GeminiContinuityCheck
+from clearcut.adapters.gemini.extractor import GeminiSceneExtractor
+from clearcut.adapters.notify.webhook import WebhookNotifier
+from clearcut.adapters.parallel.research import ParallelRightsResearch
 from clearcut.composition import _build_live_use_cases, _build_mock_use_cases, create_app
 
 _ANALYZE_BODY = {
@@ -150,10 +179,16 @@ def test_live_mode_fails_at_startup_naming_the_live_wiring_as_incomplete(
         create_app()
 
 
-def test_live_wiring_itself_raises_rather_than_returning_a_mock_wired_graph() -> None:
+def test_live_wiring_itself_raises_rather_than_returning_a_mock_wired_graph(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Proves the failure originates inside the live branch's own wiring
     function, not somewhere in `create_app()` that could be bypassed --
-    so the live branch never quietly returns the mock-wired graph."""
+    so the live branch never quietly returns the mock-wired graph. Clears
+    the environment first (CP-049): `_build_live_use_cases` now reads ten
+    credentials of its own, so this must not depend on whatever the ambient
+    shell running the suite happens to have set."""
+    _clear_env(monkeypatch, CLEARCUT_MODE="live")
     with pytest.raises(RuntimeError):
         _build_live_use_cases()
 
@@ -200,3 +235,257 @@ def test_two_create_app_calls_produce_independent_instances(
     second_tracker = second_client.get("/api/tracker?project_id=demo-project")
 
     assert second_tracker.get_json() == []
+
+
+# ---------------------------------------------------------------------------
+# CP-049: the live branch. Fakes stand in only for `_ChClient` and
+# `_VectorStore` -- the two vendor clients that connect during construction
+# (D38) -- so a unit test can build the whole live graph without a socket.
+# ---------------------------------------------------------------------------
+
+_LIVE_ENV_VALUES = {
+    "GOOGLE_CLOUD_PROJECT": "clearcut-dummy-project",
+    "DOCAI_PROCESSOR_ID": "projects/clearcut-dummy-project/locations/us/processors/dummy",
+    "GEMINI_MODEL": "gemini-3.7-flash",
+    "GEMINI_MODEL_LITE": "gemini-3.1-flash-lite",
+    "PARALLEL_API_KEY": "dummy-parallel-key",
+    "CLICKHOUSE_HOST": "clickhouse-unreachable.invalid",
+    "CLICKHOUSE_USER": "dummy-ch-user",
+    "CLICKHOUSE_PASSWORD": "dummy-ch-password",
+    "VERTEX_SEARCH_DATA_STORE_ID": "dummy-data-store",
+    "NOTIFY_WEBHOOK_URL": "https://notify.example.invalid/webhook",
+}
+
+
+class _FakeChClient:
+    """Satisfies `clickhouse/tracker.py`'s `_ChClient` protocol structurally
+    (AGENT.md Section 5). Every method raises: this fake exists only to let
+    the live graph build without a real ClickHouse connection, never to be
+    called -- `_build_live_use_cases` wires it straight into
+    `ClickHouseTrackerStore` and stops."""
+
+    def command(self, cmd: str) -> NoReturn:
+        raise AssertionError("_ChClient.command was called in a build-only test")
+
+    def insert(self, table: str, data: list[list[Any]], column_names: list[str]) -> NoReturn:
+        raise AssertionError("_ChClient.insert was called in a build-only test")
+
+    def query(self, query: str, parameters: dict[str, Any] | None = None) -> NoReturn:
+        raise AssertionError("_ChClient.query was called in a build-only test")
+
+
+class _FakeVectorStore:
+    """Satisfies `bigquery/lore_store.py`'s `_VectorStore` protocol
+    structurally, for the same reason as `_FakeChClient` above."""
+
+    def add_texts_with_embeddings(
+        self,
+        texts: list[str],
+        embs: list[list[float]],
+        metadatas: list[dict[str, str | int]] | None = None,
+    ) -> NoReturn:
+        raise AssertionError(
+            "_VectorStore.add_texts_with_embeddings was called in a build-only test"
+        )
+
+    def similarity_search_by_vector_with_score(
+        self,
+        embedding: list[float],
+        filter: dict[str, str] | None = None,
+        k: int = 5,
+    ) -> NoReturn:
+        raise AssertionError(
+            "_VectorStore.similarity_search_by_vector_with_score was called in a build-only test"
+        )
+
+
+def _write_fake_adc(tmp_path: Path) -> str:
+    """A syntactically valid but entirely fabricated `authorized_user` ADC
+    file (google-auth's own on-disk format) -- not a real credential, and
+    incapable of authenticating anything. See this module's docstring for
+    why `documentai.DocumentProcessorServiceClient()` needs one even in a
+    build-only test."""
+    path = tmp_path / "fake_adc.json"
+    path.write_text(
+        json.dumps(
+            {
+                "client_id": "fake-client-id.apps.googleusercontent.com",
+                "client_secret": "fake-client-secret",
+                "refresh_token": "fake-refresh-token",
+                "type": "authorized_user",
+            }
+        )
+    )
+    return str(path)
+
+
+def _forbid_sockets(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fails the test the instant anything under it opens a real socket --
+    the criterion 3 no-socket guarantee, proved rather than assumed."""
+
+    def _refuse(self: socket.socket, address: object) -> NoReturn:
+        raise AssertionError(f"a live adapter tried to open a socket to {address!r}")
+
+    monkeypatch.setattr(socket.socket, "connect", _refuse)
+
+
+# ---------------------------------------------------------------------------
+# Criterion 1 and 3: the live branch builds the eight concrete adapters,
+# wires them into the five use cases, and -- with fakes for the two
+# connecting vendor clients -- does it without opening a socket.
+# ---------------------------------------------------------------------------
+
+
+def test_build_live_use_cases_wires_the_eight_live_adapters_with_no_socket(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _clear_env(
+        monkeypatch,
+        CLEARCUT_MODE="live",
+        GOOGLE_APPLICATION_CREDENTIALS=_write_fake_adc(tmp_path),
+        **_LIVE_ENV_VALUES,
+    )
+    _forbid_sockets(monkeypatch)
+
+    graph = _build_live_use_cases(ch_client=_FakeChClient(), vector_store=_FakeVectorStore())
+
+    assert isinstance(graph.analyze_script._ingestion, DocumentAIIngestion)
+    assert isinstance(graph.analyze_script._extractor, GeminiSceneExtractor)
+    assert isinstance(graph.analyze_script._grounding, VertexSearchGrounding)
+    assert isinstance(graph.analyze_script._research, ParallelRightsResearch)
+    assert isinstance(graph.analyze_script._continuity, GeminiContinuityCheck)
+    assert isinstance(graph.analyze_script._lore, BigQueryLoreStore)
+    assert isinstance(graph.analyze_script._tracker, ClickHouseTrackerStore)
+    assert isinstance(graph.evaluate_delta._notifier, WebhookNotifier)
+
+
+def test_build_live_use_cases_wires_answer_project_question_to_the_live_collaborators(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The mock counterpart (`test_build_mock_use_cases_wires_the_demo_adapters_by_type`)
+    asserts `answer_project_question`'s collaborator by type; this is the
+    live-branch equivalent, closing the gap a demo store swapped into a live
+    route would otherwise leave open (D36's exact named failure)."""
+    _clear_env(
+        monkeypatch,
+        CLEARCUT_MODE="live",
+        GOOGLE_APPLICATION_CREDENTIALS=_write_fake_adc(tmp_path),
+        **_LIVE_ENV_VALUES,
+    )
+    _forbid_sockets(monkeypatch)
+
+    graph = _build_live_use_cases(ch_client=_FakeChClient(), vector_store=_FakeVectorStore())
+
+    assert isinstance(graph.answer_project_question._lore, BigQueryLoreStore)
+    assert isinstance(graph.answer_project_question._grounding, VertexSearchGrounding)
+    assert isinstance(graph.answer_project_question._tracker, ClickHouseTrackerStore)
+
+
+def test_build_live_use_cases_passes_each_env_read_value_to_its_adapter(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Criterion 2's second clause: every credential, endpoint, and model id
+    must reach its adapter, not merely be read here. Proven by comparing each
+    live adapter's stored attribute against its `_LIVE_ENV_VALUES` entry --
+    including the two same-shape Gemini model ids, so a silent swap between
+    `GEMINI_MODEL` and `GEMINI_MODEL_LITE` fails here rather than nowhere."""
+    _clear_env(
+        monkeypatch,
+        CLEARCUT_MODE="live",
+        GOOGLE_APPLICATION_CREDENTIALS=_write_fake_adc(tmp_path),
+        **_LIVE_ENV_VALUES,
+    )
+    _forbid_sockets(monkeypatch)
+
+    graph = _build_live_use_cases(ch_client=_FakeChClient(), vector_store=_FakeVectorStore())
+
+    # Each collaborator is typed by its port (`Notifier`, `LegalGrounding`, ...)
+    # on the use case that holds it, so mypy strict needs the `isinstance`
+    # narrowing below before it accepts the adapter-specific attribute reads
+    # that follow -- the same narrowing the sibling test above already does.
+    notifier = graph.evaluate_delta._notifier
+    grounding = graph.analyze_script._grounding
+    ingestion = graph.analyze_script._ingestion
+    extractor = graph.analyze_script._extractor
+    continuity = graph.analyze_script._continuity
+    assert isinstance(notifier, WebhookNotifier)
+    assert isinstance(grounding, VertexSearchGrounding)
+    assert isinstance(ingestion, DocumentAIIngestion)
+    assert isinstance(extractor, GeminiSceneExtractor)
+    assert isinstance(continuity, GeminiContinuityCheck)
+
+    assert notifier._url == _LIVE_ENV_VALUES["NOTIFY_WEBHOOK_URL"]
+    assert grounding._data_store_id == _LIVE_ENV_VALUES["VERTEX_SEARCH_DATA_STORE_ID"]
+    assert ingestion._processor_id == _LIVE_ENV_VALUES["DOCAI_PROCESSOR_ID"]
+    assert extractor.model == _LIVE_ENV_VALUES["GEMINI_MODEL"]
+    assert continuity.model == _LIVE_ENV_VALUES["GEMINI_MODEL_LITE"]
+
+
+def test_build_live_use_cases_shares_the_seamed_clients_across_use_cases(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The same `ClickHouseTrackerStore` instance backs every use case that
+    needs a tracker -- the live-branch counterpart to CP-048's mock-sharing
+    test above."""
+    _clear_env(
+        monkeypatch,
+        CLEARCUT_MODE="live",
+        GOOGLE_APPLICATION_CREDENTIALS=_write_fake_adc(tmp_path),
+        **_LIVE_ENV_VALUES,
+    )
+    _forbid_sockets(monkeypatch)
+
+    graph = _build_live_use_cases(ch_client=_FakeChClient(), vector_store=_FakeVectorStore())
+
+    assert graph.analyze_script._tracker is graph.list_tracker_items._tracker
+    assert graph.analyze_script._tracker is graph.resolve_finding._tracker
+
+
+# ---------------------------------------------------------------------------
+# Criterion 2: every credential, endpoint, and model id is read in
+# composition.py only -- no adapter module reads the environment itself.
+# ---------------------------------------------------------------------------
+
+
+def test_no_adapter_module_reads_the_environment_directly() -> None:
+    adapters_dir = Path(__file__).resolve().parents[2] / "src" / "clearcut" / "adapters"
+    violations = [
+        path
+        for path in adapters_dir.rglob("*.py")
+        if "os.environ" in path.read_text() or "os.getenv" in path.read_text()
+    ]
+    assert violations == [], f"adapter module(s) read the environment directly: {violations}"
+
+
+# ---------------------------------------------------------------------------
+# Criterion 5: a missing required variable fails at startup naming it, not
+# at the first request.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("missing", sorted(_LIVE_ENV_VALUES))
+def test_live_wiring_fails_at_startup_naming_a_missing_required_variable(
+    monkeypatch: pytest.MonkeyPatch, missing: str
+) -> None:
+    present = {name: value for name, value in _LIVE_ENV_VALUES.items() if name != missing}
+    _clear_env(monkeypatch, CLEARCUT_MODE="live", **present)
+    with pytest.raises(RuntimeError, match=missing):
+        create_app()
+
+
+# ---------------------------------------------------------------------------
+# Criterion 6 (D38): with no fakes injected and unreachable credentials,
+# create_app() fails during construction, not on the first request.
+# ---------------------------------------------------------------------------
+
+
+def test_live_mode_with_unreachable_credentials_fails_during_construction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`CLICKHOUSE_HOST` names a reserved, never-resolving `.invalid` domain
+    (RFC 2606) so DNS resolution fails fast and deterministically rather than
+    hanging on a real connect timeout -- construction fails, and it fails
+    naming ClickHouse, before `create_app()` ever returns an app."""
+    _clear_env(monkeypatch, CLEARCUT_MODE="live", **_LIVE_ENV_VALUES)
+    with pytest.raises(Exception, match="(?i)clickhouse"):
+        create_app()

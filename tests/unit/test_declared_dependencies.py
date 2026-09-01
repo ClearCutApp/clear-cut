@@ -313,11 +313,16 @@ def test_removing_httpx_alone_is_still_caught() -> None:
     assert SRC_ROOT / "adapters" / "parallel" / "research.py" in paths
 
 
-def test_removing_unimported_declared_dependency_reports_nothing() -> None:
-    """`langchain-google-community` is declared but never imported. The
-    checker is used-to-declared only, never the reverse, so its removal is
-    not a violation."""
-    declared = _declared_minus("langchain-google-community")
+def test_declaring_an_unimported_dependency_reports_nothing() -> None:
+    """The checker is used-to-declared only, never the reverse: a
+    distribution declared in `[project] dependencies` but never imported
+    from `src/` must not be flagged. CP-049's live wiring made every real
+    dependency actually imported somewhere in `src/` (`composition.py` now
+    imports `clickhouse-connect`, `langchain-google-community`, and
+    `langchain-google-vertexai` for real), so this adds a package that
+    provably is not, rather than removing a real one that used to be true
+    only by omission."""
+    declared = _declared_distributions(PYPROJECT_PATH) | {"a-declared-but-unused-package"}
 
     undeclared = find_undeclared_imports(SRC_ROOT, declared)
 

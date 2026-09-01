@@ -22,8 +22,15 @@ import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
+import clickhouse_connect
+import httpx
 from flask import Flask
+from google import genai
+from google.cloud import documentai_v1 as documentai
+from langchain_google_community import BigQueryVectorStore  # type: ignore[import-untyped]
+from langchain_google_vertexai import VertexAIEmbeddings
 from opentelemetry import metrics, trace
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -32,6 +39,8 @@ from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
+from clearcut.adapters.bigquery.lore_store import BigQueryLoreStore, _VectorStore
+from clearcut.adapters.clickhouse.tracker import ClickHouseTrackerStore, _ChClient
 from clearcut.adapters.demo.in_memory import (
     InMemoryContinuityCheck,
     InMemoryLegalGrounding,
@@ -42,8 +51,14 @@ from clearcut.adapters.demo.in_memory import (
     InMemoryScriptIngestion,
     InMemoryTrackerStore,
 )
+from clearcut.adapters.gcp.document_ai import DocumentAIIngestion
+from clearcut.adapters.gcp.vertex_search import VertexSearchGrounding
+from clearcut.adapters.gemini.continuity import GeminiContinuityCheck
+from clearcut.adapters.gemini.extractor import GeminiSceneExtractor
 from clearcut.adapters.http.routes import create_blueprint
 from clearcut.adapters.http.spa import create_spa_blueprint
+from clearcut.adapters.notify.webhook import WebhookNotifier
+from clearcut.adapters.parallel.research import ParallelRightsResearch
 from clearcut.application.analyze_script import AnalyzeScript
 from clearcut.application.answer_project_question import AnswerProjectQuestion
 from clearcut.application.evaluate_delta import EvaluateDelta
@@ -51,6 +66,14 @@ from clearcut.application.list_tracker_items import ListTrackerItems
 from clearcut.application.resolve_finding import ResolveFinding
 
 logger = logging.getLogger(__name__)
+
+# Fixed for the hackathon's single region and dataset (docs/plan/infrastructure.md
+# Sections 4 and 5); none of these has ever varied, so none is a constructor
+# argument or an environment variable (AGENT.md Section 4).
+_GCP_LOCATION = "us-central1"
+_BIGQUERY_DATASET = "clearcut"
+_BIGQUERY_LORE_TABLE = "lore_vectors"
+_EMBEDDING_MODEL = "text-embedding-005"
 
 _MODE_ENV_VAR = "CLEARCUT_MODE"
 _MOCK_MODE = "mock"
@@ -142,14 +165,91 @@ def _build_mock_use_cases() -> _UseCaseGraph:
     )
 
 
-def _build_live_use_cases() -> _UseCaseGraph:
+def _required_env(name: str) -> str:
+    """One credential, endpoint, or model id for the live wiring (CP-049):
+    read here, once, and passed down as a constructor argument -- no
+    adapter module reads the environment itself. A missing or blank value
+    fails now, naming the variable, instead of surfacing as a 500 on
+    whichever request first needed it."""
+    value = os.environ.get(name)
+    if not value:
+        raise RuntimeError(
+            f"CLEARCUT_MODE=live requires the {name!r} environment variable, which is not set"
+        )
+    return value
+
+
+def _build_live_use_cases(
+    *,
+    ch_client: _ChClient | None = None,
+    vector_store: _VectorStore | None = None,
+) -> _UseCaseGraph:
     """The live wiring seam CP-049 fills (Decision D38): the eight live
-    adapters, built from environment-read credentials, with the two
-    connecting vendor clients accepted as constructor arguments with real
-    defaults. Raising here -- rather than returning a half-wired graph --
-    keeps `CLEARCUT_MODE=live` from ever silently falling back to mock."""
-    raise RuntimeError(
-        "CLEARCUT_MODE=live wiring is incomplete: CP-049 has not wired the eight live adapters yet"
+    adapters, built from environment-read credentials, with the two vendor
+    clients that connect during construction --
+    `clickhouse_connect.get_client` and `BigQueryVectorStore` -- accepted as
+    plain keyword arguments whose default builds the real, connected thing.
+    A unit test injects a fake for either and builds the rest of the graph
+    for real, with no network; production omits both and gets eager,
+    fail-loud construction, so a bad credential fails the Cloud Run revision
+    rather than a request."""
+    project = _required_env("GOOGLE_CLOUD_PROJECT")
+    processor_id = _required_env("DOCAI_PROCESSOR_ID")
+    gemini_model = _required_env("GEMINI_MODEL")
+    gemini_model_lite = _required_env("GEMINI_MODEL_LITE")
+    parallel_api_key = _required_env("PARALLEL_API_KEY")
+    clickhouse_host = _required_env("CLICKHOUSE_HOST")
+    clickhouse_user = _required_env("CLICKHOUSE_USER")
+    clickhouse_password = _required_env("CLICKHOUSE_PASSWORD")
+    data_store_id = _required_env("VERTEX_SEARCH_DATA_STORE_ID")
+    webhook_url = _required_env("NOTIFY_WEBHOOK_URL")
+
+    if ch_client is None:
+        # cast: `Client.query` returns `Sequence[Sequence[Any]]` rows, one
+        # step wider than `_ChClient`'s own `list[tuple[Any, ...]]` -- true
+        # at runtime, invisible to mypy strict structurally.
+        ch_client = cast(
+            _ChClient,
+            clickhouse_connect.get_client(
+                host=clickhouse_host,
+                username=clickhouse_user,
+                password=clickhouse_password,
+                secure=True,
+            ),
+        )
+
+    embeddings = VertexAIEmbeddings(project=project, location=_GCP_LOCATION, model=_EMBEDDING_MODEL)
+    if vector_store is None:
+        vector_store = BigQueryVectorStore(
+            embedding=embeddings,
+            project_id=project,
+            dataset_name=_BIGQUERY_DATASET,
+            table_name=_BIGQUERY_LORE_TABLE,
+            location=_GCP_LOCATION,
+        )
+
+    genai_client = genai.Client(vertexai=True, project=project, location=_GCP_LOCATION)
+    documentai_client = documentai.DocumentProcessorServiceClient()
+
+    ingestion = DocumentAIIngestion(documentai_client, processor_id)
+    extractor = GeminiSceneExtractor(genai_client, gemini_model)
+    grounding = VertexSearchGrounding(genai_client.models, data_store_id)
+    research = ParallelRightsResearch(httpx.Client(), parallel_api_key)
+    continuity = GeminiContinuityCheck(genai_client, gemini_model_lite)
+    lore = BigQueryLoreStore(vector_store, embeddings)
+    tracker = ClickHouseTrackerStore(ch_client)
+    notifier = WebhookNotifier(httpx.Client(), webhook_url)
+
+    return _UseCaseGraph(
+        analyze_script=AnalyzeScript(
+            ingestion, extractor, grounding, research, lore, tracker, continuity
+        ),
+        evaluate_delta=EvaluateDelta(
+            ingestion, extractor, grounding, research, lore, tracker, continuity, notifier
+        ),
+        list_tracker_items=ListTrackerItems(tracker),
+        resolve_finding=ResolveFinding(tracker, notifier),
+        answer_project_question=AnswerProjectQuestion(lore, grounding, tracker),
     )
 
 
