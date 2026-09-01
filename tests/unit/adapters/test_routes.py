@@ -614,6 +614,133 @@ def test_analyze_with_an_invalid_version_calls_neither_use_case(bad_version: Any
 
 
 # ---------------------------------------------------------------------------
+# POST /api/analyze -- scenes in the response body (CP-047)
+# ---------------------------------------------------------------------------
+
+
+def _expected_scene_json(scene: Scene) -> dict[str, Any]:
+    return {
+        "number": scene.number,
+        "heading": scene.heading,
+        "page_start": scene.page_start,
+        "page_end": scene.page_end,
+        "text": scene.text,
+        "content_hash": scene.content_hash,
+    }
+
+
+def test_analyze_response_scenes_match_the_report_field_for_field_in_order() -> None:
+    scenes = [
+        Scene(
+            number=1,
+            heading="INT. BAR - DAY",
+            page_start=1,
+            page_end=1,
+            text="A neon Quilmes sign glows.",
+        ),
+        Scene(
+            number=2,
+            heading="EXT. STREET - NIGHT",
+            page_start=2,
+            page_end=3,
+            text="Rain on cobblestones.",
+        ),
+    ]
+    report = AnalysisReport(
+        script=Script(
+            script_id="scr-1",
+            project_id="proj-1",
+            version=1,
+            gcs_uri="gs://bucket/v1.pdf",
+            jurisdiction_code="MX",
+            scenes=scenes,
+        ),
+        findings=(),
+        tracker_items=(),
+    )
+    client = _client(analyze_script=_RecordingUseCase(report))
+
+    response = client.post("/api/analyze", json=_ANALYZE_BODY)
+
+    assert response.get_json()["scenes"] == [_expected_scene_json(scene) for scene in scenes]
+
+
+def test_analyze_response_scene_content_hash_is_the_domains_own_hash() -> None:
+    """The adapter reads `scene.content_hash`, never recomputes it -- the
+    hash is the domain's (AGENT.md Section 3, Information Expert)."""
+    scene = _scene()
+    report = AnalysisReport(
+        script=Script(
+            script_id="scr-1",
+            project_id="proj-1",
+            version=1,
+            gcs_uri="gs://bucket/v1.pdf",
+            jurisdiction_code="MX",
+            scenes=[scene],
+        ),
+        findings=(),
+        tracker_items=(),
+    )
+    client = _client(analyze_script=_RecordingUseCase(report))
+
+    response = client.post("/api/analyze", json=_ANALYZE_BODY)
+
+    returned_hash = response.get_json()["scenes"][0]["content_hash"]
+    assert returned_hash == scene.content_hash
+    assert returned_hash != ""
+
+
+def test_delta_response_scenes_are_the_newly_parsed_version_not_the_previous_one() -> None:
+    """`EvaluateDelta.execute` builds `Script(scenes=scenes, ...)` from the
+    scenes it just parsed, never from `tracker.latest_script`'s stored
+    previous version (application/evaluate_delta.py)."""
+    previous = Script(
+        script_id="scr-0",
+        project_id="proj-1",
+        version=1,
+        gcs_uri="gs://bucket/v1.pdf",
+        jurisdiction_code="MX",
+        scenes=[_scene(number=1)],
+    )
+    new_scenes = [_scene(number=1), _scene(number=2)]
+    client = _client(
+        evaluate_delta=_evaluate_delta(
+            ingestion=_Ingestion(scenes=new_scenes),
+            tracker=_TrackerStore(previous_script=previous),
+        )
+    )
+
+    response = client.post("/api/analyze", json={**_ANALYZE_BODY, "version": 2})
+
+    assert [scene["number"] for scene in response.get_json()["scenes"]] == [1, 2]
+
+
+def test_analyze_response_key_set_is_exactly_eight_keys() -> None:
+    client = _client()
+
+    response = client.post("/api/analyze", json=_ANALYZE_BODY)
+
+    assert set(response.get_json().keys()) == {
+        "script_id",
+        "project_id",
+        "version",
+        "gcs_uri",
+        "jurisdiction_code",
+        "scenes",
+        "findings",
+        "tracker_items",
+    }
+
+
+def test_analyze_response_scenes_is_an_empty_list_never_null_for_a_script_with_no_scenes() -> None:
+    client = _client(analyze_script=_RecordingUseCase(_report()))
+
+    response = client.post("/api/analyze", json=_ANALYZE_BODY)
+
+    assert response.get_json()["scenes"] == []
+
+
+# ---------------------------------------------------------------------------
 # GET /api/tracker
 # ---------------------------------------------------------------------------
 

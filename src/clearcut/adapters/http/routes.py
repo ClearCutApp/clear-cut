@@ -40,6 +40,7 @@ from clearcut.domain.bible import BibleFact
 from clearcut.domain.errors import RecordNotFound, SourceUnavailable, UnknownJurisdiction
 from clearcut.domain.finding import Citation, Finding
 from clearcut.domain.jurisdiction import Jurisdiction, jurisdiction_for
+from clearcut.domain.script import Scene
 from clearcut.domain.tracker import TrackerItem, TrackerState
 
 _ACCEPTED_STATES = tuple(state.value for state in TrackerState)
@@ -125,6 +126,17 @@ def _citation_json(citation: Citation) -> JsonDict:
     return {"uri": citation.uri, "title": citation.title, "snippet": citation.snippet}
 
 
+def _scene_json(scene: Scene) -> JsonDict:
+    return {
+        "number": scene.number,
+        "heading": scene.heading,
+        "page_start": scene.page_start,
+        "page_end": scene.page_end,
+        "text": scene.text,
+        "content_hash": scene.content_hash,
+    }
+
+
 def _finding_json(finding: Finding) -> JsonDict:
     return {
         "finding_id": finding.finding_id,
@@ -166,6 +178,7 @@ def _analysis_report_json(report: AnalysisReport) -> JsonDict:
         "version": script.version,
         "gcs_uri": script.gcs_uri,
         "jurisdiction_code": script.jurisdiction_code,
+        "scenes": [_scene_json(scene) for scene in script.scenes],
         "findings": [_finding_json(finding) for finding in report.findings],
         "tracker_items": [_tracker_item_json(item) for item in report.tracker_items],
     }
