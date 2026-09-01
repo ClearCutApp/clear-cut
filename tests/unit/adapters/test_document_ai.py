@@ -19,6 +19,7 @@ from clearcut.adapters.gcp.document_ai import (
     NoScenesFound,
 )
 from clearcut.application.ports import ScriptIngestion
+from tests.unit.conftest import install_in_memory_telemetry, metric_attributes_by_name
 
 FIXTURE_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "docai_three_scenes.json"
 
@@ -259,3 +260,26 @@ def test_scene_overlapping_no_page_span_falls_back_to_the_nearest_page() -> None
     scenes = adapter.parse("gs://clearcut-scripts-intake/script.pdf", "script-1")
 
     assert (scenes[0].page_start, scenes[0].page_end) == (2, 2)
+
+
+# ---------------------------------------------------------------------------
+# CP-031 (ADR 0008, SDD Section 6): `parse` opens an "ingest" span and
+# records `clearcut_stage_latency_ms` with stage="ingest" -- both driven
+# through this file's existing hand-written fake, no live adapter test
+# previously covered either (CP-031 review, BLOCKING 2).
+# ---------------------------------------------------------------------------
+
+
+def test_parse_opens_an_ingest_span_and_records_stage_latency(isolated_otel: None) -> None:
+    span_exporter, metric_reader = install_in_memory_telemetry()
+    client = FakeDocumentProcessorClient(document=_fixture_document())
+    adapter = DocumentAIIngestion(client=client, processor_id="processor-1")
+
+    adapter.parse("gs://clearcut-scripts-intake/script.pdf", "script-1")
+
+    spans = [span for span in span_exporter.get_finished_spans() if span.name == "ingest"]
+    assert len(spans) == 1
+
+    latency_points = metric_attributes_by_name(metric_reader)["clearcut_stage_latency_ms"]
+    assert latency_points
+    assert all(point["stage"] == "ingest" for point in latency_points)

@@ -24,6 +24,7 @@ from typing import Any
 
 from flask import Blueprint, jsonify, request
 from flask.typing import ResponseReturnValue
+from opentelemetry import metrics, trace
 
 from clearcut.application.analyze_script import AnalysisReport, AnalyzeScript
 from clearcut.application.answer_project_question import AnswerProjectQuestion, ProjectAnswer
@@ -46,6 +47,31 @@ from clearcut.domain.tracker import TrackerItem, TrackerState
 _ACCEPTED_STATES = tuple(state.value for state in TrackerState)
 
 JsonDict = dict[str, Any]
+
+
+# CP-031 (ADR 0008, SDD Section 6): the request-scoped root span for one
+# trace per `/api/analyze` call. Opened here, not in `AnalyzeScript`, because
+# `application/` never imports `opentelemetry` (AGENT.md Section 2) -- it
+# stays the active span for the whole `execute()` call below, so every
+# stage span the five adapters open nests under it and shares its trace id,
+# with no wrapper class or decorator at the composition seam (AGENT.md
+# Section 4).
+#
+# `trace.get_tracer(__name__)` / `metrics.get_meter(__name__)` are looked up
+# fresh on every call rather than cached at import time -- a module-level
+# `ProxyTracer`/`ProxyMeter` resolved before `composition.py` installs the
+# real providers caches that first resolution permanently and never sees a
+# provider installed afterward.
+def _tracer() -> trace.Tracer:
+    return trace.get_tracer(__name__)
+
+
+def _record_findings_total(findings: tuple[Finding, ...]) -> None:
+    counter = metrics.get_meter(__name__).create_counter(
+        "clearcut_findings_total", description="Findings emitted, by risk level and category"
+    )
+    for finding in findings:
+        counter.add(1, {"risk_level": finding.risk_level.value, "category": finding.category.value})
 
 
 def _new_script_id() -> str:
@@ -247,7 +273,10 @@ def create_blueprint(
             # one call site and one serializer (`_analysis_report_json`)
             # cover both branches.
             use_case = analyze_script if version == 1 else evaluate_delta
-            report = use_case.execute(project_id, script_id, version, gcs_uri, jurisdiction, at)
+            with _tracer().start_as_current_span("analyze") as root_span:
+                root_span.set_attribute("script_id", script_id)
+                report = use_case.execute(project_id, script_id, version, gcs_uri, jurisdiction, at)
+            _record_findings_total(report.findings)
             return _analysis_report_json(report)
 
         return _run_use_case(build)

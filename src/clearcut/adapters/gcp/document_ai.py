@@ -8,15 +8,28 @@ a page break carries the full anchor range rather than only its first page.
 """
 
 import re
+import time
 from typing import Protocol
 
 from google.api_core.exceptions import GoogleAPIError
 from google.cloud import documentai_v1 as documentai
+from opentelemetry import metrics, trace
 
 from clearcut.domain.errors import SourceUnavailable
 from clearcut.domain.script import Scene
 
 _SLUGLINE = re.compile(r"^(?:INT\.|EXT\.)(?:/(?:INT|EXT)\.)?[ \t]", re.MULTILINE)
+
+
+def _record_stage(stage: str, start: float) -> None:
+    """CP-031 (ADR 0008, SDD Section 6): `trace.get_tracer` / `metrics.get_meter`
+    are looked up fresh on every call, not cached at import time -- a
+    module-level proxy resolved before `composition.py` installs the real
+    providers caches that first resolution permanently."""
+    duration_ms = (time.perf_counter() - start) * 1000
+    metrics.get_meter(__name__).create_histogram(
+        "clearcut_stage_latency_ms", unit="ms", description="Pipeline stage latency"
+    ).record(duration_ms, {"stage": stage})
 
 
 class NoScenesFound(SourceUnavailable):
@@ -93,18 +106,23 @@ class DocumentAIIngestion:
         self._processor_id = processor_id
 
     def parse(self, gcs_uri: str, script_id: str) -> list[Scene]:
-        document = self._process(gcs_uri)
-        starts = [match.start() for match in _SLUGLINE.finditer(document.text)]
-        if not starts:
-            raise NoScenesFound(script_id)
-        spans = _page_spans(document)
-        if not spans:
-            raise IngestionFailed(self._processor_id)
-        boundaries = [*starts, len(document.text)]
-        return [
-            self._scene(number, document.text[start:end], spans, start, end)
-            for number, (start, end) in enumerate(zip(boundaries, boundaries[1:]), start=1)
-        ]
+        stage_start = time.perf_counter()
+        with trace.get_tracer(__name__).start_as_current_span("ingest") as span:
+            span.set_attribute("script_id", script_id)
+            document = self._process(gcs_uri)
+            starts = [match.start() for match in _SLUGLINE.finditer(document.text)]
+            if not starts:
+                raise NoScenesFound(script_id)
+            spans = _page_spans(document)
+            if not spans:
+                raise IngestionFailed(self._processor_id)
+            boundaries = [*starts, len(document.text)]
+            scenes = [
+                self._scene(number, document.text[start:end], spans, start, end)
+                for number, (start, end) in enumerate(zip(boundaries, boundaries[1:]), start=1)
+            ]
+        _record_stage("ingest", stage_start)
+        return scenes
 
     def _scene(
         self,

@@ -28,6 +28,7 @@ FORBIDDEN_APPLICATION_PREFIXES = (
     "requests",
     "clearcut.adapters",
     "httpx",
+    "opentelemetry",
 )
 
 
@@ -106,6 +107,12 @@ def test_application_guard_rejects_a_flask_import():
 
 def test_application_guard_rejects_an_httpx_import():
     assert _application_violations("import httpx\n") == ["httpx"]
+
+
+def test_application_guard_rejects_an_opentelemetry_import():
+    """CP-031: instrumentation lives in composition.py and adapters/ only
+    (ADR 0008, SDD Section 6) -- application/ never imports opentelemetry."""
+    assert _application_violations("import opentelemetry\n") == ["opentelemetry"]
 
 
 def test_domain_guard_resolves_a_same_package_relative_import():

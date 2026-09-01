@@ -24,6 +24,7 @@ from clearcut.adapters.clickhouse.tracker import (
 from clearcut.application.ports import TrackerStore
 from clearcut.domain.script import Scene, Script
 from clearcut.domain.tracker import TrackerItem, TrackerState
+from tests.unit.conftest import install_in_memory_telemetry, metric_attributes_by_name
 
 
 @dataclass
@@ -391,3 +392,33 @@ def test_latest_script_wraps_a_client_error_as_tracker_unavailable() -> None:
 
     with pytest.raises(TrackerUnavailable):
         adapter.latest_script("proj-a")
+
+
+# ---------------------------------------------------------------------------
+# CP-031 (ADR 0008, SDD Section 6): `save` opens a "track" span, records
+# `clearcut_stage_latency_ms` with stage="track", and refreshes
+# `clearcut_tracker_items` by state (CP-031 review, BLOCKING 2).
+# ---------------------------------------------------------------------------
+
+
+def test_save_opens_a_track_span_records_stage_latency_and_refreshes_the_gauge(
+    isolated_otel: None,
+) -> None:
+    span_exporter, metric_reader = install_in_memory_telemetry()
+    client = FakeChClient()
+    adapter = ClickHouseTrackerStore(client)
+    items = [_item(item_id="EVT-001", state=TrackerState.BLOCKED)]
+
+    adapter.save(items)
+
+    spans = [span for span in span_exporter.get_finished_spans() if span.name == "track"]
+    assert len(spans) == 1
+
+    points_by_name = metric_attributes_by_name(metric_reader)
+    latency_points = points_by_name["clearcut_stage_latency_ms"]
+    assert latency_points
+    assert all(point["stage"] == "track" for point in latency_points)
+
+    gauge_points = points_by_name["clearcut_tracker_items"]
+    assert gauge_points
+    assert any(point["state"] == TrackerState.BLOCKED.value for point in gauge_points)

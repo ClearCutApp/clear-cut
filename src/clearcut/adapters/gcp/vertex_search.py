@@ -10,14 +10,26 @@ this adapter reads as citations. A response with no chunks is discarded
 rather than trusted (docs/plan/agentic-workflow.md Sections 4 and 8).
 """
 
+import time
 from typing import Protocol
 
 from google.genai import types
+from opentelemetry import metrics, trace
 
 from clearcut.application.ports import GroundedAnswer
 from clearcut.domain.errors import EnrichmentMissing
 from clearcut.domain.finding import Citation
 from clearcut.domain.jurisdiction import Jurisdiction
+
+
+def _record_stage(stage: str, start: float) -> None:
+    """CP-031 (ADR 0008, SDD Section 6); see `adapters/gcp/document_ai.py`
+    for why the tracer/meter lookups happen fresh on every call."""
+    duration_ms = (time.perf_counter() - start) * 1000
+    metrics.get_meter(__name__).create_histogram(
+        "clearcut_stage_latency_ms", unit="ms", description="Pipeline stage latency"
+    ).record(duration_ms, {"stage": stage})
+
 
 # gemini-3.1-flash-lite backs retrieval-grounded answers (SDD Section 3,
 # ADR 0002); gemini-3.7-flash is reserved for extraction. Not a constructor
@@ -53,6 +65,13 @@ class VertexSearchGrounding:
         self._data_store_id = data_store_id
 
     def ground(self, query: str, jurisdiction: Jurisdiction) -> GroundedAnswer:
+        stage_start = time.perf_counter()
+        with trace.get_tracer(__name__).start_as_current_span("ground"):
+            answer = self._ground(query, jurisdiction)
+        _record_stage("ground", stage_start)
+        return answer
+
+    def _ground(self, query: str, jurisdiction: Jurisdiction) -> GroundedAnswer:
         prefix = jurisdiction.corpus_prefix.strip().rstrip("/")
         if not prefix:
             raise ValueError(f"blank corpus_prefix for jurisdiction {jurisdiction.code!r}")

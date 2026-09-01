@@ -25,6 +25,7 @@ from clearcut.application.ports import Confidence, RightsClaim, RightsResearch
 from clearcut.domain.errors import SourceUnavailable
 from clearcut.domain.finding import Category
 from clearcut.domain.jurisdiction import jurisdiction_for
+from tests.unit.conftest import install_in_memory_telemetry, metric_attributes_by_name
 
 _FIXTURE = Path(__file__).resolve().parents[2] / "fixtures" / "parallel_task_result.json"
 _SRC = Path(__file__).resolve().parents[3] / "src" / "clearcut"
@@ -172,6 +173,20 @@ def test_connect_error_message_differs_from_non_2xx_status_message() -> None:
         status_adapter.find(_ASSET_NAME, Category.COPYRIGHT_WORKS, _JURISDICTION)
 
     assert str(connect_excinfo.value) != str(status_excinfo.value)
+
+
+def test_find_opens_a_research_span_and_records_stage_latency(isolated_otel: None) -> None:
+    span_exporter, metric_reader = install_in_memory_telemetry()
+    adapter = _adapter(_result_body())
+
+    adapter.find(_ASSET_NAME, Category.COPYRIGHT_WORKS, _JURISDICTION)
+
+    spans = [span for span in span_exporter.get_finished_spans() if span.name == "research"]
+    assert len(spans) == 1
+
+    latency_points = metric_attributes_by_name(metric_reader)["clearcut_stage_latency_ms"]
+    assert latency_points
+    assert all(point["stage"] == "research" for point in latency_points)
 
 
 def test_module_does_not_import_or_reference_risk_level() -> None:

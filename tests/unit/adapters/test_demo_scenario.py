@@ -199,7 +199,19 @@ def test_search_on_an_unindexed_project_returns_no_facts() -> None:
     assert lore.search("never-indexed-project", "anything", 5) == []
 
 
-_BANNED_IMPORTS = frozenset({"os", "socket", "time", "datetime", "pathlib"})
+# Banned per module, not as one shared set (CP-031 review, BLOCKING 3): only
+# `in_memory.py`'s five stage spans need `time.perf_counter()` to measure
+# their own wall-clock duration for `clearcut_stage_latency_ms`, the same
+# metric the live adapters record (ADR 0008, SDD Section 6) -- a real
+# duration, not planted data, and `perf_counter()` reads no date. `scenario.py`
+# is the planted-data module whose determinism this guard exists to prove, so
+# `time` (which also carries `strftime`/`localtime`, wall-clock date reads)
+# stays banned there. `datetime` stays banned in both: nothing here needs the
+# current date.
+_BANNED_IMPORTS_BY_MODULE = {
+    scenario: frozenset({"os", "socket", "time", "datetime", "pathlib"}),
+    in_memory: frozenset({"os", "socket", "datetime", "pathlib"}),
+}
 
 
 def _imported_root_names(module: ModuleType) -> set[str]:
@@ -214,5 +226,5 @@ def _imported_root_names(module: ModuleType) -> set[str]:
 
 
 def test_neither_demo_module_imports_the_clock_environment_or_a_socket() -> None:
-    for module in (scenario, in_memory):
-        assert not _imported_root_names(module) & _BANNED_IMPORTS
+    for module, banned in _BANNED_IMPORTS_BY_MODULE.items():
+        assert not _imported_root_names(module) & banned

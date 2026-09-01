@@ -12,6 +12,7 @@ from clearcut.adapters.gcp.vertex_search import (
 )
 from clearcut.application.ports import GroundedAnswer, LegalGrounding
 from clearcut.domain.jurisdiction import Jurisdiction, jurisdiction_for
+from tests.unit.conftest import install_in_memory_telemetry, metric_attributes_by_name
 
 _FIXTURE = Path(__file__).resolve().parents[2] / "fixtures" / "vertex_grounded_answer.json"
 _DATA_STORE_ID = (
@@ -120,3 +121,25 @@ def test_blank_corpus_prefix_raises_value_error_before_any_client_call() -> None
         adapter.ground("Any question.", blank_jurisdiction)
 
     assert fake.calls == []
+
+
+# ---------------------------------------------------------------------------
+# CP-031 (ADR 0008, SDD Section 6): `ground` opens a "ground" span and
+# records `clearcut_stage_latency_ms` with stage="ground" (CP-031 review,
+# BLOCKING 2).
+# ---------------------------------------------------------------------------
+
+
+def test_ground_opens_a_ground_span_and_records_stage_latency(isolated_otel: None) -> None:
+    span_exporter, metric_reader = install_in_memory_telemetry()
+    fake = FakeVertexSearchClient(_load_fixture_response())
+    adapter = VertexSearchGrounding(fake, _DATA_STORE_ID)
+
+    adapter.ground("Can I use a Ferrari logo?", jurisdiction_for("AR"))
+
+    spans = [span for span in span_exporter.get_finished_spans() if span.name == "ground"]
+    assert len(spans) == 1
+
+    latency_points = metric_attributes_by_name(metric_reader)["clearcut_stage_latency_ms"]
+    assert latency_points
+    assert all(point["stage"] == "ground" for point in latency_points)

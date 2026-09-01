@@ -23,6 +23,11 @@ name here would cost a domain-error decision this checkpoint does not need
 to take.
 """
 
+import time
+from collections import Counter
+
+from opentelemetry import metrics, trace
+
 from clearcut.adapters.demo import scenario
 from clearcut.application.ports import GroundedAnswer, RightsClaim
 from clearcut.domain.bible import BibleFact
@@ -33,32 +38,80 @@ from clearcut.domain.script import Scene, Script
 from clearcut.domain.tracker import TrackerItem
 
 
+# CP-031 (ADR 0008, SDD Section 6): the same five pipeline-stage spans and
+# `clearcut_stage_latency_ms` / `clearcut_tracker_items` instruments the live
+# adapters record, so a Grafana trace of a mocked demo run (D36) looks like
+# any other run. `clearcut_gemini_tokens_total` is deliberately absent here:
+# no model runs in mock mode, so nothing is recorded for it.
+#
+# `trace.get_tracer(__name__)` and `metrics.get_meter(__name__)` are looked
+# up fresh inside each helper below rather than cached at import time: a
+# module-level `ProxyTracer`/`ProxyMeter` resolved before `composition.py`
+# installs the real providers caches that first resolution permanently, so a
+# later provider (a fresh one per test, or in principle a re-configured one
+# in-process) would never be seen again.
+def _tracer() -> trace.Tracer:
+    return trace.get_tracer(__name__)
+
+
+def _record_stage(stage: str, start: float) -> None:
+    duration_ms = (time.perf_counter() - start) * 1000
+    metrics.get_meter(__name__).create_histogram(
+        "clearcut_stage_latency_ms", unit="ms", description="Pipeline stage latency"
+    ).record(duration_ms, {"stage": stage})
+
+
+def _refresh_tracker_items_gauge(items: list[TrackerItem]) -> None:
+    gauge = metrics.get_meter(__name__).create_gauge(
+        "clearcut_tracker_items", description="Tracker items by state, refreshed on every write"
+    )
+    counts = Counter(item.state.value for item in items)
+    for state, count in counts.items():
+        gauge.set(count, {"state": state})
+
+
 class InMemoryScriptIngestion:
     """Implements `ScriptIngestion`: always returns the planted scenes."""
 
     def parse(self, gcs_uri: str, script_id: str) -> list[Scene]:
-        return list(scenario.SCENES)
+        start = time.perf_counter()
+        with _tracer().start_as_current_span("ingest"):
+            scenes = list(scenario.SCENES)
+        _record_stage("ingest", start)
+        return scenes
 
 
 class InMemorySceneExtractor:
     """Implements `SceneExtractor`: always returns the two planted IP findings."""
 
     def extract(self, scenes: list[Scene], jurisdiction: Jurisdiction) -> list[Finding]:
-        return list(scenario.EXTRACTED_FINDINGS)
+        start = time.perf_counter()
+        with _tracer().start_as_current_span("extract"):
+            findings = list(scenario.EXTRACTED_FINDINGS)
+        _record_stage("extract", start)
+        return findings
 
 
 class InMemoryLegalGrounding:
     """Implements `LegalGrounding`: always returns the one planted grounded answer."""
 
     def ground(self, query: str, jurisdiction: Jurisdiction) -> GroundedAnswer:
-        return scenario.GROUNDED_ANSWER
+        start = time.perf_counter()
+        with _tracer().start_as_current_span("ground"):
+            answer = scenario.GROUNDED_ANSWER
+        _record_stage("ground", start)
+        return answer
 
 
 class InMemoryRightsResearch:
     """Implements `RightsResearch`: the planted claim for the asset named."""
 
     def find(self, asset_name: str, category: Category, jurisdiction: Jurisdiction) -> RightsClaim:
-        return scenario.RIGHTS_CLAIMS_BY_ASSET[asset_name]
+        start = time.perf_counter()
+        with _tracer().start_as_current_span("research"):
+            claim = scenario.RIGHTS_CLAIMS_BY_ASSET[asset_name]
+        _record_stage("research", start)
+        return claim
 
 
 class InMemoryContinuityCheck:
@@ -99,8 +152,12 @@ class InMemoryTrackerStore:
         self._scripts: dict[str, Script] = {scenario.PROJECT_ID: scenario.SEEDED_SCRIPT}
 
     def save(self, items: list[TrackerItem]) -> None:
-        for item in items:
-            self._items[item.item_id] = item
+        start = time.perf_counter()
+        with _tracer().start_as_current_span("track"):
+            for item in items:
+                self._items[item.item_id] = item
+        _record_stage("track", start)
+        _refresh_tracker_items_gauge(items)
 
     def latest(self, item_id: str) -> TrackerItem:
         try:

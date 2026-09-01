@@ -24,6 +24,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from flask import Flask
+from opentelemetry import metrics, trace
+from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from clearcut.adapters.demo.in_memory import (
     InMemoryContinuityCheck,
@@ -48,6 +55,53 @@ logger = logging.getLogger(__name__)
 _MODE_ENV_VAR = "CLEARCUT_MODE"
 _MOCK_MODE = "mock"
 _LIVE_MODE = "live"
+
+_OTEL_ENDPOINT_ENV_VAR = "OTEL_EXPORTER_OTLP_ENDPOINT"
+
+
+def _span_exporter() -> OTLPSpanExporter | None:
+    """The trace half of the OTLP exporter ADR 0008 sends to Grafana Cloud,
+    or `None` when `OTEL_EXPORTER_OTLP_ENDPOINT` is unset (CP-031's
+    unset-endpoint failure path: spans still get created, for the trace
+    context every stage span propagates through, they simply go nowhere).
+    Constructed with no arguments -- `OTLPSpanExporter` reads
+    `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_HEADERS` itself,
+    the standard OTel exporter behaviour, so this module never parses either
+    variable by hand."""
+    if _OTEL_ENDPOINT_ENV_VAR not in os.environ:
+        return None
+    return OTLPSpanExporter()
+
+
+def _metric_exporter() -> OTLPMetricExporter | None:
+    """The metrics half of the same exporter; `None` under the same
+    condition as `_span_exporter`, for the same reason."""
+    if _OTEL_ENDPOINT_ENV_VAR not in os.environ:
+        return None
+    return OTLPMetricExporter()
+
+
+def _configure_telemetry() -> None:
+    """Installs the tracer and meter providers every adapter's own
+    `trace.get_tracer(__name__)` / `metrics.get_meter(__name__)` call
+    resolves against (ADR 0008, SDD Section 6) -- once per process, guarded
+    so a second `create_app()` call (every test after the first one in the
+    same process) is a no-op rather than a warning: OpenTelemetry's own
+    global providers already refuse a second `set_tracer_provider` /
+    `set_meter_provider` and merely log when that happens, so this check
+    keeps the no-op explicit instead of leaning on that fallback."""
+    if not isinstance(trace.get_tracer_provider(), trace.ProxyTracerProvider):
+        return
+
+    tracer_provider = TracerProvider()
+    span_exporter = _span_exporter()
+    if span_exporter is not None:
+        tracer_provider.add_span_processor(BatchSpanProcessor(span_exporter))
+    trace.set_tracer_provider(tracer_provider)
+
+    metric_exporter = _metric_exporter()
+    metric_readers = [PeriodicExportingMetricReader(metric_exporter)] if metric_exporter else []
+    metrics.set_meter_provider(MeterProvider(metric_readers=metric_readers))
 
 
 @dataclass(frozen=True)
@@ -114,6 +168,7 @@ def create_app(build_dir: Path | None = None) -> Flask:
     alongside CP-046's SPA blueprint serving `build_dir` (default
     `web/dist`) -- one origin for the JSON API and the static build (ADR
     0010), so no CORS configuration is ever needed."""
+    _configure_telemetry()
     mode = os.environ.get(_MODE_ENV_VAR, _LIVE_MODE)
     if mode == _MOCK_MODE:
         logger.warning(

@@ -16,7 +16,10 @@ reports the `Confidence` Parallel gave the field.
 
 from __future__ import annotations
 
+import time
+
 import httpx
+from opentelemetry import metrics, trace
 from parallel import APIConnectionError, APIStatusError, Parallel
 from parallel.types.citation import Citation as ParallelCitation
 from parallel.types.field_basis import FieldBasis
@@ -60,6 +63,15 @@ _OUTPUT_SCHEMA: JsonSchemaParam = {
 _TASK_SPEC: TaskSpecParam = {"output_schema": _OUTPUT_SCHEMA}
 
 
+def _record_stage(stage: str, start: float) -> None:
+    """CP-031 (ADR 0008, SDD Section 6); see `adapters/gcp/document_ai.py`
+    for why the tracer/meter lookups happen fresh on every call."""
+    duration_ms = (time.perf_counter() - start) * 1000
+    metrics.get_meter(__name__).create_histogram(
+        "clearcut_stage_latency_ms", unit="ms", description="Pipeline stage latency"
+    ).record(duration_ms, {"stage": stage})
+
+
 class NoRightsHolderFound(EnrichmentMissing):
     """Raised when every candidate claim in a Task API result is uncited."""
 
@@ -88,6 +100,13 @@ class ParallelRightsResearch:
         self._client = Parallel(api_key=api_key, http_client=http_client, max_retries=0)
 
     def find(self, asset_name: str, category: Category, jurisdiction: Jurisdiction) -> RightsClaim:
+        stage_start = time.perf_counter()
+        with trace.get_tracer(__name__).start_as_current_span("research"):
+            claim = self._find(asset_name, category, jurisdiction)
+        _record_stage("research", stage_start)
+        return claim
+
+    def _find(self, asset_name: str, category: Category, jurisdiction: Jurisdiction) -> RightsClaim:
         try:
             run = self._client.task_run.create(
                 input=_query(asset_name, category, jurisdiction),

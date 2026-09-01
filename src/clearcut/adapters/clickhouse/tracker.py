@@ -26,11 +26,37 @@ needs to open a real HTTPS connection (AGENT.md Section 5).
 from __future__ import annotations
 
 import json
+import time
+from collections import Counter
 from typing import Any, Protocol
+
+from opentelemetry import metrics, trace
 
 from clearcut.domain.errors import RecordNotFound, SourceUnavailable
 from clearcut.domain.script import Scene, Script
 from clearcut.domain.tracker import TrackerItem, TrackerState
+
+
+def _record_stage(stage: str, start: float) -> None:
+    """CP-031 (ADR 0008, SDD Section 6); see `adapters/gcp/document_ai.py`
+    for why the tracer/meter lookups happen fresh on every call."""
+    duration_ms = (time.perf_counter() - start) * 1000
+    metrics.get_meter(__name__).create_histogram(
+        "clearcut_stage_latency_ms", unit="ms", description="Pipeline stage latency"
+    ).record(duration_ms, {"stage": stage})
+
+
+def _refresh_tracker_items_gauge(items: list[TrackerItem]) -> None:
+    """`clearcut_tracker_items`, refreshed on every tracker write (SDD
+    Section 6): the gauge is set, not accumulated, to the count of items
+    this write touched per state -- the same write `save` just made durable."""
+    gauge = metrics.get_meter(__name__).create_gauge(
+        "clearcut_tracker_items", description="Tracker items by state, refreshed on every write"
+    )
+    counts = Counter(item.state.value for item in items)
+    for state, count in counts.items():
+        gauge.set(count, {"state": state})
+
 
 _TRACKER_ITEMS_DDL = """\
 CREATE TABLE IF NOT EXISTS tracker_items (
@@ -133,11 +159,15 @@ class ClickHouseTrackerStore:
             raise TrackerUnavailable(f"failed to create tables: {exc}") from exc
 
     def save(self, items: list[TrackerItem]) -> None:
-        rows = [_tracker_item_to_row(item) for item in items]
-        try:
-            self._client.insert("tracker_items", rows, _TRACKER_COLUMNS)
-        except Exception as exc:
-            raise TrackerUnavailable(f"failed to save {len(items)} item(s): {exc}") from exc
+        stage_start = time.perf_counter()
+        with trace.get_tracer(__name__).start_as_current_span("track"):
+            rows = [_tracker_item_to_row(item) for item in items]
+            try:
+                self._client.insert("tracker_items", rows, _TRACKER_COLUMNS)
+            except Exception as exc:
+                raise TrackerUnavailable(f"failed to save {len(items)} item(s): {exc}") from exc
+        _record_stage("track", stage_start)
+        _refresh_tracker_items_gauge(items)
 
     def latest(self, item_id: str) -> TrackerItem:
         query = "SELECT * FROM tracker_items WHERE item_id = {item_id:String}"

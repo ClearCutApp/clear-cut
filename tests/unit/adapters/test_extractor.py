@@ -12,6 +12,12 @@ from typing import cast
 
 import pytest
 from google.genai import types
+from opentelemetry import metrics, trace
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import InMemoryMetricReader, NumberDataPoint
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from clearcut.adapters.gemini.extractor import (
     ExtractionFailed,
@@ -23,6 +29,7 @@ from clearcut.application.ports import SceneExtractor
 from clearcut.domain.finding import Category, RiskLevel
 from clearcut.domain.jurisdiction import jurisdiction_for
 from clearcut.domain.script import Scene
+from tests.unit.conftest import install_in_memory_telemetry, metric_attributes_by_name
 
 FIXTURE_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "gemini_findings.json"
 
@@ -35,8 +42,15 @@ class RecordedCall:
 
 
 @dataclass
+class _FakeUsage:
+    prompt_token_count: int | None
+    candidates_token_count: int | None
+
+
+@dataclass
 class _FakeResponse:
     text: str | None
+    usage_metadata: _FakeUsage | None = None
 
 
 class _FakeModels:
@@ -162,3 +176,92 @@ def test_empty_scene_list_returns_empty_list_and_makes_no_client_calls() -> None
 
     assert findings == []
     assert client.calls == []
+
+
+# ---------------------------------------------------------------------------
+# CP-031 (ADR 0008, SDD Section 6): the "extract" span carries the Gemini
+# model name and the prompt/output token counts read from the response's own
+# usage metadata, and `clearcut_gemini_tokens_total` records them split by
+# token type -- both driven from the fake response's `usage_metadata`, never
+# recounted from the response text, so a mutant that recounts locally fails.
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class _MetricPoint:
+    attributes: dict[str, object]
+    value: int | float
+
+
+def _data_points_by_metric_name(
+    metric_reader: InMemoryMetricReader,
+) -> dict[str, list[_MetricPoint]]:
+    data = metric_reader.get_metrics_data()
+    points_by_name: dict[str, list[_MetricPoint]] = {}
+    if data is None:
+        return points_by_name
+    for resource_metrics in data.resource_metrics:
+        for scope_metrics in resource_metrics.scope_metrics:
+            for metric in scope_metrics.metrics:
+                for point in metric.data.data_points:
+                    attributes: dict[str, object] = dict(point.attributes or {})
+                    value = point.value if isinstance(point, NumberDataPoint) else 0.0
+                    points_by_name.setdefault(metric.name, []).append(
+                        _MetricPoint(attributes, value)
+                    )
+    return points_by_name
+
+
+def test_extract_span_and_counter_carry_token_counts_from_usage_metadata(
+    isolated_otel: None,
+) -> None:
+    span_exporter = InMemorySpanExporter()
+    tracer_provider = TracerProvider()
+    tracer_provider.add_span_processor(SimpleSpanProcessor(span_exporter))
+    trace.set_tracer_provider(tracer_provider)
+
+    metric_reader = InMemoryMetricReader()
+    metrics.set_meter_provider(MeterProvider(metric_readers=[metric_reader]))
+
+    response = _FakeResponse(
+        FIXTURE_PATH.read_text(),
+        usage_metadata=_FakeUsage(prompt_token_count=123, candidates_token_count=45),
+    )
+    client = FakeGeminiClient(responses=[response])
+    adapter = GeminiSceneExtractor(client=client, model="gemini-3.7-flash")
+
+    adapter.extract([_scene(4, page=10)], jurisdiction_for("US"))
+
+    spans = [span for span in span_exporter.get_finished_spans() if span.name == "extract"]
+    assert len(spans) == 1
+    attributes = spans[0].attributes
+    assert attributes is not None
+    assert attributes.get("gemini_model") == "gemini-3.7-flash"
+    assert attributes.get("prompt_tokens") == 123
+    assert attributes.get("output_tokens") == 45
+
+    points_by_name = _data_points_by_metric_name(metric_reader)
+    tokens = points_by_name["clearcut_gemini_tokens_total"]
+    by_type = {point.attributes["token_type"]: point for point in tokens}
+    assert by_type["prompt"].value == 123
+    assert by_type["output"].value == 45
+    assert all(point.attributes["model"] == "gemini-3.7-flash" for point in tokens)
+
+
+def test_extract_opens_an_extract_span_and_records_stage_latency(isolated_otel: None) -> None:
+    """CP-031 (ADR 0008, SDD Section 6): the `extractor.py:174` latency
+    record (CP-031 review, BLOCKING 2) had no test that would fail without
+    it -- the test above this one covers the span's token attributes and the
+    Gemini token counter, not `clearcut_stage_latency_ms`."""
+    span_exporter, metric_reader = install_in_memory_telemetry()
+    client = FakeGeminiClient()
+    adapter = GeminiSceneExtractor(client=client, model="gemini-3.7-flash")
+
+    adapter.extract([_scene(1)], jurisdiction_for("US"))
+
+    spans = [span for span in span_exporter.get_finished_spans() if span.name == "extract"]
+    assert len(spans) == 1
+
+    latency_points = metric_attributes_by_name(metric_reader)["clearcut_stage_latency_ms"]
+    assert latency_points
+    assert all(point["stage"] == "extract" for point in latency_points)
