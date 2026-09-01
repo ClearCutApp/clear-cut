@@ -144,6 +144,20 @@ def _imports_adapters(source: str, package: str = "") -> list[str]:
     ]
 
 
+def _adapter_import_violations(path: Path, source: str) -> list[str]:
+    """The adapters imports in `source` the exclusivity gate must reject for
+    the module at `path`.
+
+    An import is allowed only when it names `path`'s own package -- the one
+    legitimate case in the tree, `adapters/demo/in_memory.py`'s `from
+    clearcut.adapters.demo import scenario` -- decided by comparing package
+    identity through `_package_for`, never by `adapters/` membership alone
+    or by relative-vs-absolute import syntax.
+    """
+    package = _package_for(path)
+    return [name for name in _imports_adapters(source, package) if name != package]
+
+
 def test_composition_imports_the_adapters_it_wires():
     """A sanity check the next test needs: if `composition.py` stopped
     importing `clearcut.adapters` altogether, the exclusivity test below
@@ -154,9 +168,62 @@ def test_composition_imports_the_adapters_it_wires():
 
 def test_composition_is_the_only_module_importing_adapters():
     for path in SRC_DIR.rglob("*.py"):
-        if path == COMPOSITION_FILE or path == ADAPTERS_DIR or ADAPTERS_DIR in path.parents:
+        if path == COMPOSITION_FILE:
             continue
-        violations = _imports_adapters(path.read_text(), _package_for(path))
+        violations = _adapter_import_violations(path, path.read_text())
         assert violations == [], (
             f"{path}: only composition.py may import clearcut.adapters, found {violations}"
         )
+
+
+def test_same_package_absolute_adapter_import_is_allowed():
+    """`in_memory.py:26`'s own line, reproduced directly: an absolute (not
+    relative) same-package import must stay legal. Kills a mutant that
+    whitelists by relative-import syntax instead of package identity -- that
+    mutant would reject this absolute form -- and a mutant that bans every
+    adapter-to-adapter import outright, which would reject it too."""
+    source = "from clearcut.adapters.demo import scenario\n"
+    path = ADAPTERS_DIR / "demo" / "in_memory.py"
+    assert _adapter_import_violations(path, source) == []
+
+
+def test_cross_package_absolute_adapter_import_is_rejected():
+    """A different pair of adapter packages, same absolute-import shape as
+    the allowed case above: proves the comparison is package identity, not
+    merely "some `clearcut.adapters` import from inside `adapters/`" -- the
+    mutant that restates today's wholesale skip one prefix narrower."""
+    source = "from clearcut.adapters.bigquery import lore_store\n"
+    path = ADAPTERS_DIR / "gcp" / "document_ai.py"
+    assert _adapter_import_violations(path, source) == ["clearcut.adapters.bigquery"]
+
+
+def test_reviewer_plant_is_now_flagged():
+    """The reviewer's exact report, reproduced without touching the real
+    file: `from clearcut.adapters.demo.in_memory import InMemoryTrackerStore`
+    at the top of `adapters/http/routes.py`. Before this checkpoint the
+    wholesale `ADAPTERS_DIR in path.parents` skip let it through and the
+    suite stayed green; this pins the fix (CP-050, D39)."""
+    plant = "from clearcut.adapters.demo.in_memory import InMemoryTrackerStore\n"
+    path = ADAPTERS_DIR / "http" / "routes.py"
+    assert _adapter_import_violations(path, plant) == ["clearcut.adapters.demo.in_memory"]
+
+
+def test_gate_still_rejects_an_adapter_import_outside_adapters():
+    """Regression guard: narrowing the exclusion to same-package siblings
+    must not weaken the exclusivity check for modules outside `adapters/`.
+    Kills a mutant that widens the same-package allowance to any importer,
+    not just files under `adapters/`."""
+    source = "from clearcut.adapters.demo import scenario\n"
+    path = APPLICATION_DIR / "evaluate_delta.py"
+    assert _adapter_import_violations(path, source) == ["clearcut.adapters.demo"]
+
+
+def test_package_for_drops_only_the_module_name():
+    """Pins `_package_for` (absorbed from the Backlog, D39): the narrowed
+    same-package comparison runs through it, so a wrong `_package_for` would
+    misclassify packages and silently let a cross-package import through.
+    Kills mutant C, `".".join(parts)` in place of `".".join(parts[:-1])`,
+    which survived all seven tests during CP-001's review because none of
+    them routed a real path through this function."""
+    assert _package_for(DOMAIN_DIR / "jurisdiction.py") == "clearcut.domain"
+    assert _package_for(DOMAIN_DIR / "__init__.py") == "clearcut.domain"
