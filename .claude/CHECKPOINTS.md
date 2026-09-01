@@ -1364,6 +1364,107 @@ next reviewer does not re-raise it as new.
 belong to the next leader turn, and they are named here so they are not lost
 between one.
 
+### Settled 2026-08-31, the second terminal verdict (D38)
+
+**D38. The two vendor clients that connect during construction stay eager. The
+live wiring becomes injectable, not lazy. CP-030 is SUPERSEDED into CP-048 and
+CP-049.**
+
+*The obstacle, reproduced rather than taken on trust.* Both halves of the
+implementer's diagnosis are exact, and both were re-verified this turn against
+this repo's own `.venv`:
+
+- `clickhouse_connect`: `HttpClient.__init__` calls
+  `super().__init__(..., autoconnect=True)` with the value written as a literal,
+  and `autoconnect` is not a parameter of `HttpClient.__init__` at all
+  (`inspect.signature(...).parameters` — checked). The base `Client.__init__`
+  does take `autoconnect: bool = True` and guards `_init_common_settings` behind
+  it, so the capability exists in the library and the HTTP subclass closes the
+  door on it. `create_client` has no `autoconnect` parameter either. There is no
+  public way to build this client without a connect-and-fetch-settings round
+  trip.
+- `langchain_google_community`: `BigQueryVectorStore`'s
+  `@model_validator(mode="after") def validate_vals` calls `bigquery.Client(...)`,
+  `self.embedding.embed_query("test")`, `create_dataset` and `create_table`.
+  A pydantic after-validator runs inside `__init__`, and there is no skip flag.
+
+So criterion 6 as written — build the app with dummy values, assert zero network
+calls — and criterion 1's eager live wiring genuinely cannot both hold. The
+implementer was right to stop.
+
+*What the diagnosis missed, and it decides the ruling.* The adapters are not the
+problem. `ClickHouseTrackerStore.__init__(self, client: _ChClient)` and
+`BigQueryLoreStore.__init__(self, vector_store: _VectorStore, embeddings:
+_Embedder)` both take an already-built vendor object behind a narrow local
+`Protocol` and perform no I/O whatsoever. CP-023 and CP-024 already solved this
+exact problem by pushing vendor construction out of the adapter. The only code
+that must call the vendor constructor is `composition.py`. The fix is therefore
+to apply the move those two checkpoints already made, one level further out —
+not to invent a new mechanism.
+
+*Options (a) and (b) are declined: the lazy wrapper is the wrong shape, and it
+is wrong twice.* First, it contradicts a criterion of the same checkpoint.
+Criterion 4 requires a missing or bad credential to fail **at startup naming
+that variable, not at the first request**, and says outright that "a demo that
+500s on the first upload because a secret was never set is the failure this
+criterion exists to prevent." A lazily-constructed client moves exactly that
+failure to the first upload. Installing an abstraction that undoes a criterion
+the same block carries is not an unblock. Second, §4: two proxy classes with one
+caller each, wrapping a urllib3-backed client and a pydantic model, each needing
+its own tests and its own mypy-strict conformance proof, is "an interface with a
+single implementation" and "an abstraction for one caller" — banned until a
+checkpoint proves the need, and nothing here proves it.
+
+*Option (c) is taken, with the hole in it repaired.* As the implementer phrased
+it, (c) narrows criterion 6 and stops. That would leave criteria 1, 3, 5 and 7
+untestable for the live branch: if the live graph cannot be constructed offline,
+then nothing can assert that it wired the eight adapters, that two calls produce
+independent instances, or that each mode wired the classes it claims by type.
+Narrowing one criterion would quietly gut four. So the ruling adds the seam the
+adapters already use: **the live wiring accepts the two connecting vendor
+clients as an argument with a real default.** Production calls the real
+constructors and connects eagerly; a unit test passes fakes and asserts the
+whole live graph by type with no network. Plain constructor injection, which §4
+endorses by name, and no new class.
+
+*Eager connect is correct here, not merely tolerated.* This service cannot do
+its job without ClickHouse, and criterion 4 already chose fail-fast. A client
+that connects in `__init__` delivers that policy rather than fighting it: on
+Cloud Run at `min-instances 0` a bad credential fails the revision loudly
+instead of producing a service that accepts an upload and 500s on it.
+
+*What D36 contributes.* The demo runs in `CLEARCUT_MODE=mock`, where no live
+adapter is constructed at all, so the zero-socket guarantee the demo actually
+depends on is the mock criterion — and that one is strictly stronger than
+criterion 6 ever was, because it drives a whole `POST /api/analyze` request
+through the app rather than only its construction. Criterion 6's real remaining
+job is unit-test hygiene (§5: unit tests do no network), and injection delivers
+that in full.
+
+*Why this is a supersede and not a return to `TODO`.* AGENT.md §6 states that
+`BLOCKED` is terminal and "the `leader` never returns it to `TODO`", and §7's
+table gives `BLOCKED` exactly one outgoing edge: `SUPERSEDED`, one generation,
+`Depth: 0` only. Those two rules are what remove the last unbounded back-edge
+from the machine, and `./.claude/init.sh verify` proves it mechanically from
+that table — an unblock that reset the status would make the proof false. So the
+unblock has to be a split, and CP-030 is `Depth: 0`, which makes it eligible for
+exactly one.
+
+*The split axis is the one CP-030's own Notes recorded* — "live wiring in one
+checkpoint and the mock branch in another" — written before anyone knew what
+would block, and still right. CP-048 takes the app factory, the mode switch and
+the mock branch: it needs no credential, it is dispatchable immediately, and it
+delivers the entire demo path on its own. CP-049 takes the live wiring and this
+ruling's seam. Both are `Depth: 1`, so if either blocks again the loop stops for
+a human rather than splitting a second time.
+
+*One consequence worth stating plainly.* Between CP-048 and CP-049, a
+deployment that omits `CLEARCUT_MODE` gets a loud startup failure saying the
+live wiring is incomplete. That is deliberate and it is the safe direction:
+CP-030's criterion 7 chose "absent means live" precisely so a forgotten variable
+never serves planted data, and an incomplete live branch that refuses to start
+honours that better than one that silently falls back to mock.
+
 ---
 
 ## Active
@@ -1495,100 +1596,92 @@ The cut list is unchanged in shape: CP-044 first (and cutting it cuts CP-041 and
 CP-045 with it), then CP-027 — already `DONE` — then the rest as written above.
 CP-031 stays off it, for the reason D14's amendment gives.
 
-### CP-030 — Wire the concrete adapters in the one place allowed to
+**Five left, after the second supersede of the project (2026-08-31, D38).**
+CP-041 is `DONE` and CP-047 is `IN_REVIEW`. CP-030 is `SUPERSEDED` and archived;
+CP-048 and CP-049 replace it at `Depth: 1`, so either of them blocking again
+stops the loop for a human rather than splitting a second time. CP-046 and
+CP-047 arrived earlier the same day from the coverage audit.
+
+- **Dispatch now, in parallel:** reviewer on CP-047, and implementer on CP-048.
+  CP-048 is the only dependency-free block left and three checkpoints queue
+  behind it; CP-047 touches `routes.py` only, which CP-048 never opens.
+- **Then CP-049, then CP-031, then CP-046.** All three need CP-048's
+  `create_app()`, none needs either of the others, and they are serial only
+  because all three edit `composition.py`. That file is the reason they queue,
+  not a real dependency between them, so a later turn may reorder them freely.
+- **CP-049 before CP-031** because instrumentation attaches to wiring that has
+  stopped moving, which is the same reasoning that has kept CP-031 last since it
+  was written.
+
+The cut list gains one entry and it is worth stating, because D38 changed which
+half of the wiring the demo needs: **CP-049 is now cuttable and CP-048 is not.**
+Mock mode carries the entire demo (D36), so if the clock forces a choice the
+live adapter wiring is what slips, and what ships is a mocked MVP that runs.
+CP-031 stays off the list, for the reason D14's amendment gives.
+
+### CP-049 — Wire the eight live adapters, and keep the wiring testable offline
 - Status: TODO
 - Attempts: 0/3
-- Depth: 0
+- Depth: 1
 - Layer: adapters
-- Depends on: CP-022, CP-023, CP-024, CP-029, CP-043
+- Depends on: CP-022, CP-023, CP-024, CP-048
 - Acceptance:
-  - [ ] `src/clearcut/composition.py` builds the eight adapters, injects them
-        into the use cases, and returns a configured Flask app from a
-        `create_app()` function, so `gcloud run deploy --source .` has an entry
-        point.
-  - [ ] It is the only module under `src/clearcut/` importing from
-        `clearcut.adapters`. The existing layer-boundary test is extended to
-        assert that, with `composition.py` as its single named exception —
-        which turns §2 rule 4 from a convention into a gate.
+  - [ ] The `live` branch builds the eight concrete adapters and injects them
+        into the five use cases, replacing CP-048's named failure. A test
+        asserts each of the eight by type.
   - [ ] Every credential, endpoint, and model id is read from the environment
         here and passed as a constructor argument: `GOOGLE_CLOUD_PROJECT`,
         `DOCAI_PROCESSOR_ID`, both Gemini model ids, `PARALLEL_API_KEY`, the
         three `CLICKHOUSE_*` values, the data store id, and the webhook URL. A
         test asserts no adapter module contains `os.environ` or `os.getenv`.
+  - [ ] The two vendor clients that connect during construction —
+        `clickhouse_connect.get_client(...)` and `BigQueryVectorStore(...)` —
+        are accepted by the live wiring as an argument whose default builds the
+        real thing (D38). A test passes fakes satisfying the adapters' existing
+        `_ChClient` and `_VectorStore` protocols, builds the entire live graph,
+        and asserts all eight adapters by type while opening no socket. This is
+        the criterion that replaces CP-030's unsatisfiable sixth.
+  - [ ] The seam is a plain parameter with a real default. No lazy proxy, no
+        deferred-construction wrapper, no factory registry, no mode object for
+        the clients — D38 declines all of them, and §4 bans an abstraction with
+        one caller. A reviewer finding any of these shapes should reject the
+        diff rather than negotiate it.
   - [ ] Failure path: a missing required variable fails at startup naming that
-        variable, not at the first request. A demo that 500s on the first
-        upload because a secret was never set is the failure this criterion
-        exists to prevent.
-  - [ ] Plain constructor injection only: no DI container, no service locator,
-        no module-level singleton, no registry (§4 bans all four by name). A
-        test asserts two `create_app()` calls produce independent instances.
-  - [ ] A test builds the app with every environment variable set to a dummy
-        value and asserts it constructs without a single network call.
-  - [ ] `CLEARCUT_MODE` selects the wiring (D36): `live` builds the eight
-        concrete adapters above, `mock` builds CP-043's demo adapters, and an
-        absent variable means `live` — so a deployment that forgets the
-        variable fails on a missing credential instead of serving planted data.
-        A test asserts each mode wired the classes it claims, by type.
-  - [ ] Mock mode needs no credentials at all: it reads none of the twelve
-        variables above, constructs no ClickHouse client, calls no
-        `ensure_schema` or any other provisioning method, and opens no socket.
-        Proven by a test that clears the environment down to
-        `CLEARCUT_MODE=mock`, calls `create_app()`, and drives
-        `POST /api/analyze` through Flask's test client: the response carries
-        SDD §8(d)'s three findings with their page numbers, and
-        `GET /api/tracker` reads exactly three items, all at BLOCKED. This is
-        the whole decision in one test — the MVP runs today, on nothing.
-  - [ ] Failure path: `CLEARCUT_MODE` set to any third value fails at startup
-        naming the variable and both accepted values. Falling back to either
-        mode on an unrecognized string is the failure this prevents, because
-        the fallback nobody notices is the one that ships.
-  - [ ] Mock mode announces itself once at startup — a single `WARNING` naming
-        the mode, asserted with `caplog` — so a mocked service is never
-        mistaken for a live one by reading its logs.
+        variable, not at the first request. A demo that 500s on the first upload
+        because a secret was never set is the failure this criterion exists to
+        prevent.
+  - [ ] Failure path: with no fakes injected and unreachable dummy credentials,
+        `create_app()` in live mode fails during construction rather than
+        returning an app that breaks on its first request. A test asserts the
+        failure is raised and names the dependency. Eager connect is the chosen
+        behaviour here, not an accident (D38).
   - [ ] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
-- Files: src/clearcut/composition.py, tests/unit/test_composition.py,
-  tests/unit/test_layer_boundaries.py
-- Notes: Wiring only. The OpenTelemetry provider setup is CP-031, which depends
-  on this checkpoint and lands after it. D14 deferred OTel to the Backlog and
-  has since been overturned, so read that entry with its amendment: OTel is
-  planned, it is CP-031, and it is not part of CP-030. Do not widen a criterion
-  above to anticipate it, and do not add an exporter here. CP-031 adds the
-  tracer and meter providers to the `create_app()` this checkpoint writes.
+- Files: src/clearcut/composition.py, tests/unit/test_composition.py
+- Notes: **Born 2026-08-31 from CP-030's supersede (D38), at `Depth: 1`.** If
+  this blocks again the loop stops for a human — it is not split a second time.
 
-  **The second criterion became satisfiable on 2026-08-30, by D23.** As the
-  graph stood, CP-029 had to name an adapter's not-found and unavailability
-  errors to map them to 404 and 502, and the only way to name them was to
-  import a sibling adapter package from `adapters/http/routes.py` — which the
-  criterion below forbids. CP-034 moves those names into `clearcut.domain.errors`,
-  so the layer-boundary extension asked for here can be written as a gate
-  rather than negotiated down when someone hits it. Do not weaken it.
+  Read D38 before starting. The obstacle that blocked CP-030 is real and was
+  reproduced twice: `HttpClient.__init__` hardcodes `autoconnect=True` and does
+  not accept the parameter, and `BigQueryVectorStore`'s pydantic after-validator
+  calls `bigquery.Client`, `embed_query("test")`, `create_dataset` and
+  `create_table` inside `__init__`. Neither can be opted out of.
 
-  **The mock wiring mode arrived on 2026-08-31 with D36, a user decision.**
-  Read it there; four criteria above carry it. Three things it does not
-  license. It does not weaken a live criterion — both modes ship, and the live
-  wiring is still what the deployment runs. It does not license importing
-  anything from `tests/`; the in-memory implementations are
-  `src/clearcut/adapters/demo/`, CP-043's deliverable, and this checkpoint only
-  chooses between two sets of constructors. And it does not license a mode
-  abstraction: one `if` at the top of `create_app()`, one wiring function under
-  each branch, the same route factory below both. A strategy object, a registry
-  keyed by mode name, or a factory-of-factories here is §4's banned list
-  arriving through the door marked *configuration*.
+  What makes this tractable is that the adapters were already built right:
+  `ClickHouseTrackerStore` takes a `_ChClient` and `BigQueryLoreStore` takes a
+  `_VectorStore` and an `_Embedder`, all narrow local `Protocol`s, and neither
+  performs I/O in its constructor. CP-023 and CP-024 pushed vendor construction
+  out of the adapter; this block pushes it out of the wiring function the same
+  way. Nothing new is invented, no port changes, and no `DONE` block reopens.
 
-  This is the convergence point of the whole graph and the last checkpoint
-  before SDD §8(d) can run — now in both senses, since the mocked run of that
-  same check is a criterion above and the live run is the Backlog entry.
-
-  If this reaches 3/3, the split axis is live wiring in one checkpoint and the
-  mock branch in another. Recorded so a later turn inherits the seam instead of
-  inventing one under pressure.
+  The mock branch is CP-048's and is finished before this starts. Do not touch
+  it, and do not let a live criterion above widen into it.
 
 ### CP-031 — Trace the five pipeline stages and export them to Grafana Cloud
 - Status: TODO
 - Attempts: 0/3
 - Depth: 0
 - Layer: adapters
-- Depends on: CP-023, CP-029, CP-030, CP-043
+- Depends on: CP-023, CP-029, CP-043, CP-048
 - Acceptance:
   - [ ] `create_app()` configures one tracer provider and one meter provider
         whose OTLP exporter reads `OTEL_EXPORTER_OTLP_ENDPOINT` and
@@ -1695,7 +1788,7 @@ CP-031 stays off it, for the reason D14's amendment gives.
 - Attempts: 0/3
 - Depth: 0
 - Layer: adapters
-- Depends on: CP-030
+- Depends on: CP-048
 - Acceptance:
   - [ ] `create_app()` serves the `web/` build: `GET /` returns that build's
         `index.html` with an HTML content type. A test points the app at a
@@ -1746,72 +1839,6 @@ CP-031 stays off it, for the reason D14's amendment gives.
   If this reaches 3/3, the split axis is static file serving in one block and
   the SPA fallback route in another. Recorded so a later turn inherits the seam
   rather than inventing one under pressure.
-
-### CP-047 — Put the scenes the analyze response already holds into its body
-- Status: TODO
-- Attempts: 0/3
-- Depth: 0
-- Layer: adapters
-- Depends on: CP-041
-- Acceptance:
-  - [ ] `_analysis_report_json` emits a `"scenes"` key: a list of
-        `{number, heading, page_start, page_end, text, content_hash}` objects
-        built from `report.script.scenes`, in the order the script holds them,
-        by a `_scene_json(scene: Scene) -> JsonDict` helper beside
-        `_finding_json`. A test posts one analyze request over a fake whose
-        report carries two scenes and asserts both objects field for field, in
-        order.
-  - [ ] Every value is read, never recomputed. A test asserts the response's
-        `content_hash` is the string the domain put on the scene, so a mutant
-        that re-hashes `scene.text` inside the serializer, or emits `""`, fails.
-        The hash is the domain's (§3, Information Expert); the adapter repeats
-        it.
-  - [ ] Both branches carry it. A `version: 2` request routed to
-        `EvaluateDelta` returns the scenes of the version it just parsed, not
-        the stored previous one's. A test asserts the delta body's scene
-        numbers; CP-041's existing key-set parity test then covers the new key
-        with no new assertion.
-  - [ ] The response key set is exactly `script_id`, `project_id`, `version`,
-        `gcs_uri`, `jurisdiction_code`, `scenes`, `findings`, `tracker_items` —
-        eight keys, asserted as a set, so a ninth cannot arrive unnoticed and
-        break `web/`'s typed cast.
-  - [ ] Failure path: a script holding no scenes serializes `"scenes": []` —
-        key present, empty list, never `null` and never absent, because the SPA
-        branches on `.length`. A test asserts it.
-  - [ ] No existing route test is edited to accommodate the key. The diff adds
-        a helper, a key, and tests. If an existing assertion has to change, the
-        key set moved further than this block allows: stop and report rather
-        than adjusting the older test.
-  - [ ] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
-- Files: src/clearcut/adapters/http/routes.py, tests/unit/adapters/test_routes.py
-- Notes: **CP-029's reviewer found this, recorded it as non-blocking item 3, and
-  no leader turn ever ruled it.** It sat in an archived review note, in neither
-  a checkpoint nor the Backlog, until the audit on 2026-08-31.
-
-  SDD §4.1 step 8 promises the response carries "the script metadata, scenes,
-  findings with citations, and tracker items", and the Backlog leans on that
-  promise as the stated reason `GET /api/scripts/{script_id}` can stay deferred
-  — "the SPA's first view works without it". `_analysis_report_json` emits seven
-  keys and no `scenes`, so that deferral currently rests on something untrue,
-  and ScriptView — SDD §5 defines it as the screenplay text with findings
-  overlaid inline — would have no text to render.
-
-  **One correction to the finding as recorded, and it is what makes this small.**
-  The note says the analyze body "cannot" carry scenes because `AnalysisReport`
-  has no `scenes` field. `AnalysisReport` does not, but `Script` does: both use
-  cases construct `Script(scenes=scenes, ...)`, so `report.script.scenes` is
-  populated on every path, delta included, and `web/src/api/client.ts` already
-  declares a matching six-field `Scene`. Nothing in `application/` changes, no
-  port moves, and `AnalysisReport` keeps its three fields. That is why this is
-  one serializer key rather than a use-case reopening, and why it is a
-  checkpoint now instead of a fourth entry behind the findings-table question.
-
-  Why `Depends on: CP-041`: same file, and CP-041 is `IN_REVIEW` with an
-  uncommitted diff in `routes.py`. Sequencing keeps two turns out of one module.
-
-  Scope guard: the `contact` type drift the same reviewer recorded beside this
-  is a `web/` change, not a backend one, and stays in the Backlog with the SPA
-  surfaces that rewrite that file anyway. Do not widen this block to it.
 
 ---
 
@@ -2059,6 +2086,458 @@ a mock is, and no criterion required otherwise.
 ## Archive
 
 _Terminal checkpoints (`DONE` / `SUPERSEDED`), newest first._
+
+### CP-048 — Stand up the app factory and the mock branch, with no credentials
+- Status: DONE
+- Attempts: 0/3
+- Depth: 1
+- Layer: adapters
+- Depends on: CP-029, CP-043
+- Acceptance:
+  - [x] `src/clearcut/composition.py` exposes `create_app()` returning a
+        configured Flask app with CP-029's blueprint mounted through its frozen
+        five-argument factory, so `gcloud run deploy --source .` has an entry
+        point.
+  - [x] `CLEARCUT_MODE` selects the wiring (D36): `mock` builds CP-043's demo
+        adapters, `live` delegates to the live wiring seam CP-049 fills, and an
+        absent variable means `live` — so a deployment that forgets the variable
+        never serves planted data. A test asserts the mock branch wired the demo
+        classes by type.
+  - [x] Mock mode needs no credentials at all: it reads none of the twelve
+        environment values, constructs no ClickHouse client, calls no
+        `ensure_schema` or any other provisioning method, and opens no socket.
+        Proven by a test that clears the environment down to
+        `CLEARCUT_MODE=mock`, calls `create_app()`, and drives
+        `POST /api/analyze` through Flask's test client: the response carries
+        SDD §8(d)'s three findings with their page numbers, and
+        `GET /api/tracker` reads exactly three items, all at BLOCKED. This is
+        the whole of D36 in one test — the MVP runs today, on nothing.
+  - [x] Failure path: `CLEARCUT_MODE` set to any third value fails at startup
+        naming the variable and both accepted values. Falling back to either
+        mode on an unrecognized string is the failure this prevents, because the
+        fallback nobody notices is the one that ships.
+  - [x] Failure path: `live` mode, whose wiring CP-049 completes, fails at
+        startup with an error naming the live wiring as incomplete. It never
+        falls back to mock. Two tests: the error is raised, and the returned
+        object is not a mock-wired app. D38 explains why refusing to start is
+        the safe direction here.
+  - [x] Mock mode announces itself once at startup — a single `WARNING` naming
+        the mode, asserted with `caplog` — so a mocked service is never mistaken
+        for a live one by reading its logs.
+  - [x] Plain constructor injection only: no DI container, no service locator,
+        no module-level singleton, no registry (§4 bans all four by name). One
+        `if` at the top of `create_app()`, one wiring function under each
+        branch, the same route factory below both. A test asserts two
+        `create_app()` calls produce independent instances.
+  - [x] `composition.py` is the only module under `src/clearcut/` importing from
+        `clearcut.adapters`. The existing layer-boundary test is extended to
+        assert that, with `composition.py` as its single named exception —
+        which turns §2 rule 4 from a convention into a gate. Do not weaken it;
+        D23 moved the error names into `clearcut.domain.errors` precisely so
+        this can be a gate.
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: src/clearcut/composition.py, tests/unit/test_composition.py,
+  tests/unit/test_layer_boundaries.py
+- Notes: **Born 2026-08-31 from CP-030's supersede (D38), at `Depth: 1`.** If
+  this blocks again the loop stops for a human — it is not split a second time.
+
+  This is the demo path in one block. It needs no credential, it touches no
+  vendor client, and on its own it delivers what D36 asked for: a running MVP
+  with nothing behind it. It is dispatchable immediately.
+
+  Scope guard, because this block is the one that could quietly reabsorb the
+  other. Do not wire a single live adapter here, do not read a credential, and
+  do not import `clickhouse_connect` or `langchain_google_community`. The live
+  branch is one named failure until CP-049 lands. OpenTelemetry is CP-031 and
+  is not part of this block either.
+
+  **Implementer, 2026-08-31.** RED confirmed first: `tests/unit/test_composition.py`
+  against the not-yet-created `clearcut.composition` module failed collection
+  with `ModuleNotFoundError: No module named 'clearcut.composition'`; the two
+  layer-boundary additions to `tests/unit/test_layer_boundaries.py` failed on
+  `COMPOSITION_FILE.exists()` for the same reason. All twenty composition tests
+  and both boundary additions then green against `composition.py`.
+
+  *Design choices the acceptance boxes left open.* `create_app()` builds one
+  `_UseCaseGraph` (a small frozen dataclass, not a five-tuple) per call, so
+  `lore`, `tracker`, and `notifier` are constructed once and shared across the
+  five use cases within that call — the property `POST /api/analyze` writing
+  a tracker row and `GET /api/tracker` reading it back on the same app
+  instance needs. Two `create_app()` calls never share a graph, so two test
+  clients built from two calls stay independent (asserted by posting through
+  one and reading an empty tracker through the other). The live branch is
+  `_build_live_use_cases()`, one function that only raises `RuntimeError`
+  today; a direct unit test on that function (not routed through
+  `create_app()`) proves the failure originates inside the live branch itself,
+  not somewhere bypassable in `create_app()`, which is what "never falls back
+  to mock" actually needs proof of. The unrecognized-mode failure raises
+  `ValueError`; the incomplete-live-wiring failure raises `RuntimeError` — two
+  distinct builtin types, not a new domain-error or config-error class, since
+  neither is a domain rule and inventing one would be the single-implementation
+  abstraction §4 bans.
+
+  Criterion 8's test excludes the `adapters/` subtree itself from the scan:
+  `adapters/demo/in_memory.py` already imports `clearcut.adapters.demo.scenario`
+  (a sibling within its own package), which is not the layer violation §2 rule
+  4 targets. A sanity test (`test_composition_imports_the_adapters_it_wires`)
+  guards against the exclusivity test passing vacuously if `composition.py`
+  ever stopped importing `clearcut.adapters` altogether.
+
+  **Gates, all green.** `env -u PYTHONPATH .venv/bin/pytest -q` → 417 passed
+  (up from CP-043's 366 passed/2 failed baseline — CP-047's `routes.py` work
+  landed clean in the interim, confirmed by `git status` showing neither
+  `adapters/http/routes.py` nor `tests/unit/adapters/test_routes.py` touched
+  by this diff). `mypy src tests infra` → clean, 84 source files. `ruff check .`
+  → all checks passed. `ruff format --check .` → 110 files formatted (one
+  reformat applied to `composition.py`'s over-length string literal before the
+  final run). `./.claude/init.sh check` → 4/4 passed.
+
+  **Reviewed 2026-08-31 — PASS, zero blocking findings.** Gates on the working
+  tree, reviewer's own run: `./.claude/init.sh check` -> 4 passed, 0 failed
+  (`ruff check` clean; `ruff format --check` 110 files already formatted;
+  `mypy src tests infra` no issues in 84 source files; `pytest -q` 417 passed).
+
+  Every load-bearing behaviour was mutation-checked in a throwaway copy of
+  `src/` and `tests/` under the scratch directory, never in the repository.
+  Killed: swapping the mock and live branches (6 tests); defaulting an absent
+  `CLEARCUT_MODE` to `mock`; replacing the unrecognized-value `ValueError` with
+  a silent mock fallback; making the `live` branch delegate to
+  `_build_mock_use_cases()` (2 tests — so criterion 5's "never falls back to
+  mock" is gated at `create_app()` as well as inside the live builder);
+  dropping both mode names from the `ValueError` message; downgrading the
+  startup `WARNING` to `INFO`, emitting it twice, and dropping `mock` from its
+  text; a module-level `_UseCaseGraph` singleton reused across `create_app()`
+  calls; handing `ListTrackerItems` its own `InMemoryTrackerStore`; a genuinely
+  distinct fourth scenario finding (the analyze call 500s, so "exactly three"
+  has teeth); moving the Ferrari finding off page 3; writing tracker rows at
+  `IN_PROGRESS` instead of `BLOCKED`; an `os.environ["GOOGLE_CLOUD_PROJECT"]`
+  read inside the mock builder; and a real `socket.create_connection` inside it.
+  One survivor, recorded because it is not a defect: a duplicate finding reusing
+  an existing `raw_text` is deduplicated upstream, so the response still holds
+  three findings (`EVT-001/2/3`) — the scenario genuinely yields three.
+
+  Criterion 3 was checked outside pytest as well, because `monkeypatch.setattr(os,
+  "environ", ...)` only guards reads routed through `os.environ` and begins after
+  import time: a subprocess with a `sys.addaudithook` on
+  `socket.connect`/`getaddrinfo` and a real `os.environ.clear()` imported
+  `clearcut.composition`, built the app and drove both requests — zero network
+  events, no `clickhouse_connect`, `google`, `langchain_google_community`,
+  `requests` or `httpx` in `sys.modules`, and `os.environ` still exactly
+  `{'CLEARCUT_MODE': 'mock'}` at the end. The empty `adapters/*/__init__.py`
+  files are why importing `composition` pulls no vendor module before a test's
+  control begins.
+
+  Criterion 8's gate is not vacuous. An adapter import planted in
+  `application/ports.py`, in `domain/tracker.py`, and in `src/clearcut/__init__.py`
+  each fails it — the last is caught by no other test — and stubbing out
+  `composition.py`'s adapter imports fails the sanity test.
+
+  Layer direction holds: `composition.py` imports `flask`, `clearcut.adapters`
+  and `clearcut.application` only, and the diff moves no file under
+  `application/` or `domain/`. `create_blueprint`'s five parameters
+  (`routes.py:216-222`) are five distinct types, so `mypy` proves the call order
+  criterion 1 names. No §4 item introduced: one `if/elif/else`, one builder per
+  branch, a frozen five-field dataclass where a five-tuple would go, and no
+  container, locator, singleton or registry.
+
+  **Non-blocking, for the leader.**
+  `test_composition_is_the_only_module_importing_adapters` skips the entire
+  `adapters/` subtree (`test_layer_boundaries.py:157`) rather than only
+  same-package sibling imports. `adapters/demo/in_memory.py` importing
+  `clearcut.adapters.demo.scenario` forces some exception, but the coarse form
+  also lets a cross-package one through: planting
+  `from clearcut.adapters.demo.in_memory import InMemoryTrackerStore` at the top
+  of `adapters/http/routes.py` leaves the suite green, and a live route holding
+  a demo store is near the failure D36 exists to prevent. Narrowing the
+  exclusion to same-subpackage imports would close it. Not blocking here: every
+  module the criterion targets is gated, and the criterion's literal premise is
+  already false against committed CP-043 code.
+
+### CP-047 — Put the scenes the analyze response already holds into its body
+- Status: DONE
+- Attempts: 0/3
+- Depth: 0
+- Layer: adapters
+- Depends on: CP-041
+- Acceptance:
+  - [x] `_analysis_report_json` emits a `"scenes"` key: a list of
+        `{number, heading, page_start, page_end, text, content_hash}` objects
+        built from `report.script.scenes`, in the order the script holds them,
+        by a `_scene_json(scene: Scene) -> JsonDict` helper beside
+        `_finding_json`. A test posts one analyze request over a fake whose
+        report carries two scenes and asserts both objects field for field, in
+        order.
+  - [x] Every value is read, never recomputed. A test asserts the response's
+        `content_hash` is the string the domain put on the scene, so a mutant
+        that re-hashes `scene.text` inside the serializer, or emits `""`, fails.
+        The hash is the domain's (§3, Information Expert); the adapter repeats
+        it.
+  - [x] Both branches carry it. A `version: 2` request routed to
+        `EvaluateDelta` returns the scenes of the version it just parsed, not
+        the stored previous one's. A test asserts the delta body's scene
+        numbers; CP-041's existing key-set parity test then covers the new key
+        with no new assertion.
+  - [x] The response key set is exactly `script_id`, `project_id`, `version`,
+        `gcs_uri`, `jurisdiction_code`, `scenes`, `findings`, `tracker_items` —
+        eight keys, asserted as a set, so a ninth cannot arrive unnoticed and
+        break `web/`'s typed cast.
+  - [x] Failure path: a script holding no scenes serializes `"scenes": []` —
+        key present, empty list, never `null` and never absent, because the SPA
+        branches on `.length`. A test asserts it.
+  - [x] No existing route test is edited to accommodate the key. The diff adds
+        a helper, a key, and tests. If an existing assertion has to change, the
+        key set moved further than this block allows: stop and report rather
+        than adjusting the older test.
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: src/clearcut/adapters/http/routes.py, tests/unit/adapters/test_routes.py
+- Notes: **CP-029's reviewer found this, recorded it as non-blocking item 3, and
+  no leader turn ever ruled it.** It sat in an archived review note, in neither
+  a checkpoint nor the Backlog, until the audit on 2026-08-31.
+
+  **Implemented.** Added `_scene_json` beside `_finding_json` in
+  `routes.py`, imported `Scene` from `clearcut.domain.script`, and added one
+  `"scenes"` line to `_analysis_report_json`, reading `script.scenes` off the
+  `Script` already on the report (no `AnalysisReport` or `application/`
+  change). Five new tests in `test_routes.py`, all additions, no existing
+  assertion touched: field-for-field scene ordering, `content_hash` equals
+  the domain's own value, the delta branch returns the newly parsed
+  version's scenes (not `tracker.latest_script`'s stored one), the eight-key
+  set, and the empty-scenes-list failure path. `git diff` on the test file
+  shows zero removed/changed lines, only additions — confirmed with
+  `git diff | grep '^-[^-]'` returning nothing. Watched all five fail with
+  `KeyError: 'scenes'` before the serializer change. Gates: `pytest -q` ->
+  405 passed; `ruff check .` clean; `ruff format --check .` clean (108 files
+  already formatted); `mypy src tests infra` -> no issues in 82 source
+  files.
+
+  SDD §4.1 step 8 promises the response carries "the script metadata, scenes,
+  findings with citations, and tracker items", and the Backlog leans on that
+  promise as the stated reason `GET /api/scripts/{script_id}` can stay deferred
+  — "the SPA's first view works without it". `_analysis_report_json` emits seven
+  keys and no `scenes`, so that deferral currently rests on something untrue,
+  and ScriptView — SDD §5 defines it as the screenplay text with findings
+  overlaid inline — would have no text to render.
+
+  **One correction to the finding as recorded, and it is what makes this small.**
+  The note says the analyze body "cannot" carry scenes because `AnalysisReport`
+  has no `scenes` field. `AnalysisReport` does not, but `Script` does: both use
+  cases construct `Script(scenes=scenes, ...)`, so `report.script.scenes` is
+  populated on every path, delta included, and `web/src/api/client.ts` already
+  declares a matching six-field `Scene`. Nothing in `application/` changes, no
+  port moves, and `AnalysisReport` keeps its three fields. That is why this is
+  one serializer key rather than a use-case reopening, and why it is a
+  checkpoint now instead of a fourth entry behind the findings-table question.
+
+  Why `Depends on: CP-041`: same file, and CP-041 is `IN_REVIEW` with an
+  uncommitted diff in `routes.py`. Sequencing keeps two turns out of one module.
+
+  Scope guard: the `contact` type drift the same reviewer recorded beside this
+  is a `web/` change, not a backend one, and stays in the Backlog with the SPA
+  surfaces that rewrite that file anyway. Do not widen this block to it.
+
+  **Reviewed 2026-08-31 — PASS, zero blocking findings.** Gates on the working
+  tree, reviewer's own run: `./.claude/init.sh check` -> 4 passed, 0 failed
+  (`ruff check` clean; `ruff format --check` 108 files already formatted;
+  `mypy` no issues in 82 source files; `pytest -q` 405 passed).
+
+  Each contested behaviour was mutation-checked in a throwaway copy of the tree
+  under the scratch directory, never in the repository. Killed: dropping the
+  `"scenes"` key (all five new tests fail — the implementer's pre-change red
+  reproduced); `... or None` on the empty list (only the empty-list test);
+  `reversed(script.scenes)` (field-for-field and delta); `"heading":
+  scene.text`, swapped `page_start`/`page_end`, and a seventh scene field (each
+  field-for-field); a ninth response key (key-set); `"content_hash": ""` and an
+  sha1 recompute (each the hash test); and, in `evaluate_delta.py`, building the
+  new `Script` from `previous.scenes` (the delta test). `git diff --numstat` is
+  `127 0` on the test file and `13 0` on `routes.py`, so the pure-addition claim
+  holds and no `application/` or `domain/` file moved. CP-041's parity assertion
+  at `test_routes.py:585` carries the key onto the delta body exactly as the
+  third criterion predicted, and `web/src/api/client.ts:40` already declares the
+  same six fields in the same names. Layer direction is intact: `routes.py`
+  imports `Scene` from `clearcut.domain.script`, adapters to domain, and
+  `_scene_json` maps fields with no rule in it.
+
+  **One surviving mutant, recorded because it is not a defect.** Recomputing the
+  hash inside the serializer with the domain's own `content_hash(scene.text)`
+  returns a byte-identical string, so no assertion can distinguish it — the
+  second criterion's wording promises slightly more than any test can deliver.
+  What matters is checked: the serializer reads `scene.content_hash`
+  (`routes.py:136`), and a recompute with any other algorithm, or an empty
+  string, is killed. Not a finding, and not work for anyone.
+
+  Observation, no action: `routes.py` crosses §4's soft 300-line guide (297 ->
+  310). The alternative — a separate serializers module for one helper — is the
+  over-engineering §4 bans, so the guide yields here.
+
+### CP-030 — Wire the concrete adapters in the one place allowed to
+- Status: SUPERSEDED
+- Attempts: 0/3
+- Depth: 0
+- Layer: adapters
+- Depends on: CP-022, CP-023, CP-024, CP-029, CP-043
+- Acceptance:
+  - [ ] `src/clearcut/composition.py` builds the eight adapters, injects them
+        into the use cases, and returns a configured Flask app from a
+        `create_app()` function, so `gcloud run deploy --source .` has an entry
+        point.
+  - [ ] It is the only module under `src/clearcut/` importing from
+        `clearcut.adapters`. The existing layer-boundary test is extended to
+        assert that, with `composition.py` as its single named exception —
+        which turns §2 rule 4 from a convention into a gate.
+  - [ ] Every credential, endpoint, and model id is read from the environment
+        here and passed as a constructor argument: `GOOGLE_CLOUD_PROJECT`,
+        `DOCAI_PROCESSOR_ID`, both Gemini model ids, `PARALLEL_API_KEY`, the
+        three `CLICKHOUSE_*` values, the data store id, and the webhook URL. A
+        test asserts no adapter module contains `os.environ` or `os.getenv`.
+  - [ ] Failure path: a missing required variable fails at startup naming that
+        variable, not at the first request. A demo that 500s on the first
+        upload because a secret was never set is the failure this criterion
+        exists to prevent.
+  - [ ] Plain constructor injection only: no DI container, no service locator,
+        no module-level singleton, no registry (§4 bans all four by name). A
+        test asserts two `create_app()` calls produce independent instances.
+  - [ ] A test builds the app with every environment variable set to a dummy
+        value and asserts it constructs without a single network call.
+  - [ ] `CLEARCUT_MODE` selects the wiring (D36): `live` builds the eight
+        concrete adapters above, `mock` builds CP-043's demo adapters, and an
+        absent variable means `live` — so a deployment that forgets the
+        variable fails on a missing credential instead of serving planted data.
+        A test asserts each mode wired the classes it claims, by type.
+  - [ ] Mock mode needs no credentials at all: it reads none of the twelve
+        variables above, constructs no ClickHouse client, calls no
+        `ensure_schema` or any other provisioning method, and opens no socket.
+        Proven by a test that clears the environment down to
+        `CLEARCUT_MODE=mock`, calls `create_app()`, and drives
+        `POST /api/analyze` through Flask's test client: the response carries
+        SDD §8(d)'s three findings with their page numbers, and
+        `GET /api/tracker` reads exactly three items, all at BLOCKED. This is
+        the whole decision in one test — the MVP runs today, on nothing.
+  - [ ] Failure path: `CLEARCUT_MODE` set to any third value fails at startup
+        naming the variable and both accepted values. Falling back to either
+        mode on an unrecognized string is the failure this prevents, because
+        the fallback nobody notices is the one that ships.
+  - [ ] Mock mode announces itself once at startup — a single `WARNING` naming
+        the mode, asserted with `caplog` — so a mocked service is never
+        mistaken for a live one by reading its logs.
+  - [ ] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: src/clearcut/composition.py, tests/unit/test_composition.py,
+  tests/unit/test_layer_boundaries.py
+- Notes: Wiring only. The OpenTelemetry provider setup is CP-031, which depends
+  on this checkpoint and lands after it. D14 deferred OTel to the Backlog and
+  has since been overturned, so read that entry with its amendment: OTel is
+  planned, it is CP-031, and it is not part of CP-030. Do not widen a criterion
+  above to anticipate it, and do not add an exporter here. CP-031 adds the
+  tracer and meter providers to the `create_app()` this checkpoint writes.
+
+  **The second criterion became satisfiable on 2026-08-30, by D23.** As the
+  graph stood, CP-029 had to name an adapter's not-found and unavailability
+  errors to map them to 404 and 502, and the only way to name them was to
+  import a sibling adapter package from `adapters/http/routes.py` — which the
+  criterion below forbids. CP-034 moves those names into `clearcut.domain.errors`,
+  so the layer-boundary extension asked for here can be written as a gate
+  rather than negotiated down when someone hits it. Do not weaken it.
+
+  **The mock wiring mode arrived on 2026-08-31 with D36, a user decision.**
+  Read it there; four criteria above carry it. Three things it does not
+  license. It does not weaken a live criterion — both modes ship, and the live
+  wiring is still what the deployment runs. It does not license importing
+  anything from `tests/`; the in-memory implementations are
+  `src/clearcut/adapters/demo/`, CP-043's deliverable, and this checkpoint only
+  chooses between two sets of constructors. And it does not license a mode
+  abstraction: one `if` at the top of `create_app()`, one wiring function under
+  each branch, the same route factory below both. A strategy object, a registry
+  keyed by mode name, or a factory-of-factories here is §4's banned list
+  arriving through the door marked *configuration*.
+
+  This is the convergence point of the whole graph and the last checkpoint
+  before SDD §8(d) can run — now in both senses, since the mocked run of that
+  same check is a criterion above and the live run is the Backlog entry.
+
+  If this reaches 3/3, the split axis is live wiring in one checkpoint and the
+  mock branch in another. Recorded so a later turn inherits the seam instead of
+  inventing one under pressure.
+
+  **Implementer, 2026-08-31 — BLOCKED before any code was written.** No file
+  was edited except this block: `composition.py` does not exist yet, so
+  nothing was half-built and no test was skipped.
+
+  **The obstacle: criterion 6 (the pre-D36 "no network call" test) and two
+  already-`DONE` adapters cannot both be true.** Criterion 6 reads "a test
+  builds the app with every environment variable set to a dummy value and
+  asserts it constructs without a single network call" — pre-D36, so it
+  covers the live wiring criterion 1 already demands: the real eight
+  adapters, built by `create_app()` itself, not lazily. Two of the eight
+  real vendor clients those adapters wrap cannot be constructed without one:
+
+  - `ClickHouseTrackerStore._ChClient` (CP-023) — `clickhouse_connect.get_client(...)`
+    is `HttpClient.__init__` calling `super().__init__(..., autoconnect=True)`
+    hardcoded (`clickhouse_connect/driver/httpclient.py:211-221`), which runs
+    `Client._init_common_settings` -> `run_sync(init_sequence(...), ...)`
+    (`clickhouse_connect/driver/client.py:232-233`) — a real connect-and-fetch-
+    settings round trip during `__init__`, not deferred to the first
+    `command`/`insert`/`query` call. `create_client`'s public signature has no
+    `autoconnect` parameter to opt out with (checked directly:
+    `inspect.signature(create_client).parameters` in this repo's `.venv`).
+    Empirically reproduced, not just read: `clickhouse_connect.get_client(host=
+    "dummy-clickhouse-host.invalid", username="dummy", password="dummy")`
+    raises `OperationalError` ("Failed to resolve 'dummy-clickhouse-host.invalid'")
+    from inside `get_client` itself.
+  - `BigQueryLoreStore._VectorStore` (CP-024) — a real `BigQueryVectorStore`'s
+    own `@model_validator(mode="after")` (`validate_vals`,
+    `langchain_google_community/bq_storage_vectorstores/_base.py`)
+    unconditionally calls `bigquery.Client(...)`, `create_dataset`,
+    `create_table`, and `self.embedding.embed_query("test")` — a real
+    embeddings call — inside `BigQueryVectorStore.__init__`, with no
+    constructor flag to skip validation. CP-024's own reviewer already found
+    this ("the real class cannot be constructed in a unit test",
+    `bq_storage_vectorstores/bigquery.py:145`) and CP-024's own implementer
+    Notes flagged the exact risk this blocks on: "`composition.py` (not yet
+    written) can pass the real instances unchanged — not verified end-to-end
+    since `composition.py` doesn't exist yet, worth a quick recheck once it
+    does." This turn is that recheck, and the answer is no.
+
+  **Why this is BLOCKED and not a design choice for this turn to make.** A
+  composition.py-local lazy proxy per vendor client (defer the real
+  `Client`/`BigQueryVectorStore` build to its first real method call, structural
+  Protocol conformance only, no port change) would resolve it technically and
+  stays inside this checkpoint's `Files`. It is also two new classes with their
+  own tests and their own mypy-strict conformance proof against a
+  urllib3-backed client and a pydantic model — a second sub-feature, not a
+  wiring detail, and neither this checkpoint's criteria nor CP-023's/CP-024's
+  Notes ask for it or review its shape. Building it silently under a checkpoint
+  titled "wiring only" is exactly the undiscussed abstraction AGENT.md §4 and
+  this project's own review discipline exist to catch before it ships, not
+  after.
+
+  **Left for the leader.** Three ways to unblock, not a preference among them:
+  (a) scope criterion 6 to the six adapters that do not autoconnect and add an
+  explicit criterion for a lazy-construction wrapper on the other two, so its
+  shape is reviewed once, not inherited silently; (b) split the lazy-wrapper
+  pattern into its own checkpoint CP-030 depends on; (c) rule that
+  construction-time connect is accepted for these two adapters and narrow
+  criterion 6's assertion to the six that can meet it, on the reasoning that
+  D36's mock-mode criterion already carries the stronger "no socket at all"
+  guarantee the demo actually needs.
+
+  **SUPERSEDED 2026-08-31 by the leader, ruling D38. Replaced by CP-048 (the
+  app factory and the mock branch) and CP-049 (the live wiring), both at
+  `Depth: 1`.** The block was `BLOCKED`, and §7 gives `BLOCKED` exactly one
+  outgoing edge for a leader: `SUPERSEDED`, once, from `Depth: 0`. It was not
+  returned to `TODO` — §6 forbids that, and the termination proof
+  `./.claude/init.sh verify` runs depends on it.
+
+  The diagnosis above is upheld in full and was independently reproduced; see
+  D38 for the verification and for the reasoning that declined the lazy wrapper
+  the implementer offered as (a) and (b). Criterion 6 does not survive into
+  either replacement in its original form: CP-049 carries the injectable-client
+  criterion that replaces it, and CP-048 carries the mock-mode no-socket
+  criterion that was always the stronger guarantee for the demo.
+
+  What was lost in the split, deliberately: nothing. Every criterion above is
+  carried by exactly one of the two replacements — criteria 1, 5, 7, 9, 10 and
+  the layer gate by CP-048; criteria 3, 4 and the live half of 1 by CP-049;
+  criterion 8 by CP-048's end-to-end test; criterion 2 by CP-048; criterion 6
+  by CP-049's replacement, as ruled.
 
 ### CP-041 — Route a second script version to the delta path
 - Status: DONE
