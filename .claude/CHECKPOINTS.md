@@ -1743,113 +1743,6 @@ whole argument) are currently trusting to be stricter than it is.
   The mock branch is CP-048's and is finished before this starts. Do not touch
   it, and do not let a live criterion above widen into it.
 
-### CP-031 — Trace the five pipeline stages and export them to Grafana Cloud
-- Status: TODO
-- Attempts: 0/3
-- Depth: 0
-- Layer: adapters
-- Depends on: CP-023, CP-029, CP-043, CP-048
-- Acceptance:
-  - [ ] `create_app()` configures one tracer provider and one meter provider
-        whose OTLP exporter reads `OTEL_EXPORTER_OTLP_ENDPOINT` and
-        `OTEL_EXPORTER_OTLP_HEADERS` from the environment. A test sets both to
-        dummy values, calls `create_app()`, and asserts the configured exporter
-        carries that endpoint and those headers, opening no socket during
-        construction. Both variables are already in `.env.example` and in
-        `infrastructure.md`'s Secret Manager table; neither is invented here.
-  - [ ] One span per pipeline stage, named exactly `ingest`, `extract`,
-        `ground`, `research`, `track` (SDD §6). A test installs an in-memory
-        span exporter, drives one analyze call in `CLEARCUT_MODE=mock` over
-        CP-043's demo adapters — the mode the demo actually runs in (D36) — and
-        asserts the five names appear exactly once each and share one trace id.
-  - [ ] Instrumentation works in **both** wiring modes, because the demo shows
-        a Grafana trace of a mocked run (D36). Each demo adapter opens the
-        same-named span as the live adapter it stands in for, and
-        `clearcut_stage_latency_ms`, `clearcut_findings_total` and
-        `clearcut_tracker_items` record their points in mock mode as they do in
-        live — all three measure our own code and our own data. No wrapper
-        class, no span-decorating port implementation, no decorator applied at
-        the composition seam: eight new types serving one purpose is the
-        abstraction §4 bans, and five one-line span opens cost less.
-  - [ ] `clearcut_gemini_tokens_total` is the one exception, and it is
-        deliberate: in mock mode no model ran, so the counter records nothing
-        and the `extract` span carries no token attributes. A test asserts the
-        counter has no points in mock mode. Seeding plausible token counts
-        would put a fabricated number on the dashboard shown to judges, which
-        is the failure this product's own argument is built against.
-  - [ ] Span attributes carry `script_id` on the root span, `scene_number` on
-        the stages that have one, and on `extract` the Gemini model name with
-        prompt and output token counts. A test asserts the token attributes are
-        read from a faked response's usage metadata, so a mutant that recounts
-        the text locally fails.
-  - [ ] The four SDD §6 metrics exist under those exact names and label sets:
-        `clearcut_stage_latency_ms` (histogram, by stage),
-        `clearcut_gemini_tokens_total` (counter, by model, split prompt and
-        output), `clearcut_findings_total` (counter, by risk_level and
-        category), `clearcut_tracker_items` (gauge, by state, refreshed on
-        every tracker write). A test reads them through an in-memory metric
-        reader and asserts one recorded point per metric with its labels
-        present.
-  - [ ] No module under `src/clearcut/domain/` or `src/clearcut/application/`
-        imports `opentelemetry`. The domain half already fails through
-        `tests/unit/test_layer_boundaries.py`'s stdlib-only guard; add
-        `opentelemetry` to `FORBIDDEN_APPLICATION_PREFIXES` and a test that
-        names it, so a regression reports the cause instead of a generic
-        violation. This is the boundary SDD §6 states outright.
-  - [ ] Failure path: with `OTEL_EXPORTER_OTLP_ENDPOINT` unset, `create_app()`
-        returns a working app and the pipeline runs unchanged, with spans and
-        metrics going nowhere. A test asserts no exception and no network call.
-        CP-030's startup check lists the variables that must be present, and
-        these two are deliberately not on it.
-  - [ ] Failure path: an exporter that raises never reaches a use case. A test
-        makes export fail and asserts the analyze call still returns its
-        result. Telemetry that can take down the pipeline is worse than no
-        telemetry.
-  - [ ] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
-- Files: src/clearcut/composition.py, src/clearcut/adapters/gcp/document_ai.py,
-  src/clearcut/adapters/gemini/extractor.py,
-  src/clearcut/adapters/gcp/vertex_search.py,
-  src/clearcut/adapters/parallel/research.py, the ClickHouse tracker adapter
-  CP-023 writes, tests/unit/test_observability.py,
-  tests/unit/test_layer_boundaries.py, pyproject.toml
-- Notes: **Dependencies, for CP-017 (in flight now).** This checkpoint is the
-  first thing in the repo to import `opentelemetry`, so it declares
-  `opentelemetry-api`, `opentelemetry-sdk`, and an OTLP exporter package in the
-  same `pyproject.toml` table CP-017 creates, in its own diff. CP-017's block is
-  untouched and CP-017 should add none of them: nothing imports them yet, and
-  CP-017's own guard — the test that fails when `src/` imports something
-  undeclared — is what will catch it if this checkpoint forgets. That is the
-  guard working, not a conflict between the two.
-
-  **Why these edges.** Four of the five stage spans go into adapters that are
-  already `DONE` and reviewed (`document_ai`, `extractor`, `vertex_search`,
-  `research`), so they impose no edge. `track` is the ClickHouse adapter, hence
-  CP-023. The request-scoped root span opens where the request does, hence
-  CP-029, and the providers are wired where wiring is allowed, hence CP-030.
-  Instrumentation wraps the pipeline, so it follows the pipeline. **CP-043 was
-  added to that line on 2026-08-31 by D36**: the demo adapters are a sixth set
-  of span sites and this checkpoint edits them, so the edge is direct rather
-  than inherited through CP-030.
-
-  **Why the mocked run is the one the spans are asserted over.** Until D36 the
-  trace beat could only be proven against live services, so the span test would
-  have run over the unit fakes and the demo would have been the first real
-  exercise of it. Mock mode removes that gap: the run the judges watch and the
-  run the test drives are now the same wiring, which is a stronger assertion
-  than the one this criterion started with, not a weaker one.
-
-  **Why no Grafana account is needed to review this.** Every criterion above
-  reads through an in-memory exporter or reader. The check that traces actually
-  arrive in the dashboard is a live check and belongs with SDD §8's other live
-  checks, which also need real credentials and are also run by hand.
-
-  **If this reaches 3/3.** The split axis is providers and spans in one
-  checkpoint, the four metrics in another. Recorded here so a later leader turn
-  inherits the seam instead of inventing one under pressure.
-
-  This exists because D14 was overturned; see the amendment in Decisions for the
-  reasoning on both sides.
-
 ---
 
 ## Backlog
@@ -2099,6 +1992,517 @@ a mock is, and no criterion required otherwise.
 ## Archive
 
 _Terminal checkpoints (`DONE` / `SUPERSEDED`), newest first._
+
+### CP-031 — Trace the five pipeline stages and export them to Grafana Cloud
+- Status: DONE
+- Attempts: 1/3
+- Depth: 0
+- Layer: adapters
+- Depends on: CP-023, CP-029, CP-043, CP-048
+- Acceptance:
+  - [x] `create_app()` configures one tracer provider and one meter provider
+        whose OTLP exporter reads `OTEL_EXPORTER_OTLP_ENDPOINT` and
+        `OTEL_EXPORTER_OTLP_HEADERS` from the environment. A test sets both to
+        dummy values, calls `create_app()`, and asserts the configured exporter
+        carries that endpoint and those headers, opening no socket during
+        construction. Both variables are already in `.env.example` and in
+        `infrastructure.md`'s Secret Manager table; neither is invented here.
+  - [x] One span per pipeline stage, named exactly `ingest`, `extract`,
+        `ground`, `research`, `track` (SDD §6). A test installs an in-memory
+        span exporter, drives one analyze call in `CLEARCUT_MODE=mock` over
+        CP-043's demo adapters — the mode the demo actually runs in (D36) — and
+        asserts the five names appear exactly once each and share one trace id.
+  - [x] Instrumentation works in **both** wiring modes, because the demo shows
+        a Grafana trace of a mocked run (D36). Each demo adapter opens the
+        same-named span as the live adapter it stands in for, and
+        `clearcut_stage_latency_ms`, `clearcut_findings_total` and
+        `clearcut_tracker_items` record their points in mock mode as they do in
+        live — all three measure our own code and our own data. No wrapper
+        class, no span-decorating port implementation, no decorator applied at
+        the composition seam: eight new types serving one purpose is the
+        abstraction §4 bans, and five one-line span opens cost less.
+  - [x] `clearcut_gemini_tokens_total` is the one exception, and it is
+        deliberate: in mock mode no model ran, so the counter records nothing
+        and the `extract` span carries no token attributes. A test asserts the
+        counter has no points in mock mode. Seeding plausible token counts
+        would put a fabricated number on the dashboard shown to judges, which
+        is the failure this product's own argument is built against.
+  - [x] Span attributes carry `script_id` on the root span, `scene_number` on
+        the stages that have one, and on `extract` the Gemini model name with
+        prompt and output token counts. A test asserts the token attributes are
+        read from a faked response's usage metadata, so a mutant that recounts
+        the text locally fails. **Scope note:** no live port signature —
+        `LegalGrounding.ground`, `RightsResearch.find`, the batch-shaped
+        `ScriptIngestion.parse`/`SceneExtractor.extract`, or `TrackerStore.save`
+        over a list — carries a single `scene_number` today; each is either
+        called once per finding (ground/research) or once per whole scene
+        batch. `Layer: adapters` scopes this checkpoint away from a port
+        signature change, so no stage span carries `scene_number`. Recorded
+        here rather than silently dropped.
+  - [x] The four SDD §6 metrics exist under those exact names and label sets:
+        `clearcut_stage_latency_ms` (histogram, by stage),
+        `clearcut_gemini_tokens_total` (counter, by model, split prompt and
+        output), `clearcut_findings_total` (counter, by risk_level and
+        category), `clearcut_tracker_items` (gauge, by state, refreshed on
+        every tracker write). A test reads them through an in-memory metric
+        reader and asserts one recorded point per metric with its labels
+        present.
+  - [x] No module under `src/clearcut/domain/` or `src/clearcut/application/`
+        imports `opentelemetry`. The domain half already fails through
+        `tests/unit/test_layer_boundaries.py`'s stdlib-only guard; add
+        `opentelemetry` to `FORBIDDEN_APPLICATION_PREFIXES` and a test that
+        names it, so a regression reports the cause instead of a generic
+        violation. This is the boundary SDD §6 states outright.
+  - [x] Failure path: with `OTEL_EXPORTER_OTLP_ENDPOINT` unset, `create_app()`
+        returns a working app and the pipeline runs unchanged, with spans and
+        metrics going nowhere. A test asserts no exception and no network call.
+        CP-030's startup check lists the variables that must be present, and
+        these two are deliberately not on it.
+  - [x] Failure path: an exporter that raises never reaches a use case. A test
+        makes export fail and asserts the analyze call still returns its
+        result. Telemetry that can take down the pipeline is worse than no
+        telemetry.
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra`.
+- Files: src/clearcut/composition.py, src/clearcut/adapters/gcp/document_ai.py,
+  src/clearcut/adapters/gemini/extractor.py,
+  src/clearcut/adapters/gcp/vertex_search.py,
+  src/clearcut/adapters/parallel/research.py,
+  src/clearcut/adapters/clickhouse/tracker.py, tests/unit/test_observability.py,
+  tests/unit/test_layer_boundaries.py, pyproject.toml.
+  **Beyond the Files field named above** (see Notes): src/clearcut/adapters/http/routes.py,
+  src/clearcut/adapters/demo/in_memory.py, tests/unit/adapters/test_extractor.py,
+  tests/unit/adapters/test_demo_scenario.py, tests/unit/conftest.py (new).
+- Notes: **Files beyond the original field, and why.** The Files list above
+  this line named the four live adapters, the ClickHouse tracker adapter, and
+  the two test files, but not `adapters/http/routes.py` or
+  `adapters/demo/in_memory.py`. Both turned out to be required by the
+  acceptance text itself, not by inference: the Notes' own "why these edges"
+  paragraph says "the request-scoped root span opens where the request does,
+  hence CP-029" (`routes.py`, CP-029's file) and "the demo adapters are a
+  sixth set of span sites and this checkpoint edits them" (`demo/in_memory.py`,
+  CP-043's file). `routes.py` gained the `/api/analyze` root span (script_id
+  attribute) the five stage spans nest under to share one trace id, plus
+  `clearcut_findings_total` recording, read from `AnalysisReport.findings`
+  after `execute()` returns — the earliest point a finding's `risk_level` and
+  `category` are both known outside `application/`, which never imports
+  `opentelemetry`. Its own factory signature (`create_blueprint`'s five
+  parameters, frozen when CP-029 landed) is unchanged; only `analyze()`'s
+  body changed. `test_extractor.py` gained the token-attribute test the
+  acceptance text itself demands ("A test asserts the token attributes are
+  read from a faked response's usage metadata"), and needed one field added to
+  its existing `_FakeResponse` fake (`usage_metadata`, defaulted to `None`) to
+  keep it satisfying the extended `_GenerateContentResponse` Protocol.
+  `test_demo_scenario.py`'s pre-existing import guard banned `time` outright;
+  see below. `tests/unit/conftest.py` is new: the `isolated_otel` fixture five
+  different test functions across two files need (see next paragraph) crossed
+  the "duplicate twice, extract on the third" line in AGENT.md §4.
+
+  **The module-level-tracer trap, and the fresh-lookup fix.** The first
+  implementation cached `_tracer = trace.get_tracer(__name__)` at import time
+  in every instrumented module, mirroring `logging.getLogger(__name__)`.
+  OpenTelemetry's `ProxyTracer`/`ProxyMeter` — returned by `get_tracer`/
+  `get_meter` before a real provider is installed — cache their first
+  resolved *real* tracer/meter permanently (`ProxyTracer._tracer`, verified
+  by reading `opentelemetry/trace/__init__.py`). In production this is
+  harmless: `_configure_telemetry` runs once per process. In the test suite,
+  where `test_composition.py`'s tests call `create_app()` first (alphabetical
+  collection order) and install a provider with no exporters, every module's
+  cached proxy locked onto *that* no-op provider forever, and a later test's
+  own in-memory exporter never saw a single span. Fixed by calling
+  `trace.get_tracer(__name__)` / `metrics.get_meter(__name__)` fresh on every
+  span open and every metric record, wrapped in small per-file helper
+  functions so call sites stay one line. Confirmed by direct experiment
+  against the installed SDK before writing the fix (recorded so a future
+  session does not have to rediscover this the same way).
+
+  **The "no clock" guard, and why `time` left the banned set.**
+  `test_demo_scenario.py`'s pre-existing `_BANNED_IMPORTS` (CP-043) forbade
+  `time` in `adapters/demo/`, proving the demo seed reads no live clock into
+  otherwise-deterministic planted data. `clearcut_stage_latency_ms` needs a
+  real elapsed duration even in mock mode (an explicit acceptance criterion
+  above), so `time.perf_counter()` — a monotonic duration read, not a
+  wall-clock date — is now allowed there; `datetime`, `os`, `socket`, and
+  `pathlib` stay banned. `_BANNED_IMPORTS` and the test's name were updated
+  together with a comment recording the reason.
+
+  **Interpretation: "the five names appear exactly once each."** `ground` and
+  `research` are called once per finding needing that lookup inside
+  `AnalyzeScript._enrich`'s per-finding loop (CP-026's own Notes call this out
+  explicitly as "ground/research/continuity per finding"). CP-043's planted
+  scenario has two such findings (Ferrari, Hotel California), so both
+  `LegalGrounding.ground` and `RightsResearch.find` run twice per analyze
+  call — confirmed by instrumenting the real demo adapters directly before
+  writing any span code. A span opened at the port-method call site therefore
+  produces two `ground` spans and two `research` spans in that exact scenario,
+  not one; collapsing them to one span would need call-spanning state living
+  outside any single method call, which is the wrapper/decorator §4 and this
+  checkpoint's own text both rule out, or a batch-shaped port signature
+  change, which `Layer: adapters` puts out of scope. `ingest`, `extract`, and
+  `track` are each genuinely single-call in this scenario and do satisfy a
+  literal per-name count of one. The test
+  (`test_five_pipeline_stage_spans_appear_and_share_one_trace_id`) asserts
+  that all five names are present and that every recorded span shares one
+  trace id, rather than a per-name count of exactly one — the honest
+  statement of what the current per-finding architecture produces. Flagged
+  for the reviewer rather than silently narrowed.
+
+  **`clearcut_tracker_items` gauge semantics.** "Refreshed on every tracker
+  write" is set (not accumulated): each `TrackerStore.save(items)` call
+  counts the items *in that write* by state and calls `gauge.set(count,
+  {"state": ...})` per state present. This reflects the write just made
+  durable, not a live count across the whole table (no `TrackerStore` method
+  returns "every item, every state" today) — a boundary worth naming if a
+  later checkpoint wants a true live tally.
+
+  **Dependencies, for CP-017 (in flight now).** This checkpoint is the
+  first thing in the repo to import `opentelemetry`, so it declares
+  `opentelemetry-api`, `opentelemetry-sdk`, and an OTLP exporter package in the
+  same `pyproject.toml` table CP-017 creates, in its own diff. CP-017's block is
+  untouched and CP-017 should add none of them: nothing imports them yet, and
+  CP-017's own guard — the test that fails when `src/` imports something
+  undeclared — is what will catch it if this checkpoint forgets. That is the
+  guard working, not a conflict between the two.
+
+  **Why these edges.** Four of the five stage spans go into adapters that are
+  already `DONE` and reviewed (`document_ai`, `extractor`, `vertex_search`,
+  `research`), so they impose no edge. `track` is the ClickHouse adapter, hence
+  CP-023. The request-scoped root span opens where the request does, hence
+  CP-029, and the providers are wired where wiring is allowed, hence CP-030.
+  Instrumentation wraps the pipeline, so it follows the pipeline. **CP-043 was
+  added to that line on 2026-08-31 by D36**: the demo adapters are a sixth set
+  of span sites and this checkpoint edits them, so the edge is direct rather
+  than inherited through CP-030.
+
+  **Why the mocked run is the one the spans are asserted over.** Until D36 the
+  trace beat could only be proven against live services, so the span test would
+  have run over the unit fakes and the demo would have been the first real
+  exercise of it. Mock mode removes that gap: the run the judges watch and the
+  run the test drives are now the same wiring, which is a stronger assertion
+  than the one this criterion started with, not a weaker one.
+
+  **Why no Grafana account is needed to review this.** Every criterion above
+  reads through an in-memory exporter or reader. The check that traces actually
+  arrive in the dashboard is a live check and belongs with SDD §8's other live
+  checks, which also need real credentials and are also run by hand.
+
+  **If this reaches 3/3.** The split axis is providers and spans in one
+  checkpoint, the four metrics in another. Recorded here so a later leader turn
+  inherits the seam instead of inventing one under pressure.
+
+  This exists because D14 was overturned; see the amendment in Decisions for the
+  reasoning on both sides.
+
+  **Reviewer, 2026-09-01 — CHANGES_REQUESTED, 3 blocking. Attempts 0/3 → 1/3.**
+
+  *Gates, all green on the working tree.* `./.claude/init.sh check` → 4 passed,
+  0 failed: `ruff check` all passed, `ruff format --check` 114 files already
+  formatted, `mypy` no issues in 88 source files, `pytest` 444 passed.
+  `./.claude/init.sh verify` → 87 passed, 0 failed. Layer rule holds: `rg
+  opentelemetry src/clearcut/domain/ src/clearcut/application/` returns
+  nothing. No secret-shaped literal in the diff; the one credential is the
+  dummy `Basic dGVzdDp0ZXN0` (base64 of `test:test`) the criterion asks for.
+  No `docs/` or `README.md` prose in the diff, so `WRITING.md` does not apply.
+
+  *Both flagged interpretation calls are ruled FAITHFUL — do not revisit
+  them.* **(a) No span carries `scene_number`.** SDD Section 6 says
+  "`scene_number` where applicable", and the applicable set is empty at every
+  adapter span site: `ScriptIngestion.parse(gcs_uri, script_id)`,
+  `SceneExtractor.extract(scenes, jurisdiction)`, `LegalGrounding.ground(query,
+  jurisdiction)`, `RightsResearch.find(asset_name, category, jurisdiction)` and
+  `TrackerStore.save(items)` were each read at `application/ports.py` and none
+  carries a singular scene number. `Layer: adapters` scopes a port-signature
+  change out. Absence is faithful, not a dropped requirement.
+  **(b) Name-set presence plus one shared trace id, not per-name counts.**
+  Measured directly against a mock analyze run: `{ingest: 1, extract: 1,
+  ground: 2, research: 2, track: 1, analyze: 1}`, one distinct trace id, every
+  stage span parented. The literal "exactly once each" is false in the current
+  per-finding architecture, so the substitution is the honest statement. It is
+  also strong enough: renaming any one of the five demo span names fails
+  `test_five_pipeline_stage_spans_appear_and_share_one_trace_id` (five
+  mutants, all caught), and `test_root_span_carries_script_id`'s
+  `len(root_spans) == 1` catches a stray sixth name.
+
+  *What the mutation battery confirmed as genuinely load-bearing.* 44 mutants
+  run against a throwaway copy; `src/` and `tests/` byte-identical before and
+  after. Caught: all five demo span names; the root span's `script_id`;
+  `clearcut_stage_latency_ms` renamed and its `stage` label dropped;
+  `clearcut_findings_total` renamed, `risk_level` dropped, `category` dropped,
+  recording removed; `clearcut_tracker_items` renamed and `state` dropped;
+  `clearcut_gemini_tokens_total` renamed, `model` dropped, the prompt/output
+  split collapsed, and the counts recounted locally instead of read from
+  `usage_metadata` (7/9 substituted for 123/45 → caught, so the "never
+  recounted" requirement is real); the demo gauge refresh removed; the live
+  extractor's `extract` span name; module-level tracer caching restored in
+  both `demo/in_memory.py` and `http/routes.py` (so the fresh-lookup fix is
+  proven, not decorative); `_configure_telemetry`'s idempotency guard removed;
+  `opentelemetry` removed from `FORBIDDEN_APPLICATION_PREFIXES`; and the three
+  `opentelemetry` pins removed from `pyproject.toml` (CP-017's guard fails 4
+  tests, so the declaration is load-bearing and correctly pinned at the
+  installed 1.44.0). The exporter-raises test is non-vacuous — it asserts
+  `raising_exporter.calls`, proving export really ran and really raised. Two
+  `create_app()` calls do not double-install: the tracer-provider guard makes
+  the second a no-op, and a mock analyze run emits one stream per
+  (scope, metric) with no duplicate-instrument warnings. CP-048's cleared-env
+  tests in `test_composition.py` are untouched and green; CP-041's delta
+  dispatch line and CP-047's `_analysis_report_json` call are byte-identical,
+  only wrapped, and `test_routes.py` is untouched and green (55 passed with
+  `test_composition.py`). The root span belongs in `routes.py`, not the use
+  case, and that is consistent with Section 2 and SDD Section 6.
+
+  **BLOCKING 1 — `create_app()`'s telemetry configuration is not tested at
+  all; criterion 1's named test does not exist.** Criterion 1 requires "a test
+  sets both to dummy values, **calls `create_app()`**, and asserts the
+  configured exporter carries that endpoint and those headers".
+  `tests/unit/test_observability.py:101` and `:111` call
+  `composition._span_exporter()` / `composition._metric_exporter()` directly
+  instead; no test asserts anything about the providers `create_app()`
+  installs. Every other test in the file calls `_install_in_memory_providers()`
+  first, which makes `_configure_telemetry` a guaranteed no-op, and
+  `test_create_app_works_and_opens_no_socket_with_endpoint_unset` (`:142`)
+  asserts only a 200. Four independent mutants each leave the whole 423-test
+  suite green: deleting the `_configure_telemetry()` call at
+  `composition.py:171`; replacing `_configure_telemetry`'s body with `return`
+  (`composition.py:84`); never running
+  `tracer_provider.add_span_processor(BatchSpanProcessor(span_exporter))`
+  (`composition.py:99`); and forcing `metric_readers = []`
+  (`composition.py:103`). Production telemetry can be deleted wholesale and
+  the gates stay green, which is the one failure this checkpoint exists to
+  prevent. *Required change:* a test that calls `create_app()` with the two
+  variables set through `monkeypatch.setenv` under the `isolated_otel`
+  fixture, and asserts the installed tracer provider carries a span processor
+  whose exporter holds that endpoint and those headers, and that the installed
+  meter provider carries a reader. Asserting through the private helpers alone
+  does not satisfy the criterion.
+
+  **BLOCKING 2 — every live-adapter instrumentation site ships with no test
+  that would fail without it, while criterion 3 claims both wiring modes.**
+  Ten mutants, each leaving the full suite green: `document_ai.py:110` span
+  renamed, and the whole `with` block removed; `document_ai.py:124`,
+  `vertex_search.py:71`, `research.py:106`, `clickhouse/tracker.py:169` and
+  `extractor.py:174` latency records removed; `vertex_search.py:69`,
+  `research.py:104` and `clickhouse/tracker.py:163` span names renamed;
+  `clickhouse/tracker.py:170` gauge refresh removed. Only the live extractor's
+  span name and token attributes are covered, and that is incidental —
+  criterion 5 forced it. The offline seam already exists and costs no new
+  fake: `test_document_ai.py`, `test_vertex_search.py`, `test_research.py` and
+  `test_clickhouse_tracker.py` all drive these adapters through hand-written
+  fakes with no network, and `test_extractor.py` in this very diff already
+  demonstrates the exact technique. Section 5's rule is affordable here, so
+  the mock-mode-only scoping of criterion 2 does not cover it. *Required
+  change:* for each of the five live stage adapters, one test through the fake
+  that already exists asserting the stage span name and its
+  `clearcut_stage_latency_ms` point carrying the right `stage` label; and for
+  `ClickHouseTrackerStore.save`, that it refreshes `clearcut_tracker_items` by
+  state.
+
+  **BLOCKING 3 — the demo determinism guard lost its clock coverage on the
+  module it was written about.** `tests/unit/adapters/test_demo_scenario.py:208`
+  drops `time` from `_BANNED_IMPORTS`, and line 223 applies that one set to
+  **both** `scenario` and `in_memory`. Only `in_memory.py` needs
+  `time.perf_counter()`; `scenario.py` is the planted-data module whose
+  determinism the guard exists to prove, and it is now free to read the wall
+  clock. Mutant: `import time` plus `_LEAK = time.strftime("%Y-%m-%d")` in
+  `src/clearcut/adapters/demo/scenario.py` → 423 passed, guard silent.
+  Control: `import os` in `in_memory.py` → caught, so the mechanism still
+  works and only `time`'s coverage was removed. Not hypothetical:
+  `TrackerItem.updated_at` is a `str` (`domain/tracker.py:34`), and
+  `time.strftime`/`time.localtime` produce exactly that — a live date planted
+  into seed data, with `datetime` still banned but `time` now the open door.
+  The Notes' reasoning is right about `perf_counter` but the ban is
+  module-granular, so admitting the module admits `strftime` too. *Required
+  change:* make the banned set per-module — keep `time` banned for `scenario`,
+  allow it only for `in_memory` — so the narrowing matches what latency
+  measurement actually needs, and restore "clock" to the test name, which
+  still bans `datetime`.
+
+  *Non-blocking, for the leader — these do not send the work back.*
+  (i) `_record_stage` is duplicated near-identically in five modules
+  (`gcp/document_ai.py`, `gcp/vertex_search.py`, `parallel/research.py`,
+  `clickhouse/tracker.py`, `demo/in_memory.py`) plus a sixth variant
+  `_record_stage_latency` in `gemini/extractor.py`, and
+  `_refresh_tracker_items_gauge` in two. Section 4's "duplicate twice, extract
+  on the third" is the rule this checkpoint's own Notes cite to justify
+  `tests/unit/conftest.py`. Not blocking: this is under-abstraction, not the
+  over-engineering Section 4 bans, and criterion 3 deliberately rules out
+  wrappers and decorators — a plain shared helper module is not what it
+  forbids. Worth one consolidation checkpoint.
+  (ii) In the four live adapters `_record_stage(stage, start)` has exactly one
+  call site passing a literal, while the extractor's variant hardcodes the
+  stage instead. Cosmetic inconsistency; folds into (i).
+  (iii) Latency is recorded only on the success path — every `_record_stage`
+  call sits after its `with` block, so a stage that raises records no point.
+  Defensible, and no criterion names it, but worth deciding deliberately.
+  (iv) The `clearcut_tracker_items` per-write-not-live-tally boundary the
+  implementer recorded is confirmed correct and agreed with, not re-raised.
+
+  *Verified, so the next attempt does not redo it:* `TrackerStore` has exactly
+  one item-write method, `save`, so the gauge does refresh on `ResolveFinding`
+  and `EvaluateDelta` writes too, not only on analyze — `record_script` writes
+  script versions, which carry no state and correctly do not touch the gauge.
+
+  **Implementer, attempt 2, 2026-09-01 — test-only, all three BLOCKING
+  findings fixed.** No file under `src/` changed; every edit is a new or
+  extended test, plus `tests/unit/conftest.py`. The two ruled-FAITHFUL
+  interpretation calls were not revisited.
+
+  *BLOCKING 1 fixed.* `tests/unit/test_observability.py` gained
+  `test_create_app_installs_a_batch_span_processor_and_a_metric_reader_wired_to_env`:
+  under `isolated_otel`, sets `OTEL_EXPORTER_OTLP_ENDPOINT` and
+  `OTEL_EXPORTER_OTLP_HEADERS` (the dummy `Basic dGVzdDp0ZXN0` value) through
+  `monkeypatch.setenv`, calls `create_app()`, and reads the *installed*
+  providers back: `trace.get_tracer_provider()._active_span_processor
+  ._span_processors` for the one `BatchSpanProcessor` and its exporter's
+  `_endpoint`/`_headers`, and `metrics.get_meter_provider()._metric_readers`
+  for the one `PeriodicExportingMetricReader` and its exporter's own
+  `_endpoint`/`_headers`. All four named mutants confirmed red on a throwaway
+  copy, each reverted before the next: deleting the `_configure_telemetry()`
+  call at `composition.py:171`; replacing its body with `return`
+  (`composition.py:84`); skipping `add_span_processor(BatchSpanProcessor(...))`
+  (`composition.py:99`); forcing `metric_readers = []` (`composition.py:103`).
+
+  *BLOCKING 2 fixed.* `tests/unit/conftest.py` gained two plain helpers,
+  `install_in_memory_telemetry()` and `metric_attributes_by_name()` — the
+  install-providers/read-back-points steps every one of the five new adapter
+  tests needs, extracted once five call sites crossed AGENT.md Section 4's
+  "duplicate twice, extract on the third" line. One test added per live
+  adapter through its existing hand-written fake, asserting the stage span
+  name and the `clearcut_stage_latency_ms` point's `stage` label:
+  `test_document_ai.py::test_parse_opens_an_ingest_span_and_records_stage_latency`,
+  `test_vertex_search.py::test_ground_opens_a_ground_span_and_records_stage_latency`,
+  `test_research.py::test_find_opens_a_research_span_and_records_stage_latency`,
+  `test_extractor.py::test_extract_opens_an_extract_span_and_records_stage_latency`
+  (extending the file's own existing token-attribute test, which already used
+  the same technique). `test_clickhouse_tracker.py` gained
+  `test_save_opens_a_track_span_records_stage_latency_and_refreshes_the_gauge`,
+  additionally asserting `clearcut_tracker_items` carries a `state`-labeled
+  point. All ten named mutants confirmed red on the same throwaway copy, each
+  reverted before the next: `document_ai.py:110` span renamed, and separately
+  the whole `with` block removed (both kill the same test); latency records
+  removed at `document_ai.py:124`, `vertex_search.py:71`, `research.py:106`,
+  `clickhouse/tracker.py:169`, `extractor.py:174`; span names renamed at
+  `vertex_search.py:69`, `research.py:104`, `clickhouse/tracker.py:163`; the
+  gauge refresh removed at `clickhouse/tracker.py:170`.
+
+  *BLOCKING 3 fixed.* `test_demo_scenario.py`'s `_BANNED_IMPORTS` became
+  `_BANNED_IMPORTS_BY_MODULE`, a `{module: frozenset}` mapping: `scenario`
+  keeps `time` banned alongside `os`, `socket`, `datetime`, `pathlib`;
+  `in_memory` drops only `time` from that set, for `perf_counter()`. The test
+  is renamed back to
+  `test_neither_demo_module_imports_the_clock_environment_or_a_socket`. The
+  reviewer's mutant (`import time` plus `_LEAK = time.strftime(...)` in
+  `scenario.py`) confirmed red on the throwaway copy; the control mutant
+  (`import os` in `in_memory.py`) confirmed the mechanism still catches a
+  real leak, and `time` alone in `in_memory.py` stays legal.
+
+  *Gates, on the real tree.* `./.claude/init.sh check` → 4/4 passed: `ruff
+  check` clean, `ruff format --check` 114 files already formatted, `mypy src
+  tests infra` no issues in 88 source files, `pytest` 450 passed (444 before
+  this attempt, plus 6 new tests: one in `test_observability.py`, one each in
+  `test_document_ai.py`, `test_vertex_search.py`, `test_research.py`,
+  `test_extractor.py`, `test_clickhouse_tracker.py`).
+
+  **Reviewer, 2026-09-01 — PASS, zero blocking findings. All three attempt-1
+  BLOCKING findings are closed.** Criteria 1 and 3, the two the attempt-1
+  verdict left unticked, are ticked above: each is now met and mutation-proven
+  below. `Attempts` is left at 1/3 — AGENT.md Section 6 increments it only on
+  `CHANGES_REQUESTED`, and this is a `PASS`. The dispatch brief called this
+  attempt 2/3; the archive holds both conventions (CP-046 records its passing
+  second attempt as 2/3, CP-041 as 1/3), so the leader may want to settle which
+  one the field means. Nothing about this checkpoint's outcome turns on it.
+
+  *Gates, re-run on the working tree.* `./.claude/init.sh check` → 4 passed, 0
+  failed: `ruff check` all passed, `ruff format --check` 114 files already
+  formatted, `mypy src tests infra` no issues in 88 source files, `pytest` 450
+  passed. `./.claude/init.sh verify` → 87 passed, 0 failed. Layer rule still
+  holds: `rg opentelemetry src/clearcut/domain/ src/clearcut/application/`
+  returns nothing. The only credential-shaped literal is still the dummy
+  `Basic dGVzdDp0ZXN0`. No `docs/` or `README.md` prose in the diff, so
+  `WRITING.md` does not apply.
+
+  *Test-only, verified independently two ways.* (a) Modification times: every
+  file under `src/` and `pyproject.toml` was last written 2026-08-31 22:02–22:18
+  (attempt 1), while every file this attempt touched was written 2026-09-01
+  11:05–11:16. (b) All ten `src/` line references the attempt-1 findings cite
+  still resolve to the exact same statements — `composition.py:171`
+  `_configure_telemetry()`, `document_ai.py:110/124`, `vertex_search.py:69/71`,
+  `research.py:104/106`, `tracker.py:163/169/170` — which they could not if the
+  instrumented modules had shifted by a line. The only deletions anywhere in
+  `tests/` are the three `_BANNED_IMPORTS` lines the per-module mapping
+  replaced (`git diff -- tests/ | grep '^-'`), so no existing assertion was
+  weakened.
+
+  *Independent mutant sample, re-run rather than taken on trust.* 14 of the 15
+  claimed kills were reproduced on a fresh throwaway copy (rsync of the tree,
+  run with this repo's own interpreter; `src/` and `tests/` diffed
+  byte-identical against the real tree afterwards, and the real tree's
+  `git diff --stat` is unchanged). Baseline on the copy: 450 passed. Each
+  mutant was reverted before the next, and each came back red naming the test
+  that should catch it: the `_configure_telemetry()` call deleted at
+  `composition.py:171` (fails on `isinstance(tracer_provider, TracerProvider)`
+  — a `ProxyTracerProvider` is what survives, exactly the wholesale-deletion
+  case finding 1 was about); the body replaced with `return`
+  (`composition.py:84`); `add_span_processor(BatchSpanProcessor(...))` skipped
+  (`composition.py:99`); `metric_readers = []` (`composition.py:103`); latency
+  records removed at `document_ai.py:124`, `vertex_search.py:71`,
+  `research.py:106`, `tracker.py:169` and `extractor.py:174`; span names
+  renamed at `document_ai.py:110`, `vertex_search.py:69`, `research.py:104` and
+  `tracker.py:163`; and the gauge refresh removed at `tracker.py:170` (fails on
+  `KeyError: 'clearcut_tracker_items'`). The fifteenth, `document_ai`'s whole
+  `with` block removed, kills the same assertion as its rename and was not
+  re-run separately.
+
+  *The demo determinism guard, re-proven with controls.* The reviewer's own
+  attempt-1 mutant — `import time` plus `_LEAK = time.strftime("%Y-%m-%d")` in
+  `adapters/demo/scenario.py` — is now red. Three controls confirm the
+  narrowing is exactly one module wide and nothing else was traded away:
+  `import os` in `in_memory.py`, `import socket` in `in_memory.py`, and
+  `import datetime` in `scenario.py` each still fail the guard, while `time` in
+  `in_memory.py` stays legal (production imports it and the suite is green).
+  The test name carries "the clock" again.
+
+  *Finding 1's exact defect is closed, not worked around.*
+  `test_create_app_installs_a_batch_span_processor_and_a_metric_reader_wired_to_env`
+  calls `create_app()` and then reads back the **installed** globals —
+  `trace.get_tracer_provider()` and `metrics.get_meter_provider()` — never
+  `composition._span_exporter()` / `_metric_exporter()`. A test that reached
+  back into the composition helpers would have re-opened the finding; this one
+  asserts the one `BatchSpanProcessor`, its exporter's endpoint and headers,
+  the one `PeriodicExportingMetricReader`, and its exporter's endpoint and
+  headers. Reading OpenTelemetry SDK privates is unavoidable here (the SDK
+  exposes no public accessor for installed processors) and the three
+  `opentelemetry` distributions are pinned to `==1.44.0`, which is the same
+  coupling attempt 1 already accepted for `_endpoint` / `_headers`.
+
+  *Isolation was not weakened by moving the helpers into `conftest.py`.* The
+  `isolated_otel` fixture still saves and restores all four provider globals
+  (`_TRACER_PROVIDER`, `_TRACER_PROVIDER_SET_ONCE`, `_METER_PROVIDER`,
+  `_METER_PROVIDER_SET_ONCE`). No randomizing plugin is installed, so order
+  independence was checked three other ways, all green: each of the seven
+  touched test files run alone; the whole suite run with the file order
+  reversed (450 passed); and `test_composition.py` forced ahead of the six new
+  tests, which is the ordering that used to expose the cached-proxy trap (83
+  passed). `tests/unit/` is a real package, so pytest's own `conftest` import
+  and the new `from tests.unit.conftest import ...` resolve to one module.
+
+  *Verified so a later turn does not redo it:* with the endpoint set, an
+  instrumented `create_app()` plus one mock analyze call attempts zero
+  `socket.connect` calls in-process; the OTLP export attempt happens on the
+  batch processor's own thread, is a DNS failure against the dummy host, and
+  the analyze call still returns 200. The new `create_app()` test records no
+  spans, so its leaked batch processor exports nothing at exit — the suite
+  stays at ~2.5s with no exporter noise.
+
+  *Non-blocking, for the leader — this does not send the work back.*
+  (v) `tests/unit/test_observability.py:61` `_install_in_memory_providers` and
+  `:251` `_data_points_by_metric_name` are now byte-for-byte duplicates of
+  `conftest.py`'s `install_in_memory_telemetry` and `metric_attributes_by_name`,
+  which this attempt extracted on exactly the "duplicate twice, extract on the
+  third" argument. Harmless and out of scope for a test-only fix round; folds
+  naturally into the consolidation checkpoint item (i) already asks for.
+  Attempt 1's items (i) the six `_record_stage` duplicates, (ii) the extractor's
+  hardcoded-stage variant, (iii) latency recorded only on the success path, and
+  (iv) the per-write gauge boundary all stand as written and are still the
+  leader's to file or drop.
 
 ### CP-046 — Serve the built SPA from the same service that serves the API
 - Status: DONE
