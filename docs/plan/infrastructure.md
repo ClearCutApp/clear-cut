@@ -108,11 +108,13 @@ zero results.
 
 Create the Agent Builder agent app that hosts the project Q&A agent
 (console: AI Applications > Agents) and attach this data store to it as a
-grounding source. Copy the agent app ID into configuration as
-`AGENT_BUILDER_AGENT_ID` (section 8). Per-request jurisdiction filtering goes
-through the retrieval tool's `filter` field (for example `jurisdiction:
-ANY("argentina")`), set by the agent from the production's declared
-territory.
+grounding source; `infra/provision_retrieval_plane.sh` provisions it. The
+running service never reads the resulting agent app id --
+`VertexSearchGrounding` calls Vertex AI Search directly against the data
+store id (`VERTEX_SEARCH_DATA_STORE_ID`, section 8). Per-request jurisdiction
+filtering goes through the retrieval tool's `filter` field (for example
+`jurisdiction: ANY("argentina")`), set by the agent from the production's
+declared territory.
 
 ## 6. ClickHouse Cloud
 
@@ -218,7 +220,7 @@ Secret Manager entries mounted as environment variables. The full set:
 | `OTEL_EXPORTER_OTLP_HEADERS` | Grafana Cloud OTLP auth header |
 | `GEMINI_MODEL` | `gemini-3.7-flash` |
 | `GEMINI_MODEL_LITE` | `gemini-3.1-flash-lite` |
-| `AGENT_BUILDER_AGENT_ID` | Agent Builder agent app for project Q&A, section 5 |
+| `VERTEX_SEARCH_DATA_STORE_ID` | Vertex AI Search data store from section 5, `clearcut-legal-corpus` |
 | `NOTIFY_WEBHOOK_URL` | outbound webhook the Notifier posts to |
 
 The Notifier delivers every notification as an HTTP POST to
@@ -243,6 +245,12 @@ makes a cross-origin request and no CORS configuration exists to break during
 the demo. ADR 0010 records the decision to drop Replit and host everything on
 this one Cloud Run service.
 
+The command below carries all ten `_required_env` variables (section 8).
+`DOCAI_PROCESSOR_ID`, `CLICKHOUSE_HOST`, `CLICKHOUSE_USER`, and
+`NOTIFY_WEBHOOK_URL` have no fixed value, so export them in the deploying
+shell first; the rest are the literal values fixed elsewhere in this
+document.
+
 ```bash
 gcloud run deploy clearcut \
   --source . \
@@ -250,7 +258,7 @@ gcloud run deploy clearcut \
   --allow-unauthenticated \
   --min-instances 0 \
   --set-secrets "PARALLEL_API_KEY=PARALLEL_API_KEY:latest,CLICKHOUSE_PASSWORD=CLICKHOUSE_PASSWORD:latest" \
-  --set-env-vars "GOOGLE_CLOUD_PROJECT=clearcut-hack,GEMINI_MODEL=gemini-3.7-flash,GEMINI_MODEL_LITE=gemini-3.1-flash-lite"
+  --set-env-vars "GOOGLE_CLOUD_PROJECT=clearcut-hack,GEMINI_MODEL=gemini-3.7-flash,GEMINI_MODEL_LITE=gemini-3.1-flash-lite,DOCAI_PROCESSOR_ID=$DOCAI_PROCESSOR_ID,CLICKHOUSE_HOST=$CLICKHOUSE_HOST,CLICKHOUSE_USER=$CLICKHOUSE_USER,VERTEX_SEARCH_DATA_STORE_ID=clearcut-legal-corpus,NOTIFY_WEBHOOK_URL=$NOTIFY_WEBHOOK_URL"
 ```
 
 Min instances stays at 0. This is a demo; a cold start of a few seconds costs

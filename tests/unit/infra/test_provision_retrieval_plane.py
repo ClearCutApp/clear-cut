@@ -70,13 +70,25 @@ def test_dry_run_imports_the_manifest_file(manifest_file: Path) -> None:
     assert "documents:import" in result.stdout
 
 
-def test_dry_run_registers_agent_and_prints_env_line(manifest_file: Path) -> None:
+def test_dry_run_registers_the_agent_builder_app(manifest_file: Path) -> None:
+    """`create_engine`/`create_engine_call` still provision the Agent
+    Builder agent app: CP-051 (Decision D40) struck the unread
+    `AGENT_BUILDER_AGENT_ID` documentation claim, not this API call --
+    section 5 of infrastructure.md still asks for the app to exist as a
+    grounding source attachment, out of scope for this checkpoint to judge."""
     result = run_script(["--dry-run"], env=env_with_manifest(manifest_file))
 
-    prefix = "AGENT_BUILDER_AGENT_ID="
+    assert "collections/default_collection/engines" in result.stdout
+    assert "engineId=clearcut-project-qa" in result.stdout
+
+
+def test_dry_run_prints_vertex_search_data_store_id_env_line(manifest_file: Path) -> None:
+    result = run_script(["--dry-run"], env=env_with_manifest(manifest_file))
+
+    prefix = "VERTEX_SEARCH_DATA_STORE_ID="
     lines = [line for line in result.stdout.splitlines() if line.startswith(prefix)]
     assert len(lines) == 1
-    assert lines[0] != "AGENT_BUILDER_AGENT_ID="
+    assert lines[0] == "VERTEX_SEARCH_DATA_STORE_ID=clearcut-legal-corpus"
 
 
 def test_missing_gcloud_exits_nonzero_before_printing_any_create(manifest_file: Path) -> None:

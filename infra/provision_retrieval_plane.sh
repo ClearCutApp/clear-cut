@@ -215,7 +215,7 @@ print_env_line() {
   cat <<EOF
 
 # .env line this run resolved -- paste into the repo-root .env file:
-AGENT_BUILDER_AGENT_ID=${AGENT_BUILDER_AGENT_ID:-<agent-id-not-yet-created>}
+VERTEX_SEARCH_DATA_STORE_ID=$DATA_STORE_ID
 EOF
 }
 
