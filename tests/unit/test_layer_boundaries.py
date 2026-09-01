@@ -2,7 +2,11 @@
 
 `domain/` may import only the standard library or `clearcut.domain` itself.
 `application/` may import `clearcut.domain`, but never a web framework, a
-third-party client, or `clearcut.adapters`.
+third-party client, or `clearcut.adapters`. `composition.py` is the single
+named exception to the third rule (CP-048): it is the one place wiring
+happens, and every other module under `src/clearcut/` -- outside the
+`adapters/` package itself, which may reference its own siblings -- must stay
+clean of `clearcut.adapters`.
 """
 
 import ast
@@ -10,8 +14,11 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DOMAIN_DIR = REPO_ROOT / "src" / "clearcut" / "domain"
-APPLICATION_DIR = REPO_ROOT / "src" / "clearcut" / "application"
+SRC_DIR = REPO_ROOT / "src" / "clearcut"
+DOMAIN_DIR = SRC_DIR / "domain"
+APPLICATION_DIR = SRC_DIR / "application"
+ADAPTERS_DIR = SRC_DIR / "adapters"
+COMPOSITION_FILE = SRC_DIR / "composition.py"
 
 STDLIB_MODULES = frozenset(sys.stdlib_module_names)
 FORBIDDEN_APPLICATION_PREFIXES = (
@@ -126,3 +133,30 @@ def test_application_modules_import_no_framework_client_or_adapter():
     for path in APPLICATION_DIR.rglob("*.py"):
         violations = _application_violations(path.read_text(), _package_for(path))
         assert violations == [], f"{path}: disallowed imports {violations}"
+
+
+def _imports_adapters(source: str, package: str = "") -> list[str]:
+    """Imports in `source` naming `clearcut.adapters` or one of its submodules."""
+    return [
+        name
+        for name in _imported_module_names(source, package)
+        if name == "clearcut.adapters" or name.startswith("clearcut.adapters.")
+    ]
+
+
+def test_composition_imports_the_adapters_it_wires():
+    """A sanity check the next test needs: if `composition.py` stopped
+    importing `clearcut.adapters` altogether, the exclusivity test below
+    would pass vacuously and prove nothing."""
+    assert COMPOSITION_FILE.exists(), "composition.py must exist as the wiring module"
+    assert _imports_adapters(COMPOSITION_FILE.read_text(), "clearcut") != []
+
+
+def test_composition_is_the_only_module_importing_adapters():
+    for path in SRC_DIR.rglob("*.py"):
+        if path == COMPOSITION_FILE or path == ADAPTERS_DIR or ADAPTERS_DIR in path.parents:
+            continue
+        violations = _imports_adapters(path.read_text(), _package_for(path))
+        assert violations == [], (
+            f"{path}: only composition.py may import clearcut.adapters, found {violations}"
+        )
