@@ -1991,58 +1991,248 @@ to `OPTIONAL_ENV_VARS`, which is D52's one-line fix landing on its ruled trigger
 but it does not touch the AST filter's silent skips, which is a different entry
 with a different trigger.
 
+### Settled 2026-09-02, the localhost plan's deferral queue and the board closing a second time (D54–D62)
+
+CP-052, CP-053 and CP-054 are all `DONE` and committed (`2172574`, `f3f025e`,
+`1362bc1`; HEAD `a4ad34d`). The approved Browser MVP plan is delivered, and
+`## Active` is empty again — by completion this time, the same as after CP-051,
+not by anything being abandoned.
+
+Their six reviews left ten non-blocking findings. Nine become dated Backlog
+entries, grouped into eight because two of them must be fixed together; one is
+declined outright. Five days remain to 2026-09-07, and the tiebreak is D40's:
+**does it break a person or a test before then?** With the demo now running in a
+browser rather than over `curl`, one clause of that test has changed and it is
+worth stating — "a person" now includes a judge clicking something, not only a
+deployer reading a document. Two of the ten were flagged on that basis and both
+were checked by hand rather than ruled from the summary.
+
+**D54. `load_dotenv()`'s no-override contract is unpinned: Backlog, and it
+belongs at the top of that list.**
+
+*The finding.* `main.py:14` — removing the import and the call outright leaves
+the whole unit suite green, and `load_dotenv(override=True)` is equally
+invisible while no `.env` exists.
+
+*Why it is the most serious of the nine, and why it still waits.* The no-override
+default is what makes the README's own `CLEARCUT_MODE=live ./.venv/bin/python
+main.py` beat a copied `.env` carrying `CLEARCUT_MODE=mock`. Flip that default
+and a live invocation silently serves planted demo data while the operator
+believes they are looking at real services — which is D36's named failure, the
+exact class this project has spent CP-049, CP-050 and a supersede closing. So the
+property is load-bearing and proved by nothing.
+
+It waits anyway, on the narrowest possible ground: the mutant requires someone to
+edit that line, and nothing between now and the deadline opens `main.py`. That is
+a statement about the calendar, not about the risk. Whoever touches that file
+first should close this before doing anything else, which is why it is written
+first in the Backlog block rather than in finding order.
+
+**D55. `PORT` is undocumented, and the test that covers it depends on `.env`
+being absent: Backlog as one entry, because fixing either alone makes things
+worse.**
+
+*The two findings.* `main.py:22` — `PORT` is a new environment variable no
+document records, invisible to CP-051's guard because that guard parses
+`_required_env` calls in `composition.py` only, so this is a documentation gap
+rather than a guard failure. And `tests/unit/test_entrypoint.py:93` —
+`test_port_defaults_to_8080` depends on the absence of an untracked file:
+planting a root `.env` containing `PORT=7777` reddens it against an unmodified
+`main.py`, because `load_dotenv()` injects `PORT` into the cleared environment
+before `_port()` reads it.
+
+*Why they are one entry, and this is the ruling that matters here.* They look
+independent and they are not. Documenting `PORT` in `.env.example` is an
+instruction to put `PORT` in a real `.env` — which is precisely the condition
+that reddens the test. **Doing the documentation half alone would take a latent
+environment dependence and start actively triggering it**, turning a green suite
+red for a developer who did exactly what the documentation told them to. So the
+entry carries both halves and says plainly that the test's env-independence
+lands first, or with it, never after.
+
+**D56. The environment trio is atomic in one direction only: Backlog.**
+
+*The finding.* Removing `CLEARCUT_MODE` from `OPTIONAL_ENV_VARS` while both
+documents keep it reddens three tests, but removing it from `.env.example` while
+`OPTIONAL_ENV_VARS` keeps it stays green. CP-052's criterion said "any
+intermediate commit is a red tree", and that holds for one ordering rather than
+both.
+
+*Why it waits.* A criterion that over-claims is the shape D39 once promoted, so
+the comparison is worth making rather than dodging. D39's gate was protecting a
+silent failure — a cross-package adapter import serving demo data on a live
+route. This one protects a variable that is *optional* by construction: lose
+`CLEARCUT_MODE` from `.env.example` and a deployer gets live mode by default,
+which fails loudly on `GOOGLE_CLOUD_PROJECT` rather than quietly on anything.
+Loud, bounded, and behind a trigger nothing fires in five days.
+
+**D57. `README.md:47` still names a bare `python` in the live-mode command:
+Backlog, and it is the cheapest thing on this list.**
+
+*The finding.* CP-052's attempt 2 fixed line 18 to `./.venv/bin/python` for mock
+mode and left line 47 — the live-mode paragraph — with a bare `python`, which
+resolves to nothing in a shell where the virtualenv was never activated. Its
+reviewer ruled it out of that checkpoint's criteria scope rather than as
+acceptable, which is a different thing and is why it is here.
+
+*Why it waits, despite breaking a person.* It does break a reader, and that
+normally wins. What holds it back is *which* reader: the live-mode paragraph is
+addressed to someone with twelve credentials configured, and the demo runs
+mocked. Nobody walks that path before 2026-09-07. The remedy is one path prefix,
+and attempt 1's own sentence is the wording to reuse when it is opened: do not
+leave a boot command that only works in an already-activated shell.
+
+**D58. The `as` cast cannot see a missing or renamed fixture field, and
+`fixtures.test.ts` now contradicts itself: Backlog.**
+
+*The finding.* Deleting `project_id` from `tracker.json[0]`, or renaming it to
+`projectId`, leaves typecheck and the suite green — the cast catches a *wrong
+type*, never a missing or renamed key. The analyze fixture has an
+`Object.keys` assertion; tracker items have no counterpart. That is the residual
+hole in the very masking CP-053 was filed to close. Alongside it, the comment at
+`fixtures.test.ts:19` still claims the cast catches "a renamed or missing field
+at any depth", and now sits fifteen lines above a newer comment correctly saying
+the cast performs no excess-property check. Both sentences are true about
+different things and the file reads as contradicting itself.
+
+*Why it waits.* The fixtures do match the wire on keys and types today, so the
+hole is guarding against a future edit rather than covering a present defect, and
+nothing before the deadline edits them. The stale comment is the part that costs
+a reader something now — but it costs a reader of a test file, and the correction
+belongs in the same turn as the assertion it describes.
+
+**D59. The three `/api/` spellings in `client.test.ts` `it()` titles: DECLINED.**
+
+*The finding.* `client.test.ts:68,89,151` spell out `/api/analyze`,
+`/api/tracker/:itemId` and `/api/question` in their test titles, a second
+spelling of a path that could drift silently from `client.ts`.
+
+*Why this one is dropped rather than deferred.* `architecture.test.ts` permits it
+deliberately — the gate requires a quote character immediately before the
+segment, so prose mentions are outside its scope by design, and the pre-existing
+atoms mention `src/api/` the same way. The titles are accurate today. And the
+worst case if one drifts is a misleading label on a test whose actual behaviour
+is pinned through `client.ts`'s functions, not through its own name; no
+assertion weakens, no gate goes quiet, nothing a user or deployer meets changes.
+That is taste, and a Backlog that collects taste stops meaning anything. Recorded
+as declined with its reasoning, which is the same treatment D45 got — a finding
+ruled on its merits rather than filed because filing is easier than deciding.
+
+**D60. The web fixtures have drifted from the wire scenario: Backlog, and it
+cannot reach the demo.**
+
+*The finding, confirmed wider than first reported.* Committed `tracker.json`
+carries `item_001`/`fnd_001`-style ids where the live scenario serves
+`EVT-001`..`EVT-003`; documents "Product placement release", "Synchronization
+license" and "Location permit" where the wire serves "Trademark Clearance Form",
+"Synchronization License" and "Continuity Revision"; and notes on items 2 and 3
+("Awaiting quote from publisher.", "Permit approved through end of shoot week.")
+where the live continuity item carries `""`.
+
+*Why it waits, and this is the load-bearing fact I verified rather than
+assumed.* **The fixtures are imported by five `.test.tsx` files and by no
+production module** — checked directly this turn. Nothing a judge sees comes from
+them; the browser talks to the real server, which serves `scenario.py`. So the
+drift cannot reach the demo, and the one genuinely dangerous case it might have
+masked is independently covered: CP-054 pins the empty-value row through a
+hand-built `TrackerItem` literal in `TrackerRow.test.tsx:16-30`, which mutation
+testing confirmed catches a raw `undefined`.
+
+*What is honestly wrong with it, stated rather than smoothed over.* CP-053's
+criterion flipped these fixtures to "server truth" specifically so the
+conformance test would stop masking drift, and five days later they are not
+server truth. That is a criterion that decayed rather than a nicety that was
+never met, and the next person to write a web component against these fixtures
+would be writing against fiction. That is exactly the trigger.
+
+**D61. `index.css` styles the two badges through their `data-testid` hooks:
+Backlog.**
+
+*The finding.* `index.css:129-130` selects `[data-testid="risk-badge"]` and
+`[data-testid="state-badge"]`, because the atoms expose no class name and that
+was the only handle available without editing files outside CP-054's list.
+
+*Why it waits, and why it is a real smell rather than a style preference.* It
+couples presentation to a testing hook, so a future test-only refactor — renaming
+or removing a `data-testid`, which anyone would consider a safe change — silently
+breaks the demo's appearance. That cross-coupling is worth removing. It waits
+because removing it means editing `StateBadge` and `RiskBadge`, two `DONE`
+atoms with their own tests, and nothing in five days touches either the atoms or
+the stylesheet. The fix is to give the atoms a class name, and it belongs to
+whoever owns them.
+
+**D62. `TrackerDashboard`'s `handleNotify` is unpinned: Backlog, and the residual
+risk is smaller than the measurement suggests.**
+
+*The finding.* Gutting `handleNotify` alone leaves all 50 tests green, so those
+four lines are the one segment of that container still unpinned.
+
+*Why this was checked by hand rather than ruled from the report.* It was flagged
+as demo-adjacent, and the notify button is on screen — a judge can click it even
+though it is not in the scripted beat. "Low probability" is not evidence, so I
+read the code. `handleNotify` (`TrackerDashboard.tsx:75-79`) is a
+literal-for-literal twin of `handleDraftEmail` above it: same
+`postTrackerAction` call, same
+`.then((updated) => setItems((current) => (current === null ? current :
+replaceItem(current, updated))))`, same `.catch(handleMutationError)`, differing
+only in the action string. Both of its ends are independently pinned —
+`client.test.ts:130-133` pins `postTrackerAction(id, "notify")` sending
+`{action: "notify"}`, and `TrackerRow.test.tsx:108-111` pins the button reaching
+`onNotify` with the item id — and `handleDraftEmail`, the identical join, is
+pinned end to end.
+
+*The ruling.* Verified correct by reading, unpinned by testing. Those are
+different claims and both are true: the demo will not break, and a future edit to
+those four lines would not be caught. One container test mirroring the
+draft-email one closes it. Recorded also because the reviewer's restraint was
+right: attempt 1 wrote one bounded finding and closed it, the named remedy was
+delivered, and expanding the finding set afterwards is the goalpost move section
+6 depends on reviewers not making.
+
 ---
 
 ## Active
 
-**Three checkpoints. The board reopened on 2026-09-01 for a new human goal.**
+**No checkpoints. The loop is complete for the second time, and by completion
+rather than abandonment.**
 
-The user approved a plan to make ClearCut runnable and demo-able on localhost and
-chose the Browser MVP scope. D53 records the ruling and why this is the one thing
-that may reopen a closed board: a human starting a new goal, not a `PASS` and not
-a `BLOCKED` block being revisited. The approved plan at
-`~/.claude/plans/analyze-the-code-and-starry-bentley.md` is the contract; the
-criteria below add test names and failure paths to it and do not renegotiate its
-scope.
+The approved Browser MVP plan is delivered. CP-052, CP-053 and CP-054 all passed
+review and are archived, committed as `2172574`, `f3f025e` and `1362bc1` with
+their loop-state chores; HEAD is `a4ad34d`. Nothing is `TODO`, `IN_PROGRESS` or
+`IN_REVIEW` — AGENT.md section 6 step 5's stopping condition — so the conductor
+reports to the human and stops looking for a next block. **Fifty-four
+checkpoints, fifty-two `DONE` and two `SUPERSEDED`** (CP-028 and CP-030, each
+split once into `Depth: 1` replacements that landed), CP-001 through CP-054 with
+no gaps, every one behind a review that ran the gates.
 
-The gap it closes, in one line each. **Nothing runs it:** no entrypoint exists
-anywhere, nothing installs the project, nothing loads `.env`, `CLEARCUT_MODE` is
-undocumented and defaults to live so a bare boot dies on `GOOGLE_CLOUD_PROJECT`,
-and the only working command is undocumented in every element. **Nothing shows
-it:** `App.tsx` renders `<p>ClearCut</p>`, the three surfaces were never written,
-and the API client covers two of five routes — one of which nothing serves.
+What that bought, against the two gaps the plan named. **It runs:** an entrypoint
+exists, `./.claude/init.sh` installs the project, `.env` loads, `CLEARCUT_MODE`
+is documented, and the README carries a two-command story whose curl order was
+verified rather than assumed. **It shows:** the three surfaces render in a
+browser over an API client that now matches the server field for field, and
+`init.sh check` runs the frontend gates that had never run — which is why the
+contract drift CP-053 repaired had survived every previous review.
 
-**Dispatch now, in parallel: implementer on CP-052 and implementer on CP-053.**
-They share no file. CP-052 is Python, packaging and prose; CP-053 is `web/` only,
-and its gates are `npm run typecheck` and `vitest`, neither of which needs an
-entrypoint or a running server. D53 explains why the dependency the brief offered
-between them was declined rather than taken for tidiness — with six days left, a
-dependency that does not exist costs a real turn.
+This section is empty on purpose, and the same two rules keep it that way. A
+leader adds checkpoints only for a new human goal or a `BLOCKED` checkpoint,
+never in response to a `PASS`; and `BLOCKED` never returns to `TODO`. Between
+them no agent can walk this board from "finished" back to "in progress" on its
+own. The board has now reopened exactly once, on 2026-09-01, and it took a human
+approving a plan to do it (D53) — which is the mechanism working, not an
+exception to it.
 
-**Then CP-054**, which needs CP-053 genuinely (its components import the four
-functions CP-053 writes) and CP-052 only as a file collision in
-`.claude/init.sh`'s `check()`. D39's precedent: say which is which, so a later
-turn can reorder on the facts.
+**The Backlog below is not a queue this loop drains.** Every entry carries its
+date, its reasoning and the trigger that would justify promoting it. As of
+2026-09-02 no trigger fires before 2026-09-07, and the four entries most likely
+to matter afterwards are grouped at the top of the newest block in rough severity
+order rather than in the order their reviews happened to find them.
 
-**The verified baseline, measured this turn against `CLEARCUT_MODE=mock` rather
-than taken from any document.** `POST /api/analyze` with the four demo values
-returns 200 and eight keys — `script_id`, `project_id`, `version`, `gcs_uri`,
-`jurisdiction_code`, `scenes`, `findings`, `tracker_items` — carrying 3 scenes, 3
-findings and 3 tracker items, all three `BLOCKED`. `GET /api/tracker` **before**
-any analyze returns `[]`, which is what makes the README's curl ordering
-load-bearing rather than stylistic. The third tracker item (the continuity one,
-which has no rights claim behind it) carries `contact: ""`,
-`litigation_posture: ""` and `note: ""` — empty strings, never `null`, which is
-both the proof that today's client types are wrong and a real empty-value row
-CP-054 has to render.
-
-**Cut order, if the clock tightens.** CP-054 is the only cuttable one, and
-cutting it leaves a documented, installable, one-command backend demo over curl —
-which is what exists today plus a run story. CP-052 is not cuttable: without it
-there is no run story at all. CP-053 is not cuttable either, and this is the
-counter-intuitive one — cutting it does not save the browser demo, it ships a UI
-built on types that disagree with the server, which is the failure the whole
-Tier 2 split exists to prevent.
+**Where the record is.** Each checkpoint's evidence sits with its block in the
+Archive, newest first: the criteria as written, what the implementer built, and
+what the reviewer re-ran rather than took on trust. Each decision that shaped the
+plan is in `## Decisions`, D1 through D62, with the reasoning that produced it,
+because the next person to read this file is the one who will want to reopen one
+of them and a decision without its reasoning gets re-litigated.
 
 ---
 
@@ -2422,6 +2612,103 @@ below this line is now a human's to pick up or leave.
   saying nothing requires it. `OPTIONAL_ENV_VARS` is the one-line fix.
   *Trigger:* any variable added to the section 9 command, or the first optional
   variable someone tries to document.
+
+**Placed 2026-09-02: the deferral queue the localhost plan's six reviews left
+behind (D54–D62).**
+
+Ten non-blocking findings from CP-052, CP-053 and CP-054. Nine are deferred here
+in eight entries — two of them must be fixed in one turn and say so — and one is
+declined outright (D59, the `/api/` spellings in three `it()` titles: the
+architecture gate permits them by design, the titles are accurate, and a drifted
+test title misleads nobody about behaviour pinned elsewhere). Ordered by what
+they cost rather than by which review found them. Five days remained to
+2026-09-07 when these were ruled, and no trigger below fires inside it.
+
+- **`load_dotenv()`'s no-override contract is proved by nothing.** D54, from
+  CP-052's review. `main.py:14` — removing the import and the call outright
+  leaves the whole unit suite green, and `load_dotenv(override=True)` is equally
+  invisible while no `.env` exists. **The highest-severity entry on this list:**
+  the no-override default is what makes `CLEARCUT_MODE=live ./.venv/bin/python
+  main.py` beat a copied `.env` carrying `CLEARCUT_MODE=mock`, so flipping it
+  serves planted demo data to an operator who believes they are on live services
+  — D36's named failure. Deferred only because nothing before the deadline opens
+  that file. *Trigger:* the first edit to `main.py`, or the day a `.env` ships
+  inside a deployment image. Close it before doing anything else in that file.
+- **`PORT` is undocumented, and the test covering it depends on `.env` being
+  absent.** D55, from CP-052's review, **one entry because fixing either half
+  alone makes things worse.** `main.py:22` introduces `PORT`, which no document
+  records and CP-051's guard cannot see (it parses `_required_env` in
+  `composition.py` only). `tests/unit/test_entrypoint.py:93`'s
+  `test_port_defaults_to_8080` reddens against an unmodified `main.py` if a root
+  `.env` carries `PORT=7777`, because `load_dotenv()` injects it before `_port()`
+  reads it. Documenting `PORT` is an instruction to put it in a real `.env` —
+  which is exactly the condition that reddens the test — so **the test's
+  env-independence lands first, or in the same turn, never after.** *Trigger:*
+  anyone documenting `PORT`, or a developer hitting the red test.
+- **The web fixtures have drifted from the wire scenario.** D60, from CP-054's
+  review. `tracker.json` and `analyze.json` carry `item_001`/`fnd_001`-style ids
+  where the server serves `EVT-001`..`EVT-003`, documents "Product placement
+  release" / "Synchronization license" / "Location permit" where the wire serves
+  "Trademark Clearance Form" / "Synchronization License" / "Continuity
+  Revision", and notes on two rows where the live continuity item carries `""`.
+  Deferred because it **cannot reach the demo** — verified this turn, the
+  fixtures are imported by five `.test.tsx` files and by no production module, so
+  what a judge sees comes from `scenario.py` over the wire — and because the one
+  case the drift might have masked is independently pinned by the hand-built
+  `TrackerItem` literal at `TrackerRow.test.tsx:16-30`. Recorded honestly: this
+  is a criterion that decayed rather than a nicety never met, since CP-053 flipped
+  these fixtures to "server truth" precisely so the conformance test would stop
+  masking drift. *Trigger:* the next web component or test written against them —
+  refresh the fixtures first, or write against fiction.
+- **`TrackerDashboard`'s `handleNotify` is unpinned.** D62, from CP-054's review.
+  Gutting `TrackerDashboard.tsx:75-79` alone leaves all 50 tests green.
+  **Verified correct by reading, unpinned by testing — both are true.** Those
+  four lines are a literal-for-literal twin of `handleDraftEmail` (same
+  `postTrackerAction`, same `replaceItem` update, same `catch`), and both ends
+  are already pinned: `client.test.ts:130-133` for the request body,
+  `TrackerRow.test.tsx:108-111` for the button reaching `onNotify`. So the demo
+  will not break, and a future edit to those four lines would not be caught. One
+  container test mirroring the draft-email one closes it. *Trigger:* any edit to
+  that container, or notify entering a demo script.
+- **`index.css` styles the two badges through their `data-testid` hooks.** D61,
+  from CP-054's review. `index.css:129-130` selects `[data-testid="risk-badge"]`
+  and `[data-testid="state-badge"]` because the atoms expose no class name.
+  A real cross-coupling rather than a preference: a test-only refactor renaming a
+  `data-testid` — which anyone would treat as safe — silently breaks the demo's
+  appearance. Deferred because the fix means editing two `DONE` atoms and nothing
+  in five days touches them or the stylesheet. The fix is to give `StateBadge`
+  and `RiskBadge` class names. *Trigger:* the next edit to either atom or to
+  `index.css`.
+- **The `as` cast cannot see a missing or renamed fixture field, and
+  `fixtures.test.ts` contradicts itself about it.** D58, from CP-053's review.
+  Deleting `project_id` from `tracker.json[0]`, or renaming it to `projectId`,
+  leaves typecheck and the suite green — the cast catches a wrong *type*, never a
+  missing or renamed key, and tracker items have no counterpart to the analyze
+  fixture's `Object.keys` assertion. That is the residual hole in the masking
+  CP-053 exists to close. In the same file, the comment at `fixtures.test.ts:19`
+  still claims the cast catches "a renamed or missing field at any depth",
+  fifteen lines above a newer comment correctly saying it performs no
+  excess-property check. Fix the assertion and the comment together. *Trigger:*
+  the next fixture edit — and D60's refresh is one, so these two land well in one
+  turn.
+- **The environment trio is atomic in one direction only.** D56, from CP-052's
+  review. Removing `CLEARCUT_MODE` from `OPTIONAL_ENV_VARS` while both documents
+  keep it reddens three tests; removing it from `.env.example` while
+  `OPTIONAL_ENV_VARS` keeps it stays green. CP-052's criterion claimed "any
+  intermediate commit is a red tree", which holds for one ordering rather than
+  both. Deferred because the variable is optional by construction — losing it
+  from `.env.example` yields live mode by default, which fails loudly on
+  `GOOGLE_CLOUD_PROJECT` rather than quietly. *Trigger:* the next variable added
+  to `OPTIONAL_ENV_VARS`, or any edit to `.env.example`.
+- **`README.md:47` names a bare `python` in the live-mode command.** D57, from
+  CP-052's review, and the cheapest item here. Attempt 2 fixed line 18 to
+  `./.venv/bin/python` for mock mode and left the live-mode paragraph resolving
+  to nothing in a shell where the virtualenv was never activated; its reviewer
+  ruled it outside that checkpoint's criteria rather than acceptable. Deferred on
+  which reader it breaks: live mode needs twelve credentials and the demo runs
+  mocked, so nobody walks it before the deadline. Reuse attempt 1's own wording —
+  do not leave a boot command that only works in an already-activated shell.
+  *Trigger:* the next README edit, or anyone actually attempting live mode.
 
 ---
 
