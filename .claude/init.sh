@@ -219,8 +219,7 @@ bootstrap() {
     # shellcheck disable=SC1091
     . "$ROOT/.venv/bin/activate"
     python -m pip install --quiet --upgrade pip
-    [ -f "$ROOT/requirements.txt" ] && python -m pip install --quiet -r "$ROOT/requirements.txt"
-    python -m pip install --quiet pytest ruff mypy && ok "pytest + ruff + mypy installed"
+    python -m pip install --quiet -e "$ROOT[dev]" && ok "clearcut + dev tools installed"
     note "activate with: source .venv/bin/activate"
   else
     note "no pyproject.toml / requirements.txt yet — nothing to install"
@@ -244,7 +243,7 @@ check() {
     note "ruff not installed — run ./.claude/init.sh first"
   fi
   if command -v mypy >/dev/null 2>&1 && [ -d "$ROOT/src" ]; then
-    (cd "$ROOT" && mypy src tests infra) && ok "mypy" || no "mypy"
+    (cd "$ROOT" && mypy src tests infra main.py) && ok "mypy" || no "mypy"
   else
     note "mypy not installed — run ./.claude/init.sh first"
   fi

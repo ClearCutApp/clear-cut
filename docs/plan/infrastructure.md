@@ -210,6 +210,7 @@ Secret Manager entries mounted as environment variables. The full set:
 
 | Variable | Holds |
 |---|---|
+| `CLEARCUT_MODE` | `mock` for the in-memory demo, `live` for the real adapter graph; unset defaults to `live` |
 | `GOOGLE_CLOUD_PROJECT` | project ID, `clearcut-hack` |
 | `DOCAI_PROCESSOR_ID` | Document AI processor from section 3 |
 | `PARALLEL_API_KEY` | Parallel Task API, Search API, and MCP auth (`x-api-key`) |

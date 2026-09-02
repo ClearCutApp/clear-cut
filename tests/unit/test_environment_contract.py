@@ -31,8 +31,12 @@ _DOC_TABLE_ROW = re.compile(r"^\|\s*`([A-Z][A-Z0-9_]*)`\s*\|")
 _SECTION_8_HEADING = "## 8. Secrets and configuration"
 
 # Read by the OTLP exporters themselves, never by our code (CP-031 criterion
-# 1; CP-049's attempt-1 ruling) -- documented but deliberately not required.
-OPTIONAL_ENV_VARS = frozenset({"OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_HEADERS"})
+# 1; CP-049's attempt-1 ruling), or read via os.environ.get with a live-mode
+# default rather than _required_env (CLEARCUT_MODE, composition.py's own
+# mode switch, CP-052) -- documented but deliberately not required.
+OPTIONAL_ENV_VARS = frozenset(
+    {"OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_HEADERS", "CLEARCUT_MODE"}
+)
 
 
 def _required_env_names(source: str) -> set[str]:
