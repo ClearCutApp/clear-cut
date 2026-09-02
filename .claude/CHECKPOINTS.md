@@ -2189,6 +2189,96 @@ right: attempt 1 wrote one bounded finding and closed it, the named remedy was
 delivered, and expanding the finding set afterwards is the goalpost move section
 6 depends on reviewers not making.
 
+### Settled 2026-09-02, a user-ordered design pass that did not go through the loop (D63–D65)
+
+**D63. The SPA was redesigned on a user order, as delegated-direct work rather
+than as a checkpoint. Committed `349da37`.**
+
+*What happened.* The user rejected the shipped UI in plain terms — no Don Norman
+principles, no Vercel style, almost no CSS — and ordered a design pass. It was
+executed as delegated-direct work with a full adversarial review and committed as
+`349da37`: 13 files under `web/`, 705 insertions against 164 deletions. Geist and
+Geist Mono typography, a token-based design system in `web/src/index.css`,
+`TrackerRow` restructured into a labeled `dl` grid, pending states on every
+mutation with three new load-bearing tests, and semantic badge classes replacing
+the `[data-testid]` selectors.
+
+*Recorded here because it is outside the loop, and that has to be visible.*
+Fifty-four checkpoints sit in the Archive, each with a block and a review behind
+it, and until now `git log` and that Archive told the same story. `349da37` is
+the first commit in this repository that changes application code with no
+checkpoint behind it. A reader reconciling the two would otherwise find a
+substantial `web/` commit with no block, which is the same class of confusion
+CP-050's reviewer flagged when HEAD asserted a checkpoint state with no code
+behind it — the mirror image of it. So it is written down rather than left to be
+discovered.
+
+*Why it was legitimate, stated precisely, because the distinction matters.*
+AGENT.md section 6 binds **agents**: a leader may not open checkpoints in
+response to a `PASS`, and `BLOCKED` never returns to `TODO`. Those rules exist to
+stop the loop restarting itself. They do not bind the human. A user who looks at
+the delivered UI and says it is not good enough is not an agent routing around a
+termination guarantee; they are the person the whole loop reports to. The board
+was terminal, the work was ordered directly, and it took the route the user's own
+routing rules select for two-or-more non-trivial files: one delegated writer, one
+adversarial review, one commit. Recording it as a decision keeps the ledger
+honest without pretending it was a checkpoint it never was.
+
+*The review verdict, and the one deviation that was argued rather than waved
+through.* The review found a single blocking finding — a dead class combined with
+an ID-specificity problem — and it was remedied exactly as prescribed and
+verified before the commit landed: 53 of 53 tests, 6 of 6 gates. The deviation
+worth recording is `index.css` at **490 lines**, well past section 4's soft file
+guide of 300. The reviewer accepted it explicitly and on a stated reason rather
+than by omission: it is a flat token-then-component stylesheet whose cascade a
+split would actively harm, because the token block has to precede every component
+that reads it and splitting introduces an import-order dependency that nothing
+would check. Section 4's size guides are labelled soft and say to argue if wrong.
+This is what arguing looks like, and the argument is accepted here too.
+
+*One detail worth keeping, because it is evidence the ledger is being read.* The
+stylesheet's own header comment records the rule it follows and cites D61 by
+number. A ruling written in this file on 2026-09-02 reached the implementer of a
+change made the same day, and came back cited in the artifact. That is the
+Decisions section doing the job it was built for.
+
+**D64. The label colons `TrackerRow` lost in the `dl` restructure: Backlog,
+optional, and ranked low on purpose.**
+
+The restructure into a labeled `dl` grid dropped the colons that previously
+followed each label. The reviewer raised it as optional. It stays optional here: a
+`dl` grid already separates term from description visually and structurally, so
+the colon is redundant punctuation in the new layout rather than a lost cue. What
+would change that is evidence, not taste — if the flat labels read ambiguously to
+anyone looking at the screen, `dt::after { content: ":" }` restores them in one
+declaration without touching the markup. Filed so the option is on record with
+its remedy; not filed as a defect, because nothing yet says it is one.
+
+**D65. A 490-line hand-maintained stylesheet is checked by nothing: Backlog, and
+this is the one of the two that has teeth.**
+
+*The gap, verified this turn rather than inferred.* `.claude/init.sh` names no CSS
+gate and `web/package.json` declares no CSS tooling — neither stylelint nor
+prettier over `*.css`. `check()` runs ruff, ruff format, mypy, pytest, `npm run
+typecheck` and `npm test`, and not one of them reads a stylesheet. The file that
+grew from roughly 138 lines to 490 in a single commit is the only substantial
+artifact in this repository that no gate inspects.
+
+*Why it matters more than a lint preference, which is the whole argument for
+filing it.* The review's one blocking finding was a **dead class**. That is
+precisely the defect class a CSS gate catches mechanically and that human review
+catches only by luck and diligence — this time diligence won, and the finding was
+caught and fixed before the commit. The gap is not hypothetical and its
+consequence is already on the record: an unchecked stylesheet is exactly what let
+that class through to review in the first place. The same reasoning ran in D44
+about `init.sh check` running zero frontend gates, which is how CP-053's contract
+drift survived every earlier review; adding those gates is what surfaced it.
+
+*Why it still waits.* It is tooling, five days from the deadline, on a file that
+is correct today and that nothing is scheduled to touch. *Trigger:* the next
+`index.css` edit — whoever opens that file next should add the gate before
+changing a rule, not after.
+
 ---
 
 ## Active
@@ -2212,6 +2302,15 @@ verified rather than assumed. **It shows:** the three surfaces render in a
 browser over an API client that now matches the server field for field, and
 `init.sh check` runs the frontend gates that had never run — which is why the
 contract drift CP-053 repaired had survived every previous review.
+
+**One commit sits outside this loop, and it is the only one.** On 2026-09-02 the
+user rejected the shipped UI and ordered a design pass; it ran as delegated-direct
+work with an adversarial review and landed as `349da37`, 13 files under `web/`.
+It is not a checkpoint and has no block in the Archive, so `git log` and that
+Archive no longer tell quite the same story — which is why D63 records it. The
+board stayed terminal throughout: a direct user order is not an agent reopening
+its own board, and section 6's two rules bind agents, not the person the loop
+reports to.
 
 This section is empty on purpose, and the same two rules keep it that way. A
 leader adds checkpoints only for a new human goal or a `BLOCKED` checkpoint,
@@ -2670,15 +2769,20 @@ they cost rather than by which review found them. Five days remained to
   will not break, and a future edit to those four lines would not be caught. One
   container test mirroring the draft-email one closes it. *Trigger:* any edit to
   that container, or notify entering a demo script.
-- **`index.css` styles the two badges through their `data-testid` hooks.** D61,
-  from CP-054's review. `index.css:129-130` selects `[data-testid="risk-badge"]`
-  and `[data-testid="state-badge"]` because the atoms expose no class name.
-  A real cross-coupling rather than a preference: a test-only refactor renaming a
-  `data-testid` — which anyone would treat as safe — silently breaks the demo's
-  appearance. Deferred because the fix means editing two `DONE` atoms and nothing
-  in five days touches them or the stylesheet. The fix is to give `StateBadge`
-  and `RiskBadge` class names. *Trigger:* the next edit to either atom or to
-  `index.css`.
+- ~~**`index.css` styles the two badges through their `data-testid` hooks.**~~
+  **CLOSED 2026-09-02 by the design pass (D63), one day after it was filed.**
+  Its trigger — "the next edit to either atom or to `index.css`" — fired exactly
+  as written, and the fix landed as the entry prescribed: `StateBadge` and
+  `RiskBadge` now carry `state-badge state-badge--{state}` and
+  `risk-badge risk-badge--{risk}`, and `index.css` selects those classes.
+  Verified this turn rather than taken on report: the only occurrence of
+  `data-testid` left in the stylesheet is a comment at `index.css:4` recording
+  the rule and citing D61 by number. The original entry, kept for its evidence:
+  `index.css:129-130` selected `[data-testid="risk-badge"]` and
+  `[data-testid="state-badge"]` because the atoms exposed no class name — a real
+  cross-coupling rather than a preference, since a test-only refactor renaming a
+  `data-testid`, which anyone would treat as safe, silently broke the demo's
+  appearance. It was deferred because the fix meant editing two `DONE` atoms.
 - **The `as` cast cannot see a missing or renamed fixture field, and
   `fixtures.test.ts` contradicts itself about it.** D58, from CP-053's review.
   Deleting `project_id` from `tracker.json[0]`, or renaming it to `projectId`,
@@ -2709,6 +2813,36 @@ they cost rather than by which review found them. Five days remained to
   mocked, so nobody walks it before the deadline. Reuse attempt 1's own wording —
   do not leave a boot command that only works in an already-activated shell.
   *Trigger:* the next README edit, or anyone actually attempting live mode.
+
+**Placed 2026-09-02: two deferrals from the user-ordered design pass (D64–D65).**
+
+`349da37` was delegated-direct work on a direct user order, not a checkpoint —
+D63 records why that is legitimate and why it is written down. Its review left
+two non-blocking findings. It also **closed D61 above**, whose trigger fired one
+day after it was filed.
+
+- **A 490-line hand-maintained stylesheet is checked by nothing.** D65, from the
+  design pass's review, and the one with teeth. Verified this turn:
+  `.claude/init.sh` names no CSS gate and `web/package.json` declares no CSS
+  tooling, so of the six gates `check()` runs — ruff, ruff format, mypy, pytest,
+  `npm run typecheck`, `npm test` — not one reads a stylesheet. `web/src/index.css`
+  grew from roughly 138 lines to 490 in that single commit. This is not a lint
+  preference: the review's one blocking finding was a **dead class**, exactly the
+  defect a CSS gate catches mechanically and human review catches by diligence.
+  Diligence won this time; the gap that let it reach review is still open. Same
+  reasoning as D44, where `init.sh check` running zero frontend gates is how
+  CP-053's contract drift survived every earlier review. The fix is stylelint, or
+  prettier over `*.css`, wired into `check()` beside the two npm gates.
+  *Trigger:* the next `index.css` edit — add the gate before changing a rule, not
+  after.
+- **`TrackerRow` lost its label colons in the `dl` restructure.** D64, from the
+  same review, raised as optional and ranked low here on purpose. A `dl` grid
+  already separates term from description both visually and structurally, so the
+  colon is redundant punctuation in the new layout rather than a dropped cue.
+  What would change that is evidence rather than taste. *Trigger:* anyone
+  reporting that the flat labels read ambiguously — at which point
+  `dt::after { content: ":" }` restores them in one declaration, with no markup
+  change.
 
 ---
 
