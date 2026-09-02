@@ -1,7 +1,8 @@
 /**
  * The one module that names an API path (SDD Section 5, ADR 0009). Every
- * request/response shape here mirrors SDD Section 4 field for field, so a
- * backend shape change breaks this file's build instead of a demo.
+ * request/response shape here mirrors `adapters/http/routes.py`'s
+ * serializers field for field, so a backend shape change breaks this
+ * file's build instead of a demo.
  */
 
 export type RiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
@@ -31,6 +32,12 @@ export type NerLabel =
 
 export type TrackerState = "BLOCKED" | "IN_PROGRESS" | "CLEARED";
 
+// The only two actions `_build_action` (routes.py:138-148) accepts.
+// `generate_document` and `stakeholder_link` are Backlog-ruled
+// unimplemented and 500 on the server -- admitting them here would let a
+// component compile its way into a guaranteed server error.
+export type TrackerAction = "draft_email" | "notify";
+
 export interface Citation {
   uri: string;
   title: string;
@@ -59,36 +66,54 @@ export interface Finding {
   contradicts: string | null;
 }
 
-export interface ScriptViewResponse {
-  script_id: string;
-  project_id: string;
-  version: number;
-  jurisdiction_code: string;
-  scenes: Scene[];
-  findings: Finding[];
-}
-
-export interface TrackerContact {
-  name: string;
-  email: string;
-}
-
 export interface TrackerItem {
   item_id: string;
+  project_id: string;
   finding_id: string;
   scene_numbers: number[];
   state: TrackerState;
   needs_review: boolean;
   required_document: string;
-  contact: TrackerContact | null;
-  litigation_posture: string | null;
+  contact: string;
+  litigation_posture: string;
   draft_email: string | null;
-  note: string | null;
+  note: string;
   updated_at: string;
   version: number;
 }
 
 export type TrackerResponse = TrackerItem[];
+
+export interface AnalyzeResponse {
+  script_id: string;
+  project_id: string;
+  version: number;
+  gcs_uri: string;
+  jurisdiction_code: string;
+  scenes: Scene[];
+  findings: Finding[];
+  tracker_items: TrackerItem[];
+}
+
+export interface AnalyzeRequest {
+  project_id: string;
+  gcs_uri: string;
+  version: number;
+  jurisdiction_code: string;
+}
+
+export interface BibleFact {
+  fact_id: string;
+  kind: "LORE" | "POLICY";
+  text: string;
+  source: string;
+}
+
+export interface QuestionResponse {
+  text: string;
+  facts: BibleFact[];
+  citations: Citation[];
+}
 
 export class ApiError extends Error {
   readonly status: number;
@@ -100,20 +125,74 @@ export class ApiError extends Error {
   }
 }
 
-async function requestJson<T>(path: string): Promise<T> {
-  const response = await fetch(path);
+async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(path, init);
   if (!response.ok) {
     throw new ApiError(response.status, await response.text());
   }
-  return (await response.json()) as T;
+  try {
+    return (await response.json()) as T;
+  } catch {
+    throw new ApiError(response.status, "response body was not valid JSON");
+  }
 }
 
-export function fetchScript(scriptId: string): Promise<ScriptViewResponse> {
-  return requestJson<ScriptViewResponse>(`/api/scripts/${scriptId}`);
+function jsonRequest(method: string, body: unknown): RequestInit {
+  return {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  };
 }
 
 export function fetchTracker(projectId: string): Promise<TrackerResponse> {
   return requestJson<TrackerResponse>(
     `/api/tracker?project_id=${projectId}`,
+  );
+}
+
+export function postAnalyze(
+  request: AnalyzeRequest,
+): Promise<AnalyzeResponse> {
+  return requestJson<AnalyzeResponse>(
+    "/api/analyze",
+    jsonRequest("POST", request),
+  );
+}
+
+export function patchTrackerState(
+  itemId: string,
+  state: TrackerState,
+): Promise<TrackerItem> {
+  return requestJson<TrackerItem>(
+    `/api/tracker/${itemId}`,
+    jsonRequest("PATCH", { state }),
+  );
+}
+
+export function postTrackerAction(
+  itemId: string,
+  action: TrackerAction,
+  reason?: string,
+): Promise<TrackerItem> {
+  const body = reason === undefined ? { action } : { action, reason };
+  return requestJson<TrackerItem>(
+    `/api/tracker/${itemId}/actions`,
+    jsonRequest("POST", body),
+  );
+}
+
+export function postQuestion(
+  projectId: string,
+  jurisdictionCode: string,
+  question: string,
+): Promise<QuestionResponse> {
+  return requestJson<QuestionResponse>(
+    "/api/question",
+    jsonRequest("POST", {
+      project_id: projectId,
+      jurisdiction_code: jurisdictionCode,
+      question,
+    }),
   );
 }
