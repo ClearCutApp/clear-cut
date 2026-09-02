@@ -2044,112 +2044,6 @@ counter-intuitive one — cutting it does not save the browser demo, it ships a 
 built on types that disagree with the server, which is the failure the whole
 Tier 2 split exists to prevent.
 
-### CP-054 — Put the three surfaces in a browser, over the repaired client
-- Status: TODO
-- Attempts: 0/3
-- Depth: 0
-- Layer: adapters
-- Depends on: CP-053, CP-052
-- Acceptance:
-  - [ ] `web/src/App.tsx` becomes the shell: it holds the `analysis` state (the
-        `AnalyzeResponse` or `null`) and a `trackerRefresh` counter that
-        increments when an analyze succeeds, so the tracker re-reads without a
-        page reload. The demo prefill literals live **here**, passed down as
-        props, so no component hardcodes a demo value inside itself.
-  - [ ] `organisms/ScriptView.tsx` with `molecules/AnalyzeForm.tsx`. The form
-        carries text inputs prefilled with the four verified demo values, and
-        **`gcs_uri` is a text field, not a file picker** — D10 removed multipart
-        upload and the `ScriptStorage` port with it; the operator runs
-        `gcloud storage cp`. Submitting calls `postAnalyze` and lifts the result
-        into `App`.
-  - [ ] `ScriptView` renders one `SceneCard` per scene, and each card shows that
-        scene's findings with `RiskBadge`, the `required_document`, each
-        finding's `citations` (title linked to `uri`, with the `snippet`), and
-        `contradicts` when it is non-null. The continuity finding is the one
-        that carries `contradicts`, so the bible-contradiction beat of the demo
-        is visible rather than implied.
-  - [ ] `organisms/TrackerDashboard.tsx` with `molecules/TrackerRow.tsx`. The
-        dashboard calls `fetchTracker` on mount and whenever `trackerRefresh`
-        changes. Each row renders `StateBadge`, the contact, a `<select>` of the
-        three states that calls `patchTrackerState` on change, and two buttons —
-        Draft email and Notify — calling `postTrackerAction`. Each mutation
-        replaces that row from the response it gets back rather than re-fetching
-        the whole list or mutating local state optimistically.
-  - [ ] Only the two implemented actions get buttons. `generate_document` and
-        `stakeholder_link` 500 on the server and CP-053's `TrackerAction` type
-        forbids them; no button, no menu entry, no disabled placeholder.
-  - [ ] **The empty-contact row renders correctly**, and this is a real case
-        rather than a hypothetical: the third seeded item carries `contact: ""`,
-        `litigation_posture: ""` and `note: ""`. A test renders it and asserts
-        the row is readable — no `undefined`, no empty label with a dangling
-        colon, no crash.
-  - [ ] A worded empty state on the dashboard. `GET /api/tracker` returns `[]`
-        until an analyze has run — verified this turn — so this is the **first**
-        thing anyone opening the app sees. It must say that an analysis has not
-        run yet, not render an empty table or a bare spinner.
-  - [ ] `organisms/ProjectQA.tsx`: a question input calling `postQuestion`, then
-        rendering the answer `text`, its `facts`, and its `citations`. The demo
-        question returns a grounded answer with a citation; that citation must
-        be visible, since a cited answer is the product's whole claim.
-  - [ ] `web/src/index.css` (new), hand-rolled, roughly a hundred lines.
-        **Tailwind stays deferred** — its Backlog trigger has not fired, and
-        CP-011 correctly declined to add it with nothing exercising it. Record
-        that ruling in this block rather than reopening it.
-  - [ ] `web/vite.config.ts` gains `server.proxy` mapping `/api` to
-        `http://127.0.0.1:8080`, so `npm run dev` reaches Flask without CORS and
-        without any CORS configuration existing to break during the demo. Safe
-        against the architecture gate, which scans `web/src` only — but confirm
-        it, do not assume it.
-  - [ ] Containers fetch, presentational components stay pure. Every `/api/`
-        literal stays inside `client.ts`, enforced by
-        `web/src/architecture.test.ts`, and the existing tested atoms
-        `StateBadge` and `RiskBadge` are reused rather than reimplemented.
-  - [ ] Tests: each presentational component renders fixture data and asserts
-        what a viewer sees. One container test per organism stubs
-        `globalThis.fetch` for a happy path, and one asserts the `ApiError`
-        path renders a visible error rather than a blank panel — a UI that fails
-        silently is the browser version of the HTML-200 failure CP-046's third
-        criterion exists to prevent.
-  - [ ] `.claude/init.sh`'s `check()` runs `npm run typecheck` and `npm test` in
-        `web/` **when `web/node_modules` exists**, and skips with a note when it
-        does not, matching how `check()` already handles a missing tool. Today
-        it runs zero frontend gates, which is how the contract drift CP-053
-        repairs survived every review.
-  - [ ] Gate: pytest, ruff, ruff format, mypy, plus `npm run typecheck` and
-        `npm test` in `web/`.
-- Files: web/src/App.tsx, web/src/components/organisms/ScriptView.tsx (new),
-  web/src/components/organisms/TrackerDashboard.tsx (new),
-  web/src/components/organisms/ProjectQA.tsx (new),
-  web/src/components/molecules/AnalyzeForm.tsx (new),
-  web/src/components/molecules/SceneCard.tsx (new),
-  web/src/components/molecules/TrackerRow.tsx (new),
-  web/src/index.css (new), web/src/main.tsx, web/vite.config.ts,
-  .claude/init.sh, plus one test file per new component
-- Notes: Opened 2026-09-01 by D53, from the approved plan's Tier 2 step 2.
-
-  **Dependencies, and which is which (D39's precedent).** `CP-053` is a real
-  dependency: every organism imports `postAnalyze`, `patchTrackerState`,
-  `postTrackerAction` or `postQuestion`, and none exists until it lands.
-  `CP-052` is a **file collision, not a dependency** — both edit
-  `.claude/init.sh`'s `check()`, CP-052 adding `main.py` to the mypy invocation
-  and this block adding the two npm gates. If that collision is resolved another
-  way, a later turn may reorder these two freely.
-
-  **The browser walk is this checkpoint's real acceptance**, and it is the
-  three-minute demo script: prefilled form, Analyze, three findings with
-  citations, tracker shows three `BLOCKED` rows with the Ferrari row carrying
-  `legal@ferrari.example`, move one to `IN_PROGRESS`, Draft email shows the
-  returned draft, ProjectQA returns the grounded answer with its citation. Walk
-  it twice — once against the built SPA served by Flask at
-  `http://127.0.0.1:8080`, once through `npm run dev` and the vite proxy.
-
-  **This is the cuttable one of the three** (see the preamble). If the clock
-  forces it, what ships is the documented curl demo CP-052 delivers.
-
-  If this reaches 3/3, the split axis is ScriptView plus the analyze path in one
-  block and TrackerDashboard plus ProjectQA in another; the CSS, the proxy and
-  the `init.sh` gates go with the first.
-
 ---
 
 ## Backlog
@@ -2534,6 +2428,422 @@ below this line is now a human's to pick up or leave.
 ## Archive
 
 _Terminal checkpoints (`DONE` / `SUPERSEDED`), newest first._
+
+### CP-054 — Put the three surfaces in a browser, over the repaired client
+- Status: DONE
+- Attempts: 1/3
+- Depth: 0
+- Layer: adapters
+- Depends on: CP-053, CP-052
+- Acceptance:
+  - [x] `web/src/App.tsx` becomes the shell: it holds the `analysis` state (the
+        `AnalyzeResponse` or `null`) and a `trackerRefresh` counter that
+        increments when an analyze succeeds, so the tracker re-reads without a
+        page reload. The demo prefill literals live **here**, passed down as
+        props, so no component hardcodes a demo value inside itself.
+  - [x] `organisms/ScriptView.tsx` with `molecules/AnalyzeForm.tsx`. The form
+        carries text inputs prefilled with the four verified demo values, and
+        **`gcs_uri` is a text field, not a file picker** — D10 removed multipart
+        upload and the `ScriptStorage` port with it; the operator runs
+        `gcloud storage cp`. Submitting calls `postAnalyze` and lifts the result
+        into `App`.
+  - [x] `ScriptView` renders one `SceneCard` per scene, and each card shows that
+        scene's findings with `RiskBadge`, the `required_document`, each
+        finding's `citations` (title linked to `uri`, with the `snippet`), and
+        `contradicts` when it is non-null. The continuity finding is the one
+        that carries `contradicts`, so the bible-contradiction beat of the demo
+        is visible rather than implied.
+  - [x] `organisms/TrackerDashboard.tsx` with `molecules/TrackerRow.tsx`. The
+        dashboard calls `fetchTracker` on mount and whenever `trackerRefresh`
+        changes. Each row renders `StateBadge`, the contact, a `<select>` of the
+        three states that calls `patchTrackerState` on change, and two buttons —
+        Draft email and Notify — calling `postTrackerAction`. Each mutation
+        replaces that row from the response it gets back rather than re-fetching
+        the whole list or mutating local state optimistically.
+  - [x] Only the two implemented actions get buttons. `generate_document` and
+        `stakeholder_link` 500 on the server and CP-053's `TrackerAction` type
+        forbids them; no button, no menu entry, no disabled placeholder.
+  - [x] **The empty-contact row renders correctly**, and this is a real case
+        rather than a hypothetical: the third seeded item carries `contact: ""`,
+        `litigation_posture: ""` and `note: ""`. A test renders it and asserts
+        the row is readable — no `undefined`, no empty label with a dangling
+        colon, no crash.
+  - [x] A worded empty state on the dashboard. `GET /api/tracker` returns `[]`
+        until an analyze has run — verified this turn — so this is the **first**
+        thing anyone opening the app sees. It must say that an analysis has not
+        run yet, not render an empty table or a bare spinner.
+  - [x] `organisms/ProjectQA.tsx`: a question input calling `postQuestion`, then
+        rendering the answer `text`, its `facts`, and its `citations`. The demo
+        question returns a grounded answer with a citation; that citation must
+        be visible, since a cited answer is the product's whole claim.
+  - [x] `web/src/index.css` (new), hand-rolled, roughly a hundred lines.
+        **Tailwind stays deferred** — its Backlog trigger has not fired, and
+        CP-011 correctly declined to add it with nothing exercising it. Record
+        that ruling in this block rather than reopening it.
+  - [x] `web/vite.config.ts` gains `server.proxy` mapping `/api` to
+        `http://127.0.0.1:8080`, so `npm run dev` reaches Flask without CORS and
+        without any CORS configuration existing to break during the demo. Safe
+        against the architecture gate, which scans `web/src` only — but confirm
+        it, do not assume it.
+  - [x] Containers fetch, presentational components stay pure. Every `/api/`
+        literal stays inside `client.ts`, enforced by
+        `web/src/architecture.test.ts`, and the existing tested atoms
+        `StateBadge` and `RiskBadge` are reused rather than reimplemented.
+  - [x] Tests: each presentational component renders fixture data and asserts
+        what a viewer sees. One container test per organism stubs
+        `globalThis.fetch` for a happy path, and one asserts the `ApiError`
+        path renders a visible error rather than a blank panel — a UI that fails
+        silently is the browser version of the HTML-200 failure CP-046's third
+        criterion exists to prevent.
+  - [x] `.claude/init.sh`'s `check()` runs `npm run typecheck` and `npm test` in
+        `web/` **when `web/node_modules` exists**, and skips with a note when it
+        does not, matching how `check()` already handles a missing tool. Today
+        it runs zero frontend gates, which is how the contract drift CP-053
+        repairs survived every review.
+  - [x] Gate: pytest, ruff, ruff format, mypy, plus `npm run typecheck` and
+        `npm test` in `web/`.
+- Files: web/src/App.tsx, web/src/components/organisms/ScriptView.tsx (new),
+  web/src/components/organisms/TrackerDashboard.tsx (new),
+  web/src/components/organisms/ProjectQA.tsx (new),
+  web/src/components/molecules/AnalyzeForm.tsx (new),
+  web/src/components/molecules/SceneCard.tsx (new),
+  web/src/components/molecules/TrackerRow.tsx (new),
+  web/src/index.css (new), web/src/main.tsx, web/vite.config.ts,
+  .claude/init.sh, one test file per new component, plus two files not on
+  the original list (see Notes): web/src/App.test.tsx and
+  web/src/vite-env.d.ts (new).
+- Notes: Opened 2026-09-01 by D53, from the approved plan's Tier 2 step 2.
+
+  **Dependencies, and which is which (D39's precedent).** `CP-053` is a real
+  dependency: every organism imports `postAnalyze`, `patchTrackerState`,
+  `postTrackerAction` or `postQuestion`, and none exists until it lands.
+  `CP-052` is a **file collision, not a dependency** — both edit
+  `.claude/init.sh`'s `check()`, CP-052 adding `main.py` to the mypy invocation
+  and this block adding the two npm gates. If that collision is resolved another
+  way, a later turn may reorder these two freely.
+
+  **The browser walk is this checkpoint's real acceptance**, and it is the
+  three-minute demo script: prefilled form, Analyze, three findings with
+  citations, tracker shows three `BLOCKED` rows with the Ferrari row carrying
+  `legal@ferrari.example`, move one to `IN_PROGRESS`, Draft email shows the
+  returned draft, ProjectQA returns the grounded answer with its citation. Walk
+  it twice — once against the built SPA served by Flask at
+  `http://127.0.0.1:8080`, once through `npm run dev` and the vite proxy.
+
+  **This is the cuttable one of the three** (see the preamble). If the clock
+  forces it, what ships is the documented curl demo CP-052 delivers.
+
+  If this reaches 3/3, the split axis is ScriptView plus the analyze path in one
+  block and TrackerDashboard plus ProjectQA in another; the CSS, the proxy and
+  the `init.sh` gates go with the first.
+
+  **Implementer turn, 2026-09-02.** Built test-first: every new component has a
+  RED run pasted before its GREEN one (import-resolution failure, then the
+  component). 48 web tests across 12 files, 477 pytest, `ruff`, `ruff format`,
+  `mypy`, `npm run typecheck` and `npm test` all green via
+  `./.claude/init.sh check` — which itself proves the new guard works, since
+  it is the thing that ran the two npm steps. `npm run build` succeeds (198 kB
+  JS, 1.45 kB CSS gzip). Container/presentational split: `AnalyzeForm` and
+  `TrackerRow` stay presentational (props + callbacks only, no `client.ts`
+  import) with the fetch call living in the organism (`ScriptView`,
+  `TrackerDashboard`) that composes them — the reverse of putting the fetch in
+  the molecule was chosen so "one container test per organism" in the
+  criteria maps onto one component per organism test file, and so the
+  presentational molecules can be tested with plain fixture props, no
+  `globalThis.fetch` stub.
+
+  **Two files touched beyond the checkpoint's `Files` list, both load-bearing.**
+  `web/src/App.test.tsx` — the only place `App`'s own logic (the
+  `trackerRefresh` counter actually causing a second `GET` after a successful
+  analyze) is exercised; every organism test stubs the same component in
+  isolation and none of them proves the counter wiring. `web/src/vite-env.d.ts`
+  (`/// <reference types="vite/client" />`) — `tsc --noEmit` fails on
+  `main.tsx`'s new `import "./index.css"` without it (`TS2882`); the scaffold
+  never needed Vite's ambient types until this turn added an asset import.
+
+  **Fixture staleness found, not fixed.** The live `CLEARCUT_MODE=mock` server
+  (`POST /api/analyze`, checked this turn) returns the third tracker item with
+  `contact: ""`, `litigation_posture: ""` **and `note: ""`** — exactly the
+  D53 "verified wire truth". The committed `web/src/fixtures/tracker.json` and
+  `analyze.json`, both owned by CP-053 (`DONE`) and outside this checkpoint's
+  touch list, carry a non-empty `note` ("Permit approved through end of shoot
+  week.") on that same row — predating the Ferrari/Hotel California/Continuity
+  scenario `scenario.py` now serves. `TrackerRow`'s empty-value test therefore
+  uses a hand-built `TrackerItem` literal matching the live response instead of
+  `tracker.json`'s third row, so the criterion's exact case (all three fields
+  empty at once) is still proven. Left for the leader: the two fixture files'
+  third item likely needs a `note: ""` refresh, plus its `finding_id` and
+  `required_document` line up with an out-of-date scenario, not the current
+  Ferrari/Hotel California/Continuity one — a small, real, non-blocking gap
+  outside this turn's scope.
+
+  **Tailwind ruling stands, applied not reopened.** `web/src/index.css` is
+  hand-rolled, 138 lines — over the criterion's "roughly a hundred" by about a
+  third, spent on the tracker row's flex layout and the shared badge selector
+  rather than trimmed further; no Tailwind dependency, config, or class was
+  added.
+
+  **Browser walk.** The Flask-served path is certified directly: `npm run
+  build` (198 kB JS / 1.45 kB CSS), then `CLEARCUT_MODE=mock ./.venv/bin/python
+  main.py`, `curl -X POST /api/analyze` with the four demo values → 200, 3
+  scenes, 3 findings, 3 tracker items all `BLOCKED` (Ferrari row carries
+  `legal@ferrari.example`); `GET /` → 200 `text/html` (393 bytes, the built
+  `index.html`); `GET /assets/index-*.js` → 200 `text/javascript` (198073
+  bytes); `GET /assets/index-*.css` → 200 `text/css` (1455 bytes). Process
+  killed after. Per the dispatch instructions, the `npm run dev` + vite-proxy
+  half of the two-way walk and the actual visual click-through are left for
+  the reviewer.
+
+  **Review attempt 1 — CHANGES_REQUESTED (2026-09-02), 1 blocking.**
+
+  *Gates, all green.* `./.claude/init.sh check` 6 passed / 0 failed (ruff
+  check, ruff format, mypy, pytest 477, web typecheck, web test 48 across 12
+  files); `./.claude/init.sh verify` 87 passed / 0 failed; `npm run build`
+  succeeds (198.07 kB JS, 1.45 kB CSS).
+
+  *Both halves of the two-way browser walk pass.* Flask-served path: `GET /`
+  returns 200 `text/html`, 393 bytes, byte-identical to `web/dist/index.html`;
+  `/assets/index-jU-REIHC.js` 200 `text/javascript` 198073 bytes;
+  `/assets/index-Dnmz3Nb6.css` 200 `text/css` 1455 bytes. API sequence against
+  `CLEARCUT_MODE=mock`: `POST /api/analyze` with App's four demo literals gives
+  3 scenes, 3 findings (EVT-003 CONTINUITY carries `contradicts: FACT-001`), 3
+  tracker items all `BLOCKED` with `legal@ferrari.example` on the Ferrari row;
+  `GET /api/tracker` 200; `PATCH /api/tracker/EVT-001 {"state":"IN_PROGRESS"}`
+  returns the item at `IN_PROGRESS` version 2; `POST .../actions draft_email`
+  returns the populated draft; `notify` 200; `POST /api/question` returns the
+  grounded text with `FACT-001` and the Ley 22.362 citation. The vite half is
+  now certified too: `npm run dev`, then GET, POST and PATCH through
+  `localhost:5173/api/...` all reach Flask and return 200, so the proxy works
+  with no CORS configuration. `generate_document` and `stakeholder_link` both
+  return HTTP 500, confirming the no-button rule is grounded. Both servers
+  killed; ports 8080 and 5173 confirmed free.
+
+  *Mutation testing on a throwaway copy — eight mutants, seven killed.*
+  Killed: removing the `trackerRefresh` bump (kills `App.test.tsx` only, 47
+  others stay green, which proves the implementer's claim that this file is the
+  sole exercise of the counter); `ScriptView` swallowing `ApiError`; rendering
+  the empty-value row as a raw `undefined`; dropping the citation snippet;
+  dropping the citation `href`; `gcs_uri` as `type="file"`; deleting the worded
+  empty state; the state `<select>` offering only `BLOCKED`. `vite-env.d.ts` is
+  confirmed load-bearing — removing it fails `tsc` with the exact `TS2882` on
+  `main.tsx`'s `./index.css` import.
+
+  **Blocking finding — the tracker mutation path is production code with no
+  test that fails without it (AGENT.md Section 5, Section 9).**
+
+  1. `web/src/components/organisms/TrackerDashboard.tsx:22-24,63-79` — the
+     surviving mutant. Rewriting `replaceItem` to `return items` (the response
+     discarded, the row left stale) leaves all 48 tests passing. Gutting all
+     three handlers so `handleStateChange`, `handleDraftEmail` and
+     `handleNotify` never call `patchTrackerState` or `postTrackerAction` at
+     all also leaves all 48 tests passing. Nothing in the suite drives a
+     mutation through the container: `TrackerDashboard.test.tsx` covers only
+     mount-fetch, the error path, the empty state and the `refreshKey`
+     re-fetch, and `TrackerRow.test.tsx` asserts only that the presentational
+     callbacks fire with the item id — the props contract, not the API wiring.
+     The fourth acceptance criterion's second sentence ("Each mutation replaces
+     that row from the response it gets back rather than re-fetching the whole
+     list or mutating local state optimistically") is ticked with nothing
+     pinning it, and so is the "calls `patchTrackerState` / calls
+     `postTrackerAction`" half of its first sentence. This is the demo beat
+     this block's own Notes call its real acceptance — move a row to
+     `IN_PROGRESS`, click Draft email, see the returned draft — and it can
+     regress silently. **What must change:** add a `TrackerDashboard` container
+     test that stubs `globalThis.fetch` for the list and then for a mutation,
+     fires the select change (and a button click), returns a *changed* item,
+     and asserts the rendered row shows the new value from that response. It
+     must fail against both mutants above. No other criterion needs work.
+
+  *Fixture staleness — ruled non-blocking, deferred to the leader.* The
+  implementer's disclosure is confirmed on the wire: live `EVT-003` carries
+  `contact`, `litigation_posture` and `note` all `""`, while committed
+  `tracker.json`'s third item carries `note: "Permit approved through end of
+  shoot week."`. The drift is wider than the note — the fixtures still use
+  `item_001`/`fnd_001` ids and the documents "Product placement release" and
+  "Location permit", where the live scenario serves `EVT-001`..`EVT-003` with
+  "Trademark Clearance Form", "Synchronization License" and "Continuity
+  Revision". This does **not** reopen CP-053, whose review verified keys and
+  types (which still match) rather than values, and it does not block CP-054:
+  the empty-value criterion is proven by the hand-built `TrackerItem` literal
+  in `TrackerRow.test.tsx:16-30`, which mutation testing confirms genuinely
+  catches a raw `undefined`, and both fixtures sit outside this block's touch
+  list. Left for the leader as its own checkpoint.
+
+  *The two `Files` deviations — both ruled necessary as claimed.*
+  `web/src/App.test.tsx` is justified by the mutation result above (without it
+  the counter is entirely unpinned, and the original list said "one test file
+  per new component" while `App` is modified rather than new).
+  `web/src/vite-env.d.ts` is justified by the reproduced `TS2882`.
+
+  *Conventions verified.* Only `client.ts` contains a quote-adjacent `/api/`
+  literal under `web/src`; `architecture.test.ts` is untouched and green in
+  isolation (2 passed) — `vite.config.ts` sits outside `src`, so the proxy
+  literal is out of its scan as predicted. `StateBadge` and `RiskBadge` are
+  byte-identical to HEAD. All three molecules import from `client.ts` with
+  `import type` only, so the container/presentational split holds. No Tailwind
+  dependency, config or class; `index.css` is 138 hand-rolled lines. Every new
+  file is 48-104 lines, well inside the Section 4 guides. No Section 4 item
+  introduced. UI copy passes WRITING.md: no banned word, states render as the
+  words `BLOCKED`/`IN_PROGRESS`/`CLEARED`, no emoji anywhere (the only
+  non-ASCII are an en dash in the "Pages 3-3" numeric range and the ellipsis in
+  the "Analyzing"/"Asking" loading labels), and the error panels surface the
+  server's own message rather than a generic one.
+
+  **Implementer turn 2 (attempt 2, test-only), 2026-09-02.** Fixed the one
+  blocking finding: the tracker mutation path had no test that failed without
+  it. Touched only `web/src/components/organisms/TrackerDashboard.test.tsx`
+  (no component or other test file changed) — two new tests added to the
+  existing `describe("TrackerDashboard", ...)` block, both against a
+  `globalThis.fetch` stub that answers the mount `GET` with the list fixture
+  and any mutation call (`PATCH`/`POST`, distinguished by `init.method`, never
+  by path — `architecture.test.ts` reserves `/api/` literals to `client.ts`
+  alone) with a server body chosen to differ from what the UI would show if
+  the mutation were merely echoed locally:
+
+  1. *"replaces the row's displayed state with the PATCH response, not the
+     option the user picked"* — renders the dashboard with the three-item
+     fixture, fires the first row's state `<select>` to `IN_PROGRESS`, and
+     asserts two things: the captured `PATCH` call's body is
+     `{ state: "IN_PROGRESS" }`, and the row's `state-badge` ends up reading
+     `CLEARED` — the value the fetch stub returns for that call, deliberately
+     different from the option selected, so the assertion cannot pass from
+     native `<select>` echo or from `replaceItem` leaving the old value in
+     place.
+  2. *"shows the returned draft email text after the Draft email action, from
+     the POST response"* — asserts `draft-email-text` is absent before the
+     click (all three fixture items carry `draft_email: null`), clicks the
+     first row's Draft email button, asserts the captured `POST` call's body
+     is `{ action: "draft_email" }`, and asserts the row then shows the exact
+     drafted text the stub returned.
+
+  *Mutant proof, on the real component file, mutated then restored to the
+  exact original bytes (confirmed by re-reading it; nothing net changed —
+  `TrackerDashboard.tsx` is a new, untracked file this checkpoint, so `git
+  diff` has no baseline to check against).*
+
+  - **(a) `replaceItem` rewritten to `return items`:** `2 failed | 4 passed
+    (6)`. Both new tests fail — the state-badge assertion times out still
+    showing `BLOCKED`, the draft-email assertion times out never finding
+    `draft-email-text`. The four pre-existing tests (mount-fetch, error,
+    empty state, `refreshKey`) stay green, confirming they do not exercise
+    this path.
+  - **(b) all three handlers gutted (body replaced with a comment, never
+    calling `patchTrackerState`/`postTrackerAction`):** `2 failed | 4 passed
+    (6)`. Both new tests fail — the state-badge assertion fails
+    (`toHaveTextContent` never matches), the draft-email assertion fails with
+    `Unable to find an element by: [data-testid="draft-email-text"]`. Same
+    four pre-existing tests stay green.
+  - **(c) unmutated (restored):** `6 passed (6)`.
+
+  *Gates.* `cd web && npm run typecheck` clean (no output). `npm test`: 12
+  files, `50 passed (50)` (48 prior + 2 new). `./.claude/init.sh check`: `6
+  passed, 0 failed` — ruff check, ruff format (117 files), mypy (91 files),
+  pytest (477 passed), web typecheck, web test (50 across 12 files).
+
+  Deferrals untouched, per instruction: fixture staleness
+  (`tracker.json`/`analyze.json`) and badge class names stay left for the
+  leader, exactly as the attempt-1 review recorded them.
+
+  *Non-blocking, for the leader.* `index.css:129-130` styles the two badges
+  through `[data-testid="risk-badge"]` and `[data-testid="state-badge"]`,
+  coupling presentation to a testing hook — the atoms expose no class name, so
+  this was the only handle available without editing files outside this
+  block's list. Giving the atoms a class name is the fix, and it belongs to
+  whoever owns them.
+
+  **Review attempt 2 — PASS (2026-09-02).** `Attempts` stays at `1/3`: D49
+  counts rejections, and this checkpoint has received one.
+
+  *Both required kills reproduced independently, on my own throwaway clone of
+  `web/` (APFS clone, `node_modules` included, component file verified
+  byte-identical to the repo's by sha256 before and after each mutant). The
+  repo's own files were never touched.* Baseline unmutated: `12 files, 50
+  passed (50)`.
+
+  - **(a) `replaceItem` rewritten to `return items`:** `2 failed | 48 passed
+    (50)`. Exactly the two new tests fail — the state-badge assertion times
+    out at `TrackerDashboard.test.tsx:115`, the draft-email assertion with
+    `Unable to find an element by: [data-testid="draft-email-text"]` at
+    `:144`. The other 48 stay green, which is the same 48 that passed under
+    this mutant in attempt 1 — so the two new tests are precisely the kill.
+  - **(b) all three handlers gutted, so the select and both buttons never
+    reach the client:** `2 failed | 48 passed (50)`. The same two tests, the
+    same two failure modes.
+  - **(c) my own extra mutant, aimed at the design the fix turns on:**
+    `handleStateChange` still calls `patchTrackerState` but updates the row
+    optimistically from the picked option and discards the response — which is
+    exactly what the fourth criterion's "rather than ... mutating local state
+    optimistically" forbids. Killed by the PATCH test (`1 failed | 5 passed`).
+  - **(restored):** sha256 back to the original, `50 passed (50)`.
+
+  *The stub's design holds under inspection, and (c) is the proof.* The PATCH
+  stub returns `state: "CLEARED"` while the test fires the `<select>` to
+  `IN_PROGRESS`, and the assertion at `TrackerDashboard.test.tsx:114-118` is on
+  `CLEARED` — the **response** value. `tracker.json`'s first item is `BLOCKED`
+  and its `draft_email` is `null`, so neither assertion can pass from the mount
+  fetch; the `<select>` is controlled by `item.state` (`TrackerRow.tsx:52`), so
+  a native echo cannot move the badge; and mutant (c) shows a deliberate
+  optimistic write cannot either. The method is pinned separately —
+  `calls.find(call => call.init?.method === "PATCH")` with `toBeDefined()`
+  would fail if a handler sent the wrong verb — and the routing itself reads
+  `init === undefined` for the mount `GET` (`client.ts:151` passes no `init`)
+  and never inspects the path. No `/api/` endpoint literal exists in the new
+  file; its only match is the `"../../api/client"` import specifier.
+  `architecture.test.ts` is unmodified against `HEAD` and green in isolation
+  (2 passed).
+
+  *The fix is test-only, proved mechanically rather than asserted.* Only
+  `TrackerDashboard.test.tsx` (13:18) and this block (13:20) carry an
+  attempt-2 mtime; every other file under `web/src` is 13:03 or earlier, and
+  `vite.config.ts` (13:02) and `init.sh` (13:03) predate the attempt-2 window.
+  `TrackerDashboard.tsx` reads 13:19 because it was mutated and restored, as
+  the implementer disclosed — and the restore was exact: rebuilding the
+  current sources produces `assets/index-jU-REIHC.js` and
+  `assets/index-Dnmz3Nb6.css` **byte-identical by sha256** to the `web/dist`
+  left behind by attempt 1's review build (13:07), as is `index.html`. The
+  bundle contains every shipping source and no test file, so every component,
+  `App.tsx`, `main.tsx` and `index.css` are byte-equivalent to the attempt-1
+  reviewed state. Every hunk in this file's diff against `HEAD` falls inside
+  this block.
+
+  *Both deferrals confirmed still deferred, not quietly fixed.*
+  `web/src/fixtures/tracker.json` and `analyze.json` are tracked and show no
+  diff; the third item still carries `"note": "Permit approved through end of
+  shoot week."` against a live wire that sends `""`. `index.css:129-130` still
+  styles the badges through `[data-testid=...]`. Both remain the leader's.
+
+  *Gates.* `cd web && npm run typecheck` clean (exit 0, no output); `npm test`
+  `12 files, 50 passed (50)`. `./.claude/init.sh check`: **6 passed, 0
+  failed** — ruff check, ruff format, mypy, pytest (477 passed), web
+  typecheck, web test. `./.claude/init.sh verify`: **87 passed, 0 failed**.
+
+  *One new non-blocking finding, measured not guessed.*
+  `TrackerDashboard.tsx:75-79` — gutting `handleNotify` **alone** leaves all
+  50 tests green, so those four lines are the one segment of this container
+  still unpinned. It is deliberately not blocking. Attempt 1 measured this
+  file, wrote one bounded finding, and closed it with "No other criterion
+  needs work"; the named remedy was delivered and independently verified
+  above, and expanding the finding set after that is the goalpost move
+  AGENT.md §6 relies on reviewers not making. The residual is also narrow —
+  both ends of the notify path are already pinned (`client.test.ts:130-133`
+  pins `postTrackerAction(id, "notify")` sending `{action: "notify"}`,
+  `TrackerRow.test.tsx:108-111` pins the button reaching `onNotify` with the
+  item id), leaving only the four-line container join, which is a
+  literal-for-literal twin of `handleDraftEmail` that is now pinned end to
+  end. Notify is not in the demo beat this block's Notes name as its real
+  acceptance. A follow-up checkpoint, not a fourth attempt.
+
+  *Nothing else found.* No §4 item; the test's `routedFetch` helper has two
+  callers and is test scaffolding, not production abstraction. No secret, no
+  key, no real address (`legal@ferrari.example` is a reserved TLD). The new
+  file is pure ASCII — no emoji, states render as the words `BLOCKED` /
+  `IN_PROGRESS` / `CLEARED`. No prose file in this attempt's diff, so
+  WRITING.md has nothing to score.
+
+  **This closes the approved localhost plan: CP-052, CP-053 and CP-054 are all
+  `DONE`, and the Active board holds no checkpoint.** The Active preamble
+  above (its cut order, its dispatch instruction) has been overtaken by that
+  and is the leader's to retire — a reviewer does not rewrite it.
 
 ### CP-052 — Boot ClearCut from a fresh clone with one documented command
 - Status: DONE
