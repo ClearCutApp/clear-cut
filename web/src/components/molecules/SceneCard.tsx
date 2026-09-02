@@ -27,8 +27,10 @@ export function SceneCard({ scene, findings }: SceneCardProps): ReactElement {
         <ul className="finding-list">
           {findings.map((finding) => (
             <li key={finding.finding_id} className="finding">
-              <RiskBadge risk={finding.risk_level} />
-              <span className="finding-category">{finding.category}</span>
+              <div className="finding__header">
+                <RiskBadge risk={finding.risk_level} />
+                <span className="finding-category">{finding.category}</span>
+              </div>
               <p>Required document: {finding.required_document}</p>
               {finding.contradicts !== null && (
                 <p className="contradicts">

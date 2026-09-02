@@ -48,44 +48,53 @@ export function AnalyzeForm({
 
   return (
     <form className="analyze-form" onSubmit={handleSubmit}>
-      <label htmlFor="analyze-project-id">Project id</label>
-      <input
-        id="analyze-project-id"
-        type="text"
-        value={projectId}
-        onChange={(event) => setProjectId(event.target.value)}
-      />
+      <div className="field">
+        <label htmlFor="analyze-project-id">Project id</label>
+        <input
+          id="analyze-project-id"
+          type="text"
+          value={projectId}
+          onChange={(event) => setProjectId(event.target.value)}
+        />
+      </div>
 
-      <label htmlFor="analyze-gcs-uri">GCS uri</label>
-      <input
-        id="analyze-gcs-uri"
-        type="text"
-        value={gcsUri}
-        onChange={(event) => setGcsUri(event.target.value)}
-      />
+      <div className="field">
+        <label htmlFor="analyze-gcs-uri">GCS uri</label>
+        <input
+          id="analyze-gcs-uri"
+          type="text"
+          className="field__input--mono"
+          value={gcsUri}
+          onChange={(event) => setGcsUri(event.target.value)}
+        />
+      </div>
 
-      <label htmlFor="analyze-jurisdiction">Jurisdiction code</label>
-      <input
-        id="analyze-jurisdiction"
-        type="text"
-        value={jurisdictionCode}
-        onChange={(event) => setJurisdictionCode(event.target.value)}
-      />
+      <div className="field">
+        <label htmlFor="analyze-jurisdiction">Jurisdiction code</label>
+        <input
+          id="analyze-jurisdiction"
+          type="text"
+          value={jurisdictionCode}
+          onChange={(event) => setJurisdictionCode(event.target.value)}
+        />
+      </div>
 
-      <label htmlFor="analyze-version">Version</label>
-      <input
-        id="analyze-version"
-        type="number"
-        value={version}
-        onChange={(event) => setVersion(Number(event.target.value))}
-      />
+      <div className="field">
+        <label htmlFor="analyze-version">Version</label>
+        <input
+          id="analyze-version"
+          type="number"
+          value={version}
+          onChange={(event) => setVersion(Number(event.target.value))}
+        />
+      </div>
 
-      <button type="submit" disabled={submitting}>
+      <button type="submit" className="button button--primary" disabled={submitting}>
         {submitting ? "Analyzing…" : "Analyze"}
       </button>
 
       {error !== null && (
-        <p className="error" role="alert">
+        <p className="error-panel" role="alert">
           {error}
         </p>
       )}

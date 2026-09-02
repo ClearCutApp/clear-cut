@@ -15,8 +15,16 @@ export interface RiskBadgeProps {
 /**
  * Renders the risk level as its word, never a color alone
  * (.claude/WRITING.md Section 2). Presentational only: no data fetching,
- * no import from `src/api/`.
+ * no import from `src/api/`. `risk-badge--<level>` (lowercased) carries the
+ * color; `index.css` owns it, never a `[data-testid]` selector (D61).
  */
 export function RiskBadge({ risk }: RiskBadgeProps): ReactElement {
-  return <span data-testid="risk-badge">{risk}</span>;
+  return (
+    <span
+      className={`risk-badge risk-badge--${risk.toLowerCase()}`}
+      data-testid="risk-badge"
+    >
+      {risk}
+    </span>
+  );
 }

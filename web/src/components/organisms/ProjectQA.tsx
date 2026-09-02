@@ -46,31 +46,36 @@ export function ProjectQA({
     <section className="project-qa">
       <h2>Ask the project</h2>
       <form onSubmit={(event) => void handleSubmit(event)}>
-        <label htmlFor="project-qa-question">Question</label>
-        <textarea
-          id="project-qa-question"
-          value={question}
-          onChange={(event) => setQuestion(event.target.value)}
-        />
-        <button type="submit" disabled={submitting}>
+        <div className="field">
+          <label htmlFor="project-qa-question">Question</label>
+          <textarea
+            id="project-qa-question"
+            value={question}
+            onChange={(event) => setQuestion(event.target.value)}
+          />
+        </div>
+        <button type="submit" className="button button--primary" disabled={submitting}>
           {submitting ? "Asking…" : "Ask"}
         </button>
       </form>
 
       {error !== null && (
-        <p className="error" role="alert">
+        <p className="error-panel" role="alert">
           {error}
         </p>
       )}
 
       {answer !== null && (
         <div className="qa-answer">
-          <p>{answer.text}</p>
+          <p className="qa-answer__text">{answer.text}</p>
           {answer.facts.length > 0 && (
             <ul className="qa-facts">
               {answer.facts.map((fact) => (
-                <li key={fact.fact_id}>
-                  <span>{fact.kind}</span>: {fact.text} ({fact.source})
+                <li key={fact.fact_id} className="qa-fact">
+                  <span className="qa-fact__kind">{fact.kind}</span>
+                  <span className="qa-fact__text">
+                    {fact.text} ({fact.source})
+                  </span>
                 </li>
               ))}
             </ul>

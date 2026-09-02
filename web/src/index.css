@@ -1,6 +1,46 @@
-/* Hand-rolled, roughly a hundred lines (CP-054). Tailwind stays deferred --
-   its Backlog trigger has not fired, and this is the smaller thing the
-   three surfaces actually require. */
+/* Design tokens + component styles, Vercel/Geist flat aesthetic. Vanilla
+   CSS, no Tailwind, no component library -- Tailwind's Backlog trigger has
+   not fired (CP-054's rationale still holds, now with real tokens behind
+   it). Selectors target classNames, never [data-testid] (D61) -- testids
+   stay reserved for tests. */
+
+:root {
+  --font-sans:
+    "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono:
+    "Geist Mono", ui-monospace, "SF Mono", "Cascadia Code", monospace;
+
+  --color-ground: #fafafa;
+  --color-surface: #ffffff;
+  --color-border: #eaeaea;
+  --color-border-hover: #d4d4d4;
+  --color-text: #171717;
+  --color-text-secondary: #666666;
+  --color-text-tertiary: #999999;
+
+  --color-accent: #0070f3;
+
+  --color-button-primary-bg: #171717;
+  --color-button-primary-bg-hover: #383838;
+  --color-button-primary-text: #ffffff;
+
+  --color-blocked-text: #e5484d;
+  --color-blocked-bg: #ffe9e9;
+  --color-in-progress-text: #ad5700;
+  --color-in-progress-bg: #fff4d6;
+  --color-cleared-text: #18794e;
+  --color-cleared-bg: #ddf3e4;
+
+  --color-error-text: #e5484d;
+  --color-error-bg: #ffe9e9;
+  --color-error-border: #f3c6c6;
+
+  --radius-container: 8px;
+  --radius-control: 6px;
+  --radius-badge: 4px;
+
+  --transition-fast: 150ms ease;
+}
 
 * {
   box-sizing: border-box;
@@ -8,44 +48,233 @@
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  color: #1a1a1a;
-  background: #f5f5f5;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-text);
+  background: var(--color-ground);
+  -webkit-font-smoothing: antialiased;
 }
 
 .app {
-  max-width: 960px;
+  max-width: 760px;
+  min-height: 100dvh;
   margin: 0 auto;
-  padding: 1.5rem;
+  padding: 0 24px 64px;
+}
+
+.app__header {
+  padding: 32px 0 24px;
 }
 
 h1 {
-  font-size: 1.75rem;
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
 }
 
 h2 {
-  font-size: 1.25rem;
-  margin-top: 0;
+  margin: 0 0 16px;
+  font-size: 16px;
+  font-weight: 600;
+  text-wrap: balance;
 }
 
+h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------- surfaces --- */
+
 section {
-  background: #ffffff;
-  border: 1px solid #d9d9d9;
-  border-radius: 6px;
-  padding: 1rem 1.25rem;
-  margin-bottom: 1.5rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-container);
+  padding: 24px;
+  margin-bottom: 20px;
+}
+
+/* ------------------------------------------------------------- forms --- */
+
+.field {
+  margin-bottom: 12px;
+}
+
+.field label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+input,
+textarea,
+select {
+  display: block;
+  width: 100%;
+  max-width: 32rem;
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  transition:
+    border-color var(--transition-fast),
+    background var(--transition-fast);
+}
+
+input:hover,
+textarea:hover,
+select:hover {
+  border-color: var(--color-border-hover);
+}
+
+textarea {
+  min-height: 4.5rem;
+  resize: vertical;
+}
+
+.field__input--mono {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+select {
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23666' stroke-width='1.5' fill='none' fill-rule='evenodd'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 28px;
+  appearance: none;
+}
+
+input:disabled,
+select:disabled,
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+form {
+  margin-bottom: 4px;
+}
+
+/* ---------------------------------------------------------- buttons --- */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 4px;
+  padding: 8px 14px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  border-radius: var(--radius-control);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+.button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.button--primary {
+  color: var(--color-button-primary-text);
+  background: var(--color-button-primary-bg);
+  border-color: var(--color-button-primary-bg);
+}
+
+.button--primary:hover:not(:disabled) {
+  background: var(--color-button-primary-bg-hover);
+  border-color: var(--color-button-primary-bg-hover);
+}
+
+.button--secondary {
+  color: var(--color-text);
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  margin-right: 8px;
+}
+
+.button--secondary:hover:not(:disabled) {
+  background: var(--color-ground);
+  border-color: var(--color-border-hover);
+}
+
+/* focus-visible ring on every interactive element (Don Norman: feedback) */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* --------------------------------------------------------------- links */
+
+a {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* -------------------------------------------------------------- error --- */
+
+.error-panel {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--color-error-text);
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius-control);
+}
+
+/* --------------------------------------------------------- empty state */
+
+.empty-state {
+  padding: 24px 0;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* ---------------------------------------------------------- scene card */
+
+.scene-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 20px;
 }
 
 .scene-card {
-  border: 1px solid #e0e0e0;
-  border-radius: 4px;
-  padding: 0.75rem 1rem;
-  margin: 0.75rem 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-container);
+  padding: 16px 20px;
 }
 
 .scene-pages {
-  color: #666666;
-  font-size: 0.85rem;
+  margin: 0 0 12px;
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
 .finding-list,
@@ -53,86 +282,209 @@ section {
 .qa-facts {
   list-style: none;
   padding-left: 0;
+  margin: 0;
 }
 
 .finding {
-  border-top: 1px solid #eeeeee;
-  padding: 0.5rem 0;
+  border-top: 1px solid var(--color-border);
+  padding: 12px 0;
+}
+
+.finding:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.finding__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.finding-category {
+  font-size: 12px;
+  color: var(--color-text-secondary);
 }
 
 .citation-list {
-  margin-left: 1rem;
+  margin: 6px 0 0 0;
+  padding-left: 16px;
+  border-left: 2px solid var(--color-border);
 }
 
 .citation-snippet {
-  color: #555555;
-  font-size: 0.85rem;
-  margin: 0.15rem 0 0.5rem;
+  margin: 2px 0 8px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
 }
 
 .contradicts {
-  color: #8a4b00;
+  color: var(--color-in-progress-text);
   font-weight: 600;
+  font-size: 13px;
 }
 
-form label {
-  display: block;
-  margin-top: 0.5rem;
-  font-size: 0.85rem;
+/* -------------------------------------------------------------- qa --- */
+
+.qa-answer {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
 }
 
-form input,
-form textarea,
-form select {
-  display: block;
-  width: 100%;
-  max-width: 32rem;
-  padding: 0.35rem 0.5rem;
-  margin-top: 0.15rem;
+.qa-answer__text {
+  margin: 0 0 12px;
+  font-size: 14px;
 }
 
-form button {
-  margin-top: 0.75rem;
+.qa-fact {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  margin-bottom: 8px;
+  font-size: 13px;
 }
+
+.qa-fact__kind {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.qa-fact__text {
+  color: var(--color-text);
+}
+
+/* ----------------------------------------------------------- badges --- */
+
+.state-badge,
+.risk-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-badge);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+.state-badge--blocked {
+  color: var(--color-blocked-text);
+  background: var(--color-blocked-bg);
+}
+
+.state-badge--in-progress {
+  color: var(--color-in-progress-text);
+  background: var(--color-in-progress-bg);
+}
+
+.state-badge--cleared {
+  color: var(--color-cleared-text);
+  background: var(--color-cleared-bg);
+}
+
+.risk-badge--low {
+  color: var(--color-cleared-text);
+  background: var(--color-cleared-bg);
+}
+
+.risk-badge--medium {
+  color: var(--color-in-progress-text);
+  background: var(--color-in-progress-bg);
+}
+
+.risk-badge--high,
+.risk-badge--critical {
+  color: var(--color-blocked-text);
+  background: var(--color-blocked-bg);
+}
+
+/* ------------------------------------------------------- tracker row --- */
 
 .tracker-row {
-  border-top: 1px solid #eeeeee;
-  padding: 0.75rem 0;
+  padding: 16px 0;
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tracker-row:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.tracker-row__top {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem 1rem;
+  gap: 8px 12px;
 }
 
-.tracker-row p {
+.tracker-row__contact,
+.tracker-row__document {
+  font-size: 14px;
+}
+
+.tracker-row__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
   margin: 0;
+}
+
+.tracker-row__field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tracker-row__field dt {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.tracker-row__field dd {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.tracker-row__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.tracker-row__controls label {
+  margin: 0 4px 0 0;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.tracker-row__controls select {
+  width: auto;
+  max-width: 12rem;
+  margin-right: auto;
 }
 
 .draft-email {
   flex-basis: 100%;
+  margin: 0;
+  padding: 12px;
   white-space: pre-wrap;
-  background: #fafafa;
-  border: 1px solid #e0e0e0;
-  padding: 0.5rem;
-}
-
-.error {
-  color: #b00020;
-  font-weight: 600;
-}
-
-.empty-state {
-  color: #666666;
-  font-style: italic;
-}
-
-[data-testid="risk-badge"],
-[data-testid="state-badge"] {
-  display: inline-block;
-  padding: 0.15rem 0.5rem;
-  border-radius: 3px;
-  border: 1px solid #999999;
-  background: #eeeeee;
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--color-text);
+  background: var(--color-ground);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
 }

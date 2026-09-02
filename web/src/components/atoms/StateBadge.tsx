@@ -12,11 +12,25 @@ export interface StateBadgeProps {
   state: TrackerState;
 }
 
+/** `BLOCKED` -> `blocked`, `IN_PROGRESS` -> `in-progress`: the CSS modifier
+ * suffix for `state-badge--<state>`. */
+function modifier(state: TrackerState): string {
+  return state.toLowerCase().replace(/_/g, "-");
+}
+
 /**
  * Renders the tracker state as its word, never a colored circle
  * (.claude/WRITING.md Section 2). Presentational only: no data fetching,
- * no import from `src/api/`.
+ * no import from `src/api/`. `state-badge--<state>` carries the color;
+ * `index.css` owns it, never a `[data-testid]` selector (D61).
  */
 export function StateBadge({ state }: StateBadgeProps): ReactElement {
-  return <span data-testid="state-badge">{state}</span>;
+  return (
+    <span
+      className={`state-badge state-badge--${modifier(state)}`}
+      data-testid="state-badge"
+    >
+      {state}
+    </span>
+  );
 }

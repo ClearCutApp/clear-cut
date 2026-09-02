@@ -29,7 +29,9 @@ export function App(): ReactElement {
 
   return (
     <main className="app">
-      <h1>ClearCut</h1>
+      <header className="app__header">
+        <h1>ClearCut</h1>
+      </header>
       <ScriptView
         analysis={analysis}
         onAnalyzed={handleAnalyzed}

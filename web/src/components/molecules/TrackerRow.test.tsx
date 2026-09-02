@@ -142,4 +142,37 @@ describe("TrackerRow", () => {
 
     expect(screen.getByText(/Dear Ferrari S\.p\.A\./)).toBeInTheDocument();
   });
+
+  it("disables the state select and the two action buttons while pending", () => {
+    render(
+      <TrackerRow
+        item={ferrariItem}
+        onStateChange={noop}
+        onDraftEmail={noop}
+        onNotify={noop}
+        pending
+      />,
+    );
+
+    expect(screen.getByLabelText(/^state$/i)).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: /draft email/i }),
+    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: /notify/i })).toBeDisabled();
+  });
+
+  it("leaves the select and buttons enabled when not pending", () => {
+    render(
+      <TrackerRow
+        item={ferrariItem}
+        onStateChange={noop}
+        onDraftEmail={noop}
+        onNotify={noop}
+      />,
+    );
+
+    expect(screen.getByLabelText(/^state$/i)).toBeEnabled();
+    expect(screen.getByRole("button", { name: /draft email/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /notify/i })).toBeEnabled();
+  });
 });

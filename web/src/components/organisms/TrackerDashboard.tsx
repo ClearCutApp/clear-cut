@@ -23,6 +23,16 @@ function replaceItem(items: TrackerItem[], updated: TrackerItem): TrackerItem[] 
   return items.map((item) => (item.item_id === updated.item_id ? updated : item));
 }
 
+function withId(ids: Set<string>, itemId: string): Set<string> {
+  return new Set(ids).add(itemId);
+}
+
+function withoutId(ids: Set<string>, itemId: string): Set<string> {
+  const next = new Set(ids);
+  next.delete(itemId);
+  return next;
+}
+
 /**
  * Container for the compliance tracker: fetches on mount and whenever
  * `refreshKey` changes (bumped by `App` after a successful analyze), and
@@ -36,6 +46,9 @@ export function TrackerDashboard({
 }: TrackerDashboardProps): ReactElement {
   const [items, setItems] = useState<TrackerItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pendingItemIds, setPendingItemIds] = useState<Set<string>>(
+    new Set(),
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -60,29 +73,45 @@ export function TrackerDashboard({
     setError(thrown instanceof ApiError ? thrown.message : GENERIC_TRACKER_ERROR);
   }
 
+  /**
+   * Marks `itemId` pending for the duration of `request` (Don Norman:
+   * visibility of system status) so `TrackerRow` can disable its select and
+   * both buttons and a second click cannot race the first.
+   */
+  function runMutation(
+    itemId: string,
+    request: () => Promise<TrackerItem>,
+  ): void {
+    setPendingItemIds((current) => withId(current, itemId));
+    request()
+      .then((updated) =>
+        setItems((current) =>
+          current === null ? current : replaceItem(current, updated),
+        ),
+      )
+      .catch(handleMutationError)
+      .finally(() =>
+        setPendingItemIds((current) => withoutId(current, itemId)),
+      );
+  }
+
   function handleStateChange(itemId: string, state: TrackerState): void {
-    patchTrackerState(itemId, state)
-      .then((updated) => setItems((current) => (current === null ? current : replaceItem(current, updated))))
-      .catch(handleMutationError);
+    runMutation(itemId, () => patchTrackerState(itemId, state));
   }
 
   function handleDraftEmail(itemId: string): void {
-    postTrackerAction(itemId, "draft_email")
-      .then((updated) => setItems((current) => (current === null ? current : replaceItem(current, updated))))
-      .catch(handleMutationError);
+    runMutation(itemId, () => postTrackerAction(itemId, "draft_email"));
   }
 
   function handleNotify(itemId: string): void {
-    postTrackerAction(itemId, "notify")
-      .then((updated) => setItems((current) => (current === null ? current : replaceItem(current, updated))))
-      .catch(handleMutationError);
+    runMutation(itemId, () => postTrackerAction(itemId, "notify"));
   }
 
   return (
     <section className="tracker-dashboard">
       <h2>Compliance tracker</h2>
       {error !== null && (
-        <p className="error" role="alert">
+        <p className="error-panel" role="alert">
           {error}
         </p>
       )}
@@ -97,6 +126,7 @@ export function TrackerDashboard({
             onStateChange={handleStateChange}
             onDraftEmail={handleDraftEmail}
             onNotify={handleNotify}
+            pending={pendingItemIds.has(item.item_id)}
           />
         ))}
     </section>

@@ -153,4 +153,45 @@ describe("TrackerDashboard", () => {
       action: "draft_email",
     });
   });
+
+  it("disables that row's actions while the draft email request is in flight, then re-enables them", async () => {
+    let resolveMutation: (response: Response) => void = () => {};
+    const mutationPromise = new Promise<Response>((resolve) => {
+      resolveMutation = resolve;
+    });
+    globalThis.fetch = ((_input: RequestInfo | URL, init?: RequestInit) =>
+      init === undefined
+        ? Promise.resolve(
+            new Response(JSON.stringify(trackerFixture), { status: 200 }),
+          )
+        : mutationPromise) as typeof fetch;
+
+    render(<TrackerDashboard projectId="demo-project" refreshKey={0} />);
+    await waitFor(() =>
+      expect(screen.getAllByTestId("tracker-row")).toHaveLength(3),
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: /draft email/i })[0]);
+
+    await waitFor(() =>
+      expect(screen.getAllByRole("button", { name: /draft email/i })[0]).toBeDisabled(),
+    );
+    expect(screen.getAllByRole("button", { name: /notify/i })[0]).toBeDisabled();
+
+    resolveMutation(
+      new Response(
+        JSON.stringify({
+          ...(trackerFixture[0] as TrackerItem),
+          draft_email: "Dear Ferrari S.p.A., ...",
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("button", { name: /draft email/i })[0],
+      ).toBeEnabled(),
+    );
+  });
 });

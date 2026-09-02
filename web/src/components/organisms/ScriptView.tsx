@@ -62,16 +62,19 @@ export function ScriptView({
         error={error}
         onSubmit={handleSubmit}
       />
-      {analysis !== null &&
-        analysis.scenes.map((scene) => (
-          <SceneCard
-            key={scene.number}
-            scene={scene}
-            findings={analysis.findings.filter(
-              (finding) => finding.scene_number === scene.number,
-            )}
-          />
-        ))}
+      {analysis !== null && (
+        <div className="scene-list">
+          {analysis.scenes.map((scene) => (
+            <SceneCard
+              key={scene.number}
+              scene={scene}
+              findings={analysis.findings.filter(
+                (finding) => finding.scene_number === scene.number,
+              )}
+            />
+          ))}
+        </div>
+      )}
     </section>
   );
 }

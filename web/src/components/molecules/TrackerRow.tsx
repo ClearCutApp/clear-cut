@@ -8,6 +8,7 @@ export interface TrackerRowProps {
   onStateChange: (itemId: string, state: TrackerState) => void;
   onDraftEmail: (itemId: string) => void;
   onNotify: (itemId: string) => void;
+  pending?: boolean;
 }
 
 const TRACKER_STATES: TrackerState[] = ["BLOCKED", "IN_PROGRESS", "CLEARED"];
@@ -27,46 +28,81 @@ function orPlaceholder(value: string, placeholder: string): string {
  * `patchTrackerState` or `postTrackerAction` itself. Only the two actions
  * the server implements get a button -- `generate_document` and
  * `stakeholder_link` 500 (routes.py `_build_action`).
+ *
+ * `pending` (Don Norman: visibility of system status) is set by the
+ * container while a mutation for this item is in flight, and disables the
+ * select and both buttons so a second click cannot race the first.
  */
 export function TrackerRow({
   item,
   onStateChange,
   onDraftEmail,
   onNotify,
+  pending = false,
 }: TrackerRowProps): ReactElement {
   const selectId = `tracker-state-${item.item_id}`;
   return (
     <div className="tracker-row" data-testid="tracker-row">
-      <StateBadge state={item.state} />
-      <p>Contact: {orPlaceholder(item.contact, "no contact on file")}</p>
-      <p>Required document: {item.required_document}</p>
-      <p>
-        Litigation posture:{" "}
-        {orPlaceholder(item.litigation_posture, "no litigation history on file")}
-      </p>
-      <p>Note: {orPlaceholder(item.note, "no notes")}</p>
+      <div className="tracker-row__top">
+        <StateBadge state={item.state} />
+        <span className="tracker-row__contact">
+          Contact: {orPlaceholder(item.contact, "no contact on file")}
+        </span>
+        <span className="tracker-row__document">
+          Required document: {item.required_document}
+        </span>
+      </div>
 
-      <label htmlFor={selectId}>State</label>
-      <select
-        id={selectId}
-        value={item.state}
-        onChange={(event) =>
-          onStateChange(item.item_id, event.target.value as TrackerState)
-        }
-      >
-        {TRACKER_STATES.map((state) => (
-          <option key={state} value={state}>
-            {state}
-          </option>
-        ))}
-      </select>
+      <dl className="tracker-row__meta">
+        <div className="tracker-row__field">
+          <dt>Litigation posture</dt>
+          <dd>
+            {orPlaceholder(
+              item.litigation_posture,
+              "no litigation history on file",
+            )}
+          </dd>
+        </div>
+        <div className="tracker-row__field">
+          <dt>Note</dt>
+          <dd>{orPlaceholder(item.note, "no notes")}</dd>
+        </div>
+      </dl>
 
-      <button type="button" onClick={() => onDraftEmail(item.item_id)}>
-        Draft email
-      </button>
-      <button type="button" onClick={() => onNotify(item.item_id)}>
-        Notify
-      </button>
+      <div className="tracker-row__controls">
+        <label htmlFor={selectId}>State</label>
+        <select
+          id={selectId}
+          value={item.state}
+          disabled={pending}
+          onChange={(event) =>
+            onStateChange(item.item_id, event.target.value as TrackerState)
+          }
+        >
+          {TRACKER_STATES.map((state) => (
+            <option key={state} value={state}>
+              {state}
+            </option>
+          ))}
+        </select>
+
+        <button
+          type="button"
+          className="button button--secondary"
+          disabled={pending}
+          onClick={() => onDraftEmail(item.item_id)}
+        >
+          Draft email
+        </button>
+        <button
+          type="button"
+          className="button button--secondary"
+          disabled={pending}
+          onClick={() => onNotify(item.item_id)}
+        >
+          Notify
+        </button>
+      </div>
 
       {item.draft_email !== null && (
         <p className="draft-email" data-testid="draft-email-text">
