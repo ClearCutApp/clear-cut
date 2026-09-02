@@ -1907,40 +1907,248 @@ test module and the same question — what the guard's authority actually covers
 and splitting them would guarantee the second is rediscovered while the first is
 being fixed.
 
+### Settled 2026-09-01, the board reopens on a new human goal (D53)
+
+**D53. The Browser MVP is a new goal, not a Backlog promotion the loop took on
+its own. CP-052, CP-053, CP-054.**
+
+*What changed.* The user approved a plan to make ClearCut runnable and demo-able
+on localhost and chose the Browser MVP scope. That is the one thing the terminal
+preamble named as able to reopen this board: a human starting a new goal. The
+loop did not restart itself, no `PASS` produced these checkpoints, and no
+`BLOCKED` block was reopened — which matters, because those are the two edges
+section 6 forbids and the reason the board could be trusted to stay closed.
+
+*The trigger that fired.* The Backlog's SPA-surfaces entry has carried its own
+promotion note since 2026-08-31: "a mocked MVP the user can only see through
+`curl` is not the MVP the decision asked for", unblocked since CP-048 landed and
+named the first promotion candidate for the next leader turn. D36 changed what it
+waited on, and nothing has waited on anything since. This is that promotion,
+authorized where it has to be — by the human, not by a leader deciding the
+Backlog looked ready.
+
+*The approved plan is the contract.* It lives at
+`~/.claude/plans/analyze-the-code-and-starry-bentley.md`, grounded in verified
+exploration with file:line evidence behind each claim. Where a criterion below
+and that plan disagree, the plan wins and the criterion is the defect. What
+follows adds test names, signatures and failure paths to it; it does not
+renegotiate its scope.
+
+*Why three checkpoints and not one.* The work splits on two clean seams that are
+also review seams. CP-052 is Python, packaging and prose, and it is verified by
+running the thing from a fresh clone. CP-053 is a type contract with no rendering
+in it, verified by `tsc` and vitest. CP-054 is the rendering, verified in a
+browser. One checkpoint spanning all three would be reviewable only by a human
+doing all three jobs at once, which is how a review turns into a rubber stamp six
+days out. Three is also the number the plan prescribes.
+
+*Why not five.* The obvious further split — one checkpoint per surface — was
+considered and declined. The three surfaces share `App.tsx`'s state, one
+stylesheet, and one `init.sh` edit, so splitting them creates three checkpoints
+that collide on the same three files and cannot be dispatched in parallel
+anyway. All cost, no benefit.
+
+*The dependency ruling, which is the one place I depart from the brief's
+framing.* The brief offered CP-053 a dependency on CP-052 "for ordering
+cleanliness" and left the call to me. **CP-053 depends on nothing.** The two open
+disjoint file sets — CP-052 touches `main.py`, `pyproject.toml`, `.claude/init.sh`,
+`README.md`, `.env.example`, `docs/plan/infrastructure.md` and two Python test
+files; CP-053 touches `web/` only — and CP-053's gates are `npm run typecheck`
+and `vitest`, neither of which needs an entrypoint, a `.env`, or a running
+server. A reviewer who wants to check the repaired types against a live response
+can use the command that already works today
+(`env CLEARCUT_MODE=mock PYTHONPATH=src ./.venv/bin/flask --app clearcut.composition run`),
+which is exactly the command CP-052 exists to replace and which works regardless.
+Declaring a dependency that does not exist would serialize two checkpoints that
+can run side by side and spend a turn of the six days remaining on tidiness. So
+**CP-052 and CP-053 dispatch in parallel, today.**
+
+*CP-054's dependencies are real, and one of the two is a file collision rather
+than a dependency — stated separately, following D39's precedent.* It depends on
+**CP-053** genuinely: its components import `postAnalyze`, `patchTrackerState`,
+`postTrackerAction` and `postQuestion`, and none of them exists until CP-053
+lands. It depends on **CP-052** only because both edit `.claude/init.sh`'s
+`check()` — CP-052 adds `main.py` to the mypy invocation, CP-054 adds the two npm
+gates. Same function, same file. Not a real dependency, and recorded as a
+collision so a later turn can reorder them freely if the collision is resolved
+another way.
+
+*Three declinations carried from the plan, recorded so they are not
+re-litigated.* **Lazy vendor imports / an optional-dependency split for a slim
+mock install** — it rewrites `composition.py`, a `DONE` module that CP-049 spent
+three attempts and two full mutation batteries proving, for zero demo value; the
+mock demo already runs with the full install. **gunicorn** — `main:app` at module
+level is what a WSGI server needs and it is already there, so adding the server
+now is building for a deploy no checkpoint has yet been written for. **Tailwind**
+— its Backlog trigger has not fired; CP-054 hand-rolls roughly a hundred lines of
+CSS instead, which is the smaller thing that the surfaces actually require. Each
+is a live application of section 4's YAGNI rule rather than a judgement about
+whether the thing is good.
+
+*What this does not change.* The Backlog's other entries keep their triggers and
+none of them fires here. In particular D51 stays open — CP-052 adds `CLEARCUT_MODE`
+to `OPTIONAL_ENV_VARS`, which is D52's one-line fix landing on its ruled trigger,
+but it does not touch the AST filter's silent skips, which is a different entry
+with a different trigger.
+
 ---
 
 ## Active
 
-**No checkpoints. The loop is complete.**
+**Three checkpoints. The board reopened on 2026-09-01 for a new human goal.**
 
-CP-051 passed review on 2026-09-01 with zero blocking findings and moved to the
-Archive; its code is committed as `4f23aac`. Nothing is `TODO`, `IN_PROGRESS` or
-`IN_REVIEW`, which is AGENT.md section 6 step 5's stopping condition — the
-conductor reports to the human and stops looking for a next block. Fifty-one
-checkpoints, forty-nine `DONE` and two `SUPERSEDED` (CP-028 and CP-030, each
-split once into `Depth: 1` replacements that landed), CP-001 through CP-051 with
-no gaps, every one of them behind a review that ran the gates.
+The user approved a plan to make ClearCut runnable and demo-able on localhost and
+chose the Browser MVP scope. D53 records the ruling and why this is the one thing
+that may reopen a closed board: a human starting a new goal, not a `PASS` and not
+a `BLOCKED` block being revisited. The approved plan at
+`~/.claude/plans/analyze-the-code-and-starry-bentley.md` is the contract; the
+criteria below add test names and failure paths to it and do not renegotiate its
+scope.
 
-This section is empty on purpose, and two rules in section 6 keep it that way.
-A leader adds checkpoints only for a new human goal or a `BLOCKED` checkpoint,
-never in response to a `PASS` — so a passing review cannot reopen the board
-however good the finding it noticed. And `BLOCKED` never returns to `TODO`.
-Between them there is no path from "the work is finished" back into "the work is
-in progress" that any agent can take on its own. That is not bureaucracy; it is
-the reason this loop terminates, and `./.claude/init.sh verify` proves it from
-the section 7 table on every run.
+The gap it closes, in one line each. **Nothing runs it:** no entrypoint exists
+anywhere, nothing installs the project, nothing loads `.env`, `CLEARCUT_MODE` is
+undocumented and defaults to live so a bare boot dies on `GOOGLE_CLOUD_PROJECT`,
+and the only working command is undocumented in every element. **Nothing shows
+it:** `App.tsx` renders `<p>ClearCut</p>`, the three surfaces were never written,
+and the API client covers two of five routes — one of which nothing serves.
 
-**The Backlog below is not a queue this loop drains.** Every entry is a ruled
-deferral carrying its date, its reasoning, and the trigger that would justify
-promoting it, and no trigger fires before 2026-09-07. Promoting one is a human
-starting a new goal — deliberately, not by drift.
+**Dispatch now, in parallel: implementer on CP-052 and implementer on CP-053.**
+They share no file. CP-052 is Python, packaging and prose; CP-053 is `web/` only,
+and its gates are `npm run typecheck` and `vitest`, neither of which needs an
+entrypoint or a running server. D53 explains why the dependency the brief offered
+between them was declined rather than taken for tidiness — with six days left, a
+dependency that does not exist costs a real turn.
 
-**Where the record is.** Each checkpoint's evidence sits with its block in the
-Archive, newest first: the criteria as written, what the implementer built, and
-what the reviewer re-ran rather than took on trust. Each decision that shaped the
-plan is in `## Decisions`, D1 through D52, with the reasoning that produced it,
-because the next person to read this file is the one who will want to reopen one
-of them and a decision without its reasoning gets re-litigated.
+**Then CP-054**, which needs CP-053 genuinely (its components import the four
+functions CP-053 writes) and CP-052 only as a file collision in
+`.claude/init.sh`'s `check()`. D39's precedent: say which is which, so a later
+turn can reorder on the facts.
+
+**The verified baseline, measured this turn against `CLEARCUT_MODE=mock` rather
+than taken from any document.** `POST /api/analyze` with the four demo values
+returns 200 and eight keys — `script_id`, `project_id`, `version`, `gcs_uri`,
+`jurisdiction_code`, `scenes`, `findings`, `tracker_items` — carrying 3 scenes, 3
+findings and 3 tracker items, all three `BLOCKED`. `GET /api/tracker` **before**
+any analyze returns `[]`, which is what makes the README's curl ordering
+load-bearing rather than stylistic. The third tracker item (the continuity one,
+which has no rights claim behind it) carries `contact: ""`,
+`litigation_posture: ""` and `note: ""` — empty strings, never `null`, which is
+both the proof that today's client types are wrong and a real empty-value row
+CP-054 has to render.
+
+**Cut order, if the clock tightens.** CP-054 is the only cuttable one, and
+cutting it leaves a documented, installable, one-command backend demo over curl —
+which is what exists today plus a run story. CP-052 is not cuttable: without it
+there is no run story at all. CP-053 is not cuttable either, and this is the
+counter-intuitive one — cutting it does not save the browser demo, it ships a UI
+built on types that disagree with the server, which is the failure the whole
+Tier 2 split exists to prevent.
+
+### CP-054 — Put the three surfaces in a browser, over the repaired client
+- Status: TODO
+- Attempts: 0/3
+- Depth: 0
+- Layer: adapters
+- Depends on: CP-053, CP-052
+- Acceptance:
+  - [ ] `web/src/App.tsx` becomes the shell: it holds the `analysis` state (the
+        `AnalyzeResponse` or `null`) and a `trackerRefresh` counter that
+        increments when an analyze succeeds, so the tracker re-reads without a
+        page reload. The demo prefill literals live **here**, passed down as
+        props, so no component hardcodes a demo value inside itself.
+  - [ ] `organisms/ScriptView.tsx` with `molecules/AnalyzeForm.tsx`. The form
+        carries text inputs prefilled with the four verified demo values, and
+        **`gcs_uri` is a text field, not a file picker** — D10 removed multipart
+        upload and the `ScriptStorage` port with it; the operator runs
+        `gcloud storage cp`. Submitting calls `postAnalyze` and lifts the result
+        into `App`.
+  - [ ] `ScriptView` renders one `SceneCard` per scene, and each card shows that
+        scene's findings with `RiskBadge`, the `required_document`, each
+        finding's `citations` (title linked to `uri`, with the `snippet`), and
+        `contradicts` when it is non-null. The continuity finding is the one
+        that carries `contradicts`, so the bible-contradiction beat of the demo
+        is visible rather than implied.
+  - [ ] `organisms/TrackerDashboard.tsx` with `molecules/TrackerRow.tsx`. The
+        dashboard calls `fetchTracker` on mount and whenever `trackerRefresh`
+        changes. Each row renders `StateBadge`, the contact, a `<select>` of the
+        three states that calls `patchTrackerState` on change, and two buttons —
+        Draft email and Notify — calling `postTrackerAction`. Each mutation
+        replaces that row from the response it gets back rather than re-fetching
+        the whole list or mutating local state optimistically.
+  - [ ] Only the two implemented actions get buttons. `generate_document` and
+        `stakeholder_link` 500 on the server and CP-053's `TrackerAction` type
+        forbids them; no button, no menu entry, no disabled placeholder.
+  - [ ] **The empty-contact row renders correctly**, and this is a real case
+        rather than a hypothetical: the third seeded item carries `contact: ""`,
+        `litigation_posture: ""` and `note: ""`. A test renders it and asserts
+        the row is readable — no `undefined`, no empty label with a dangling
+        colon, no crash.
+  - [ ] A worded empty state on the dashboard. `GET /api/tracker` returns `[]`
+        until an analyze has run — verified this turn — so this is the **first**
+        thing anyone opening the app sees. It must say that an analysis has not
+        run yet, not render an empty table or a bare spinner.
+  - [ ] `organisms/ProjectQA.tsx`: a question input calling `postQuestion`, then
+        rendering the answer `text`, its `facts`, and its `citations`. The demo
+        question returns a grounded answer with a citation; that citation must
+        be visible, since a cited answer is the product's whole claim.
+  - [ ] `web/src/index.css` (new), hand-rolled, roughly a hundred lines.
+        **Tailwind stays deferred** — its Backlog trigger has not fired, and
+        CP-011 correctly declined to add it with nothing exercising it. Record
+        that ruling in this block rather than reopening it.
+  - [ ] `web/vite.config.ts` gains `server.proxy` mapping `/api` to
+        `http://127.0.0.1:8080`, so `npm run dev` reaches Flask without CORS and
+        without any CORS configuration existing to break during the demo. Safe
+        against the architecture gate, which scans `web/src` only — but confirm
+        it, do not assume it.
+  - [ ] Containers fetch, presentational components stay pure. Every `/api/`
+        literal stays inside `client.ts`, enforced by
+        `web/src/architecture.test.ts`, and the existing tested atoms
+        `StateBadge` and `RiskBadge` are reused rather than reimplemented.
+  - [ ] Tests: each presentational component renders fixture data and asserts
+        what a viewer sees. One container test per organism stubs
+        `globalThis.fetch` for a happy path, and one asserts the `ApiError`
+        path renders a visible error rather than a blank panel — a UI that fails
+        silently is the browser version of the HTML-200 failure CP-046's third
+        criterion exists to prevent.
+  - [ ] `.claude/init.sh`'s `check()` runs `npm run typecheck` and `npm test` in
+        `web/` **when `web/node_modules` exists**, and skips with a note when it
+        does not, matching how `check()` already handles a missing tool. Today
+        it runs zero frontend gates, which is how the contract drift CP-053
+        repairs survived every review.
+  - [ ] Gate: pytest, ruff, ruff format, mypy, plus `npm run typecheck` and
+        `npm test` in `web/`.
+- Files: web/src/App.tsx, web/src/components/organisms/ScriptView.tsx (new),
+  web/src/components/organisms/TrackerDashboard.tsx (new),
+  web/src/components/organisms/ProjectQA.tsx (new),
+  web/src/components/molecules/AnalyzeForm.tsx (new),
+  web/src/components/molecules/SceneCard.tsx (new),
+  web/src/components/molecules/TrackerRow.tsx (new),
+  web/src/index.css (new), web/src/main.tsx, web/vite.config.ts,
+  .claude/init.sh, plus one test file per new component
+- Notes: Opened 2026-09-01 by D53, from the approved plan's Tier 2 step 2.
+
+  **Dependencies, and which is which (D39's precedent).** `CP-053` is a real
+  dependency: every organism imports `postAnalyze`, `patchTrackerState`,
+  `postTrackerAction` or `postQuestion`, and none exists until it lands.
+  `CP-052` is a **file collision, not a dependency** — both edit
+  `.claude/init.sh`'s `check()`, CP-052 adding `main.py` to the mypy invocation
+  and this block adding the two npm gates. If that collision is resolved another
+  way, a later turn may reorder these two freely.
+
+  **The browser walk is this checkpoint's real acceptance**, and it is the
+  three-minute demo script: prefilled form, Analyze, three findings with
+  citations, tracker shows three `BLOCKED` rows with the Ferrari row carrying
+  `legal@ferrari.example`, move one to `IN_PROGRESS`, Draft email shows the
+  returned draft, ProjectQA returns the grounded answer with its citation. Walk
+  it twice — once against the built SPA served by Flask at
+  `http://127.0.0.1:8080`, once through `npm run dev` and the vite proxy.
+
+  **This is the cuttable one of the three** (see the preamble). If the clock
+  forces it, what ships is the documented curl demo CP-052 delivers.
+
+  If this reaches 3/3, the split axis is ScriptView plus the analyze path in one
+  block and TrackerDashboard plus ProjectQA in another; the CSS, the proxy and
+  the `init.sh` gates go with the first.
 
 ---
 
@@ -2326,6 +2534,706 @@ below this line is now a human's to pick up or leave.
 ## Archive
 
 _Terminal checkpoints (`DONE` / `SUPERSEDED`), newest first._
+
+### CP-052 — Boot ClearCut from a fresh clone with one documented command
+- Status: DONE
+- Attempts: 1/3
+- Depth: 0
+- Layer: infra
+- Depends on: -
+- Acceptance:
+  - [x] `main.py` exists at the repository root and is small — roughly twenty
+        lines. It calls `load_dotenv()` before building anything, binds
+        `app = create_app()` at **module level** so `main:app` resolves for a
+        WSGI server, and calls
+        `app.run(host="127.0.0.1", port=_port())` inside
+        `if __name__ == "__main__":` and nowhere else. The host is the loopback
+        literal, not `0.0.0.0`: this is a local demo and binding every interface
+        is a different decision nobody made.
+  - [x] Why the root rather than `src/`, recorded because a reviewer will ask:
+        both AST gates in `tests/unit/test_layer_boundaries.py` walk
+        `src/clearcut/` only, so a root module needs no gate edit and introduces
+        no layer question. `main:app` is also exactly what the GCP Python
+        buildpack targets, so this file additionally unblocks the Backlog's
+        never-written Cloud Run deploy entry. **Do not add gunicorn** (D53):
+        `main:app` is the whole interface a WSGI server needs and it is already
+        there.
+  - [x] The port is readable without starting a server: a module-level
+        `_port() -> int` returning `int(os.environ.get("PORT", "8080"))`. A test
+        asserts it defaults to `8080` and honours `PORT=5000`. This is a named
+        expression to make a value observable, not an abstraction section 4
+        bans — inlining it inside the `__main__` block would make the criterion
+        untestable, which is the only reason the seam exists.
+  - [x] `tests/unit/test_entrypoint.py` (new). **Reuse `_clear_env` and
+        `_forbid_sockets` from `tests/unit/test_composition.py`** rather than
+        inventing fixtures — those patterns exist, and CP-049's review proved
+        `_forbid_sockets` has real teeth. Tests, written before `main.py`:
+        (a) under a cleared environment with `CLEARCUT_MODE=mock`, `import main`
+        succeeds, `main.app` is a Flask application, and no socket is opened
+        during import;
+        (b) `main.app.url_map` carries all five demo routes — `/api/analyze`,
+        `/api/tracker`, `/api/tracker/<item_id>`,
+        `/api/tracker/<item_id>/actions`, `/api/question`;
+        (c) one request driven through `main.app.test_client()` returns 200,
+        exercising the real wiring rather than a stub.
+  - [x] Failure path, and it is the one that matters most: **importing `main`
+        must never start a server.** A test replaces `flask.Flask.run` with a
+        function that raises, imports `main`, and asserts the import completes.
+        Deleting the `if __name__ == "__main__":` guard turns that test red,
+        which is the mutant this criterion exists to kill — a module that serves
+        on import breaks every test that merely imports it.
+  - [x] Packaging in `pyproject.toml`: add a `[build-system]` table
+        (setuptools) and `[tool.setuptools.packages.find] where = ["src"]`, so
+        `pip install -e .` works at all — the file has no `[build-system]` today,
+        which is why nothing installs the project. Add `python-dotenv` to
+        `[project] dependencies` with an exact `==` pin, matching the file's
+        convention for every other entry.
+  - [x] The dependency guard stays green and the reason is worth stating so a
+        reviewer does not treat it as luck: CP-017's checker fails on
+        *imported but undeclared*, never the reverse, and D-numbered evidence
+        already confirms declared-but-unimported is permitted. `main.py` is
+        outside the scanned tree in any case.
+  - [x] `.claude/init.sh`'s `bootstrap()` installs the project. It currently
+        references a `requirements.txt` that does not exist
+        (`init.sh:213,222`) and then installs three unpinned tools by name
+        (`:223`). Replace that with `pip install -e "$ROOT[dev]"`, so one
+        command installs the package, its runtime dependencies, and the pinned
+        dev tools. The fresh-clone story becomes exactly two commands:
+        `./.claude/init.sh` then `CLEARCUT_MODE=mock python main.py`.
+  - [x] `.claude/init.sh`'s `check()` runs mypy over `main.py` as well:
+        `mypy src tests infra main.py` at `init.sh:247`. A new root module that
+        no type gate covers is how the next drift starts.
+  - [x] **These three environment edits land in one commit, and splitting them
+        is a defect rather than a style choice.** Add `CLEARCUT_MODE` to
+        `OPTIONAL_ENV_VARS` in `tests/unit/test_environment_contract.py:35`
+        (this is D52's ruled one-line fix, landing on its trigger); add
+        `CLEARCUT_MODE=mock` as the first line of `.env.example`; add one row
+        for it to `docs/plan/infrastructure.md` section 8's table. The env guard
+        CP-051 built is **bidirectional**: document the variable without the
+        `OPTIONAL_ENV_VARS` entry and the reverse direction goes red saying
+        nothing requires it; add it to `OPTIONAL_ENV_VARS` alone and nothing
+        documents it. Any intermediate commit is a red tree.
+  - [x] `src/clearcut/composition.py` is not touched. Its live-by-default
+        behaviour stays exactly as D38 and CP-030's criterion 7 chose it: a
+        forgotten variable must never silently serve planted data. `main.py`
+        does not set a default mode either.
+  - [x] A `README.md` section titled for running it locally, and this is prose,
+        so `.claude/WRITING.md` governs it and **its findings are blocking for
+        this checkpoint** rather than deferred. It carries: prerequisites; the
+        install command; `CLEARCUT_MODE=mock python main.py`; the two curl
+        commands with the seeded values verified this turn — `project_id`
+        `demo-project`, `gcs_uri` `gs://clearcut-demo/planted-script-v1.pdf`,
+        `jurisdiction_code` `AR`, `version` `1`; then the SPA build step; then
+        live mode.
+  - [x] **The curl order is load-bearing and the README must not reorder it:
+        analyze first, tracker second.** Verified this turn — `GET /api/tracker`
+        against a fresh process returns `[]`, because the in-memory tracker holds
+        nothing until an analyze writes to it. A README that lists the tracker
+        call first shows a reader an empty array and reads as a broken demo.
+  - [x] One wrinkle documented rather than fixed, because fixing it means
+        touching a `DONE` module: a blank `OTEL_EXPORTER_OTLP_ENDPOINT=` line in
+        a copied `.env` counts as **set** — `composition.py:94` tests presence,
+        not truthiness — and builds a noisy exporter against an empty endpoint.
+        The README's answer is that the mock demo needs no `.env` at all. Say
+        that; do not change the presence check.
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra main.py`.
+- Files: main.py (new), tests/unit/test_entrypoint.py (new), pyproject.toml,
+  .claude/init.sh, README.md, .env.example, docs/plan/infrastructure.md,
+  tests/unit/test_environment_contract.py
+- Notes: Opened 2026-09-01 by D53, from the approved plan's Tier 1. Read D53
+  first, then the plan's Tier 1 section.
+
+  **Declined, and recorded so it is not proposed again mid-implementation:**
+  lazy vendor imports, or an optional-dependency split to make a slim mock
+  install possible. It rewrites `composition.py` — a `DONE` module CP-049 spent
+  three attempts and two mutation batteries proving — for zero demo value, since
+  the mock path already runs fine on the full install. Section 4's YAGNI rule,
+  applied to a real proposal.
+
+  **The verification the plan asks for, and it is worth doing exactly as
+  written:** recreate `.venv` from scratch, run `./.claude/init.sh`, and confirm
+  bootstrap alone installs everything needed for `check` to pass. A bootstrap
+  that works only because the previous virtualenv is still lying around is the
+  precise failure this checkpoint exists to end.
+
+  **Regression to confirm before claiming done:** the existing
+  `flask --app clearcut.composition run` path still boots. `main.py` adds an
+  entrypoint; it does not replace the one people may already have in shell
+  history.
+
+  If this reaches 3/3, the split axis is the entrypoint plus its tests in one
+  block and the packaging, `init.sh` and prose in another. The atomic
+  environment trio must stay whole in whichever block takes it.
+
+  **Implementer verification, done this turn.** `python-dotenv` was not
+  installed in `.venv` before this checkpoint; `pip index versions
+  python-dotenv` showed `1.2.3` as latest, pinned to that. Fresh-venv proof
+  (a genuinely new venv created with the same 3.12.3 interpreter as the
+  project's own `.venv`, not the pre-existing one): `pip install -e ".[dev]"`
+  installed `clearcut` editable plus every pinned dependency with no errors,
+  then `ruff check`, `ruff format --check`, `mypy src tests infra main.py`,
+  and `pytest -q` all passed clean inside that fresh venv (477 passed). Live
+  boot: `CLEARCUT_MODE=mock python main.py` bound `127.0.0.1:8080`; `GET
+  /api/tracker?project_id=demo-project` before any analyze call returned
+  `[]`; `POST /api/analyze` with the README's exact seeded body returned 200
+  with 3 findings; the same tracker call afterward returned 3 BLOCKED items;
+  the process was killed and the port confirmed free. Regression: `env
+  CLEARCUT_MODE=mock PYTHONPATH=src flask --app clearcut.composition run`
+  still boots and serves the same tracker route. `./.claude/init.sh check`
+  and `./.claude/init.sh verify` both green (4/4 and 87/0 respectively).
+
+  **Review attempt 1 — CHANGES_REQUESTED (2026-09-02).** Every code criterion
+  holds and every gate is green, independently reproduced: `pytest -q` 477
+  passed, `ruff check` clean, `ruff format --check` 117 files, `mypy src tests
+  infra main.py` clean on 91 files, `./.claude/init.sh check` 4/4,
+  `./.claude/init.sh verify` 87/0. The fresh-venv claim reproduced exactly in a
+  new 3.12.3 venv: `pip install -e ".[dev]"` installed `clearcut` editable plus
+  `python-dotenv==1.2.3`, and all four gates passed inside it (477 passed).
+  Four mutations on a throwaway copy were killed: deleting the
+  `if __name__ == "__main__":` guard reddens
+  `test_importing_main_never_starts_a_server` with the exact
+  "Flask.run was called while importing main"; the `PORT` default `8080` to
+  `9090` reddens `test_port_defaults_to_8080`; `_port()` ignoring `PORT`
+  reddens `test_port_honours_the_port_env_var`; dropping the API blueprint from
+  `create_app` reddens both the `url_map` test and the `test_client` test
+  (405 != 200), so criteria (b) and (c) have teeth. `_forbid_sockets` is the
+  real helper imported from `test_composition.py`. `composition.py` is
+  byte-identical to `HEAD`; nothing under `src/` changed; no gunicorn, no
+  Tailwind. The dependency guard permits the declared-but-unimported
+  `python-dotenv` by rule, not by luck
+  (`test_declaring_an_unimported_dependency_reports_nothing`, and `SRC_ROOT`
+  scans `src/clearcut` only). All three environment-trio edits are present, and
+  the live boot walk reproduced: `[]` before any analyze, 3 findings
+  (`INDUSTRIAL_PROPERTY`, `COPYRIGHT_WORKS`, `CONTINUITY`), 3 BLOCKED tracker
+  items after, port released on kill.
+
+  **Blocking, all three in the README — the one criterion that names its own
+  prose as blocking.**
+
+  1. `README.md:18` — the documented boot command does not work from a
+     fresh clone. `./.claude/init.sh` creates and populates `.venv` in its own
+     subshell, so the reader's shell is unchanged; `CLEARCUT_MODE=mock python
+     main.py` then dies with `sh: python: command not found`, and on a machine
+     that does have a system `python` it dies with `ModuleNotFoundError: No
+     module named 'flask'` (both reproduced this turn). The README never
+     mentions that a virtualenv exists, so the reader cannot guess the missing
+     step. Must change: make the second command runnable as written — either
+     `CLEARCUT_MODE=mock ./.venv/bin/python main.py`, which keeps the
+     two-command story the criterion asks for, or name
+     `source .venv/bin/activate` explicitly as its own step. Do not leave a
+     boot command that only works in an already-activated shell.
+  2. `README.md:6` — "Node 18+" is wrong and will fail the SPA step it
+     gates. `web/node_modules/vite/package.json:178-180` declares engines
+     `^20.19.0 || >=22.12.0` for the pinned `vite@8.2.2`, and
+     `web/node_modules/vitest/package.json:128-130` declares
+     `^20.0.0 || ^22.0.0 || >=24.0.0` for `vitest@4.1.11`. Must change: state
+     the floor the toolchain actually requires (Node 20.19+) rather than 18.
+  3. `README.md:33-35` — "three BLOCKED tracker items with real contacts"
+     overstates what the reader will see. The live run returns
+     `legal@ferrari.example`, `sync@warnerchappell.example`, and `""` — the
+     continuity item carries no rights holder, so its contact is an empty
+     string. Must change: describe the third item honestly, or drop "with real
+     contacts".
+
+  Everything else in the README passed `.claude/WRITING.md` section 4: no
+  banned word or filler phrase, no section 2 pattern, no emoji, one
+  load-bearing `--`, no kicker or recap ending, and the curl bodies, the
+  analyze-then-tracker order, the finding categories and the `.env` wrinkle are
+  all accurate against a live process.
+
+  **Non-blocking, for the leader to raise as its own checkpoint.**
+
+  - `main.py:14` — `load_dotenv()` is unpinned. Removing the import and the
+    call outright leaves the whole unit suite green (476 passed in the
+    throwaway copy), and `load_dotenv(override=True)` is equally invisible
+    while no `.env` exists. The no-override default is what makes the README's
+    own `CLEARCUT_MODE=live python main.py` beat a copied `.env` carrying
+    `CLEARCUT_MODE=mock`, so the property is load-bearing but proved by
+    nothing. The criteria never asked for this test; it wants its own
+    checkpoint.
+  - `tests/unit/test_entrypoint.py:93` — `test_port_defaults_to_8080` depends
+    on the absence of an untracked file. Planting a root `.env` containing
+    `PORT=7777` reddens it even against an unmodified `main.py`, because
+    `load_dotenv()` injects `PORT` into the cleared environment before
+    `_port()` reads it. No `.env` exists today and `PORT` is in neither
+    `.env.example` nor the section 8 table, so the suite is green, but the test
+    is environment-dependent.
+  - `tests/unit/test_environment_contract.py:87` — the trio is atomic in one
+    direction only. Removing `CLEARCUT_MODE` from `OPTIONAL_ENV_VARS` while
+    both documents keep it reddens three tests, but removing it from
+    `.env.example` while `OPTIONAL_ENV_VARS` keeps it stays green (verified
+    both ways). The criterion's "any intermediate commit is a red tree" holds
+    for one ordering, not both.
+  - `main.py:22` — `PORT` is a new environment variable that no document
+    records. The CP-051 guard cannot see it because it parses `_required_env`
+    calls in `composition.py` only, so this is a documentation gap rather than
+    a guard failure.
+
+  **Implementer attempt 2 — the three blocking README findings, fixed
+  (2026-09-02).**
+
+  1. `README.md:18` — changed `CLEARCUT_MODE=mock python main.py` to
+     `CLEARCUT_MODE=mock ./.venv/bin/python main.py`, keeping the two-command
+     story rather than adding an activation step. Verified from a shell with
+     no venv active (`which python` returned nothing, only `python3` on
+     `PATH`): the documented command booted `main.py` on `127.0.0.1:8080`; a
+     `GET /api/tracker` before any analyze call returned `[]`; the
+     documented `POST /api/analyze` body returned 200 with the three seeded
+     findings; the following `GET /api/tracker` returned the three BLOCKED
+     items with contacts `legal@ferrari.example`, `sync@warnerchappell.example`,
+     and `""`; the process was killed and the port confirmed free (`lsof -i
+     :8080` empty).
+  2. `README.md:6` — changed "Node 18+" to "Node 20.19+", matching
+     `web/node_modules/vite/package.json`'s declared `engines` for the pinned
+     `vite@8.2.2`.
+  3. `README.md:33-35` — replaced "three BLOCKED tracker items with real
+     contacts" with an honest split: two items carry a rights holder's
+     contact email, the continuity item names no rights holder and its
+     contact is an empty string. Matches the live response captured above.
+
+  Gate: `./.claude/init.sh check` — 4/4 (ruff check, ruff format, mypy,
+  pytest 477 passed). README-only diff; no source or test file touched.
+
+  **New observation, not fixed here — out of this attempt's three named
+  findings, for the leader to route.** `README.md:47`'s live-mode line
+  (`CLEARCUT_MODE=live python main.py`) carries the same shape of defect as
+  finding 1: a bare `python` invocation outside an activated venv. The
+  reviewer's three findings named only line 18, and live mode was not part
+  of the verified fresh-clone walk (it needs a live `.env`), so it is left
+  as found rather than fixed under this attempt's narrower scope.
+
+  **Review attempt 2 — PASS (2026-09-02).** `Attempts` stays at `1/3`: D49
+  counts `CHANGES_REQUESTED` verdicts, and attempt 1 was the only one.
+
+  **All three blocking findings verified fixed, from a shell with no
+  virtualenv active** — `VIRTUAL_ENV` unset and `command -v python` empty,
+  only `/opt/homebrew/bin/python3` on `PATH`, which is the reader's shell
+  after `./.claude/init.sh` returns.
+
+  1. `README.md:18` — `CLEARCUT_MODE=mock ./.venv/bin/python main.py`, run
+     verbatim from the repository root in that shell, bound
+     `127.0.0.1:8080`. The documented walk in the README's own order:
+     `GET /api/tracker?project_id=demo-project` before any analyze returned
+     `[]`, which is line 23's claim; the documented `POST /api/analyze` body
+     returned 200 carrying three findings —
+     `INDUSTRIAL_PROPERTY`/MEDIUM/`Trademark Clearance Form`,
+     `COPYRIGHT_WORKS`/HIGH/`Synchronization License`,
+     `CONTINUITY`/HIGH/`Continuity Revision`; the following
+     `GET /api/tracker` returned 200 with three items, every one
+     `state: BLOCKED`. Killed, and `lsof -i :8080` came back empty.
+  2. `README.md:6` — "Node 20.19+" matches
+     `web/node_modules/vite/package.json:179`, `"node": "^20.19.0 ||
+     >=22.12.0"` for the pinned `vite@8.2.2`. `vitest@4.1.11` declares the
+     looser `^20.0.0 || ^22.0.0 || >=24.0.0`, so vite sets the floor and
+     20.19 is the right number to print.
+  3. `README.md:33-36` — the wire returns contacts `legal@ferrari.example`,
+     `sync@warnerchappell.example` and `''`, so the two-plus-one split is
+     what a reader sees. It is the design rather than a gap:
+     `adapters/demo/scenario.py:152-182` seeds exactly two `RightsClaim`s,
+     and `application/analyze_script.py:61` skips the rights lookup for
+     `CONTINUITY`, so that item can carry no holder.
+
+  `.claude/WRITING.md` §4 over the three changed passages only: no banned
+  word, empty adverb or filler phrase; no §2 pattern (the new sentence is a
+  factual two-part split, not a binary contrast, and its `so` clause states a
+  mechanism rather than gesturing at one); claims specific enough to fail the
+  portability test in the right direction; active voice; no kicker; no em
+  dash added, the doc's single `--` at line 22 being unchanged and
+  load-bearing.
+
+  **Ruling on `README.md:47`, the implementer's flagged observation: out of
+  scope, deferred, not a fourth finding.** The README criterion reads "It
+  carries: prerequisites; the install command; `CLEARCUT_MODE=mock python
+  main.py`; the two curl commands with the seeded values verified this turn
+  ...; then the SPA build step; then live mode." It names one boot command
+  literal, the mock one, and lists live mode as a content item with no
+  command form and no verification demand attached. The only "runs as
+  written" standard the criteria state is the `bootstrap()` criterion's
+  "The fresh-clone story becomes exactly two commands: `./.claude/init.sh`
+  then `CLEARCUT_MODE=mock python main.py`", which is where attempt 1's
+  finding 1 was grounded and which live mode is outside by construction —
+  the `.env` criterion puts live mode behind copying `.env` and filling in
+  every value, which a fresh clone cannot do. The escalation clause in that
+  criterion makes `.claude/WRITING.md` findings blocking, and that file's §4
+  checklist covers banned words, §2 patterns, portability, voice, kickers and
+  em dashes; command runnability is not on it. So the criterion does not
+  reach line 47. The defect is real and now visible as an inconsistency
+  inside one document — line 18 names the interpreter by path, line 47 does
+  not — and it is the fifth deferral below rather than a bounce.
+
+  **Diff scope, checked rather than assumed.** Only `README.md` (modified
+  12:45 today) and this block (12:46) changed this attempt; `main.py`,
+  `tests/unit/test_entrypoint.py`, `pyproject.toml`, `.claude/init.sh`,
+  `.env.example`, `docs/plan/infrastructure.md` and
+  `tests/unit/test_environment_contract.py` all still carry their
+  2026-09-01 22:3x mtimes, from before attempt 1's review, and their diffs
+  against `HEAD` read exactly as attempt 1 recorded them.
+
+  Gates, re-run: `./.claude/init.sh check` 4/4 and `./.claude/init.sh
+  verify` 87/0; run directly as well, `ruff check .` clean, `ruff format
+  --check .` 117 files already formatted, `mypy src tests infra main.py`
+  clean on 91 files, `pytest -q` 477 passed.
+
+  **Deferred to the leader, five items.** Attempt 1's four stand unchanged
+  (`main.py:14`'s unpinned `load_dotenv()`, `test_entrypoint.py:93`'s
+  dependence on the absence of a root `.env`, the one-directional atomicity
+  at `test_environment_contract.py:87`, and `PORT` being undocumented at
+  `main.py:22`), joined by `README.md:47`'s bare `python` in the live-mode
+  paragraph per the ruling above. That fifth one is the cheapest and the
+  most visible to a reader; attempt 1's own remedy sentence, "Do not leave a
+  boot command that only works in an already-activated shell", is the
+  wording to reuse when it is opened.
+
+### CP-053 — Match the API client to what the server actually serves
+- Status: DONE
+- Attempts: 1/3
+- Depth: 0
+- Layer: adapters
+- Depends on: -
+- Acceptance:
+  - [x] `TrackerItem` in `web/src/api/client.ts` matches
+        `_tracker_item_json` (`src/clearcut/adapters/http/routes.py:181-196`)
+        field for field: `contact: string` (a bare string — **delete the
+        `TrackerContact` interface**, which describes a shape the server has
+        never emitted), `litigation_posture: string`, `note: string`, and a new
+        `project_id: string`. `draft_email: string | null` stays, because the
+        domain field genuinely is `str | None`
+        (`src/clearcut/domain/tracker.py:37`).
+  - [x] The evidence that today's types are wrong, reproduced rather than
+        trusted: `domain/tracker.py:26,31,32,33` declares `project_id: str`,
+        `contact: str`, `litigation_posture: str`, `note: str` — none optional —
+        and a mock analyze run returns a third tracker item carrying
+        `contact: ""`, `litigation_posture: ""` and `note: ""`. Empty strings,
+        never `null`. A client that types those as nullable produces UI code
+        guarding for a value that cannot arrive while failing to render the one
+        that does.
+  - [x] `ScriptViewResponse` becomes `AnalyzeResponse` and carries all eight
+        keys `_analysis_report_json` emits (`routes.py:199-210`), adding the two
+        it currently omits: `gcs_uri: string` and
+        `tracker_items: TrackerItem[]`.
+  - [x] New types matching the remaining serializers: `AnalyzeRequest`
+        (`project_id`, `gcs_uri`, `jurisdiction_code`, `version`, mirroring
+        `routes.py:256-265`), `BibleFact` (`fact_id`, `kind`, `text`, `source` —
+        `routes.py:213-219`), and `QuestionResponse` (`text`, `facts`,
+        `citations` — `routes.py:222-227`).
+  - [x] Four new functions, each naming its path in this module and nowhere
+        else: `postAnalyze(request: AnalyzeRequest): Promise<AnalyzeResponse>`,
+        `patchTrackerState(itemId: string, state: TrackerState): Promise<TrackerItem>`,
+        `postTrackerAction(itemId: string, action: TrackerAction, reason?: string): Promise<TrackerItem>`,
+        and `postQuestion(projectId: string, jurisdictionCode: string, question: string): Promise<QuestionResponse>`.
+  - [x] `TrackerAction` is typed **`"draft_email" | "notify"` and nothing
+        else.** `_build_action` (`routes.py:138-148`) raises on any other value
+        and `_run_use_case` turns that into a 500, so a client type admitting
+        `generate_document` or `stakeholder_link` would let a component compile
+        its way into a guaranteed server error. Those two are Backlog-ruled
+        unimplemented; the type is where that ruling gets enforced.
+  - [x] `requestJson` gains an `init?: RequestInit` parameter so the four new
+        functions can send a method, headers and a body through the one function
+        that owns `fetch`. No component gets its own `fetch` call.
+  - [x] The D18 wrap, **test-first**: malformed JSON inside a 200 response
+        currently escapes `requestJson` as a raw `SyntaxError`
+        (`client.ts`'s `return (await response.json()) as T`). Wrap it so it
+        rethrows as `ApiError`. Write the failing test first — a stubbed
+        `fetch` returning `ok: true` with an unparseable body — watch it fail on
+        `SyntaxError`, then make it pass. This is D18's item, landing on the
+        file it was always attached to.
+  - [x] **Delete `fetchScript`.** Nothing serves `GET /api/scripts/{script_id}`
+        — the Backlog entry for it records that there is no findings table and
+        no port behind it, and a call to it returns 404 today. `ScriptView`
+        renders from the analyze response instead, which is the data path the
+        Backlog itself names. Deleting a function is the point of this
+        criterion, not a side effect: leaving it is leaving a loaded gun for
+        CP-054.
+  - [x] Fixtures flip to server truth, which is what stops the conformance test
+        from masking the drift: `web/src/fixtures/script-view.json` becomes
+        `analyze.json` with all eight keys, and `tracker.json`'s contacts become
+        bare strings using the scenario's real values —
+        `legal@ferrari.example`, `sync@warnerchappell.example`, and `""` for the
+        continuity item. Today those fixtures encode `"contact": null` and
+        `"contact": { ... }` objects, agreeing with the broken client, so the
+        suite is green about a shape the server never sends.
+  - [x] `fixtures.test.ts` and `client.test.ts` are updated with the fixtures
+        rather than around them, and the conformance assertions get stronger,
+        not weaker. A reviewer should check specifically that no assertion was
+        deleted to make a fixture fit.
+  - [x] Failure path: each of the four new functions has a test asserting that a
+        non-OK response rejects with `ApiError` carrying the status, matching
+        what `fetchTracker` already proves.
+  - [x] `web/src/architecture.test.ts` stays green untouched: `/api/` string
+        literals remain confined to `client.ts`, and atoms import nothing from
+        `src/api/`. That test is a real gate here — four new path literals land
+        in this diff.
+  - [x] Gate: `npm run typecheck` and `npm test` in `web/`, both clean.
+- Files: web/src/api/client.ts, web/src/api/client.test.ts,
+  web/src/fixtures/analyze.json (renamed from script-view.json),
+  web/src/fixtures/tracker.json, web/src/fixtures/fixtures.test.ts
+- Notes: Opened 2026-09-01 by D53, from the approved plan's Tier 2 step 1.
+  Implemented 2026-09-01. Red-first evidence for both call-outs: (1) D18 wrap
+  — added a "rethrows malformed JSON... as ApiError, not a raw SyntaxError"
+  test against `fetchTracker` on the *unmodified* `requestJson`; it failed
+  with `AssertionError: expected SyntaxError ... to be an instance of
+  ApiError`, confirming the raw `SyntaxError` leak, before the try/catch
+  wrap was added. (2) contact-type flip — added the compile-visible pin
+  (`const contact: string = trackerFixture[0].contact`) in
+  `fixtures.test.ts` against the *unmodified* `TrackerItem` interface; `tsc
+  --noEmit` failed with `TS2322: Type 'TrackerContact | null' is not
+  assignable to type 'string'`, before the interface was flipped. Both
+  reproduced verbatim, then fixed, then re-verified green.
+
+  `architecture.test.ts` caught a real miss during this work: my first pass
+  at the four new functions' failure-path tests asserted literal `/api/...`
+  path strings inside `client.test.ts`, which the "names the API path in
+  client.ts only" gate correctly failed on (including inside a doc comment
+  that merely *mentioned* the convention with a backtick immediately before
+  `/api/`). Fixed by asserting only on captured `method`/`body`, never the
+  raw path — consistent with how the pre-existing `fetchScript`/
+  `fetchTracker` tests never asserted a path either.
+
+  `postTrackerAction`'s `reason` is omitted from the request body entirely
+  when the caller passes none (`{ action }`, not `{ action, reason:
+  undefined }`), rather than always sending the key — `JSON.stringify` drops
+  `undefined` values but a reviewer diffing wire payloads shouldn't have to
+  rely on that; the client builds the object conditionally instead. Tested
+  both branches (reason given / omitted).
+
+  Fixture data: `tracker.json` and the new `analyze.json`'s `tracker_items`
+  carry the same three items, contacts sourced from
+  `adapters/demo/scenario.py`'s `RIGHTS_CLAIMS_BY_ASSET`
+  (`legal@ferrari.example` for the BLOCKED/trademark item,
+  `sync@warnerchappell.example` for the IN_PROGRESS/sync item) and `""` for
+  the CLEARED item, which carries no rights claim — the three tracker states
+  stay distinct so the state-coverage assertion in `fixtures.test.ts` is
+  still meaningful. `required_document`/`finding_id` on that third item were
+  left as they were (not renamed to the continuity finding's own
+  `required_document`) — the criterion's "the continuity item" language
+  reads as picking out which of the three gets the empty string, not as a
+  request to re-key the fixture to `SEED-CONTINUITY`; renaming it would have
+  meant inventing a matching finding in `analyze.json` too, which is scope
+  the acceptance criteria never asked for.
+
+  Gates: `npm run typecheck` and `npm test` in `web/` both clean (26 tests,
+  5 files, including `architecture.test.ts` untouched and still enforcing
+  the `/api/` and atom-purity rules). No file outside `web/` and this
+  checkpoint's own `CHECKPOINTS.md` block was touched — confirmed by `git
+  status` before handoff; the root/docs/Python changes visible in the
+  working tree belong to the concurrent CP-052 implementer.
+
+  **Why this is its own checkpoint, ahead of any component.** The drift is live
+  and masked: the client types `contact` as `TrackerContact | null` while the
+  server emits a bare string, and the fixtures agree with the client, so the
+  conformance test passes while the real API would break the UI. It survived
+  this long precisely because no reviewer ever ran the web suite against a real
+  response. Building three surfaces on top of it would multiply one wrong type
+  across every component that reads a tracker item.
+
+  **No dependency on CP-052, ruled deliberately (D53).** This checkpoint opens
+  `web/` only and its gates are `npm run typecheck` and `vitest`; neither needs
+  an entrypoint, a `.env`, or a running server. It dispatches in parallel with
+  CP-052 today.
+
+  **No rendering in this checkpoint.** `App.tsx` still renders its placeholder
+  when this lands. That is correct and a reviewer should not ask for more: the
+  surfaces are CP-054, and a checkpoint that grew components while repairing the
+  contract would be two checkpoints reviewed as one.
+
+  If this reaches 3/3, the split axis is the type and fixture repair in one
+  block and the four new functions plus the `requestJson` wrap in another.
+
+  **Review attempt 1 — CHANGES_REQUESTED (2026-09-02).** Gates green:
+  `npm run typecheck` clean, `npm test` 26 passed / 5 files. Wire-truth check
+  run as commissioned: mock backend booted (`CLEARCUT_MODE=mock`, port 8081),
+  and every response key set and value type diffed field for field against the
+  client interfaces and both fixtures — `POST /api/analyze` (8 keys),
+  `.scenes[0]`, `.findings[0]`, `.findings[0].citations[0]`,
+  `.tracker_items[0]`, `GET /api/tracker[0]`, `PATCH /api/tracker/:id`,
+  `POST .../actions`, `POST /api/question`, `.citations[0]`. **Every one
+  MATCH, no key or type drift anywhere**, and both fixtures match the live
+  payloads key for key and type for type on all three tracker items. The
+  contact repair is confirmed against the wire: `contact`,
+  `litigation_posture` and `note` arrive as bare `str`, `""` for the third
+  item, never `null`, never an object. `draft_email` is `null` until an action
+  runs and `str` after `draft_email`/`notify`, so `string | null` is right.
+  `generate_document` and `stakeholder_link` both returned **HTTP 500**
+  (`{"error":"internal error"}`) — `TrackerAction` correctly admits neither,
+  and no test or type references them. `fetchScript` is fully gone (no export,
+  no test, no dangling import under `web/src`). `architecture.test.ts` is
+  untouched and green; no quote-adjacent `/api/` literal exists outside
+  `client.ts`.
+
+  Mutation testing on a throwaway copy confirmed most of the suite is
+  load-bearing: reverting the `requestJson` wrap kills the malformed-JSON test
+  with the exact recorded `SyntaxError` message; flipping `contact` back to
+  `TrackerContact | null` kills typecheck at `fixtures.test.ts:27` (TS2322)
+  *and* at the cast; deleting `tracker_items` from `AnalyzeResponse` kills
+  typecheck; deleting `tracker_items` from `analyze.json` kills the eight-key
+  test; and the four request tests genuinely assert captured `method`/`body`
+  (renaming the action body key to `act`, sending POST instead of PATCH, and
+  camelCasing the question keys each killed their test).
+
+  **Blocking findings — two named additions ship with no test that fails
+  without them (AGENT.md Section 5 and Section 9).**
+
+  1. `web/src/api/client.ts:71` — deleting `project_id: string;` from
+     `TrackerItem` leaves `npm run typecheck` clean and all 26 tests passing.
+     Nothing under `web/src` reads that field: the fixtures only carry it, and
+     `trackerData as TrackerResponse` performs no excess-property check, so
+     the first acceptance criterion's headline addition is unpinned. It needs
+     a check that fails when the field is removed — the same compile-visible
+     pin shape already used three lines below for `contact`,
+     `litigation_posture` and `note` would do it.
+  2. `web/src/api/client.ts:91` — deleting `gcs_uri: string;` from
+     `AnalyzeResponse` likewise leaves typecheck clean and all 26 tests
+     passing. The eight-key test asserts `Object.keys(analyzeFixture)` against
+     a hardcoded list, which pins the *fixture* but never the *interface*;
+     `tracker_items` is pinned only incidentally, by
+     `analyzeFixture.tracker_items.length` on the next line. `gcs_uri` needs
+     the equivalent — a reference that stops compiling if the field goes.
+     (Note `AnalyzeRequest.gcs_uri`/`project_id` *are* pinned, by the typed
+     `AnalyzeRequest` literal in `client.test.ts:60-65`; only the response
+     side is open.)
+
+  Non-blocking, for the leader: the `as` cast cannot catch a missing or
+  renamed field in `tracker.json` — deleting `project_id` from
+  `tracker.json[0]`, and even renaming it to `projectId`, leaves both gates
+  green. The pre-existing doc comment at `fixtures.test.ts:14-16` claims the
+  cast "does catch a renamed or missing field at any depth"; that claim is
+  false for the missing/renamed direction (it holds only for a *wrong type*,
+  which mutation 2 above confirms). The comment predates this diff and the
+  fixtures do match the wire today, so this does not send the work back — but
+  the analyze fixture's `Object.keys` assertion has no counterpart for tracker
+  items, and that is the residual hole in the very masking CP-053 exists to
+  close.
+
+  Also non-blocking: three `it(...)` titles in `client.test.ts:68,89,151`
+  spell out `/api/analyze`, `/api/tracker/:itemId` and `/api/question` in
+  prose. `architecture.test.ts` deliberately permits this (it requires a quote
+  character immediately before the segment), and the pre-existing atoms
+  mention `src/api/` the same way, so the gate is satisfied as designed — but
+  those titles are a second spelling of a path that can drift silently.
+
+  Everything else on the acceptance list is met and proven. `postTrackerAction`
+  building `{ action }` conditionally is fine — always sending
+  `reason: undefined` produces a byte-identical payload, so the conditional is
+  legibility, not behaviour, and its absence correctly kills no test. The
+  fixture-provenance and continuity-item rulings in the Notes above are sound;
+  the scenario's real values (`legal@ferrari.example`,
+  `sync@warnerchappell.example`, `""`) are what the server emitted on the
+  wire. Scope is clean: the diff touches exactly the five declared `web/`
+  files; the root/docs/Python changes in the working tree are CP-052's.
+  Python gates were run for information only and are green (477 passed, ruff
+  clean) — not this checkpoint's evidence.
+
+  **Attempt 2 — fixed both blocking findings (2026-09-02).** Test-only, in
+  `web/src/fixtures/fixtures.test.ts`; `web/src/api/client.ts` untouched.
+  Added three compile-visible pins, same shape as the existing
+  `contact`/`litigation_posture`/`note` pins three lines above:
+  `const projectId: string = trackerFixture[0].project_id;`,
+  `const gcsUri: string = analyzeFixture.gcs_uri;`, and
+  `const items: TrackerItem[] = analyzeFixture.tracker_items;` (the last one
+  makes the previously-incidental `tracker_items` pin deliberate, per the
+  reviewer's own suggestion — `TrackerItem` added to the type-only import).
+
+  Mutation testing on a throwaway copy of `client.ts` (restored after each,
+  diffed clean against the pre-mutation working tree):
+  - Deleted `project_id: string;` from `TrackerItem` →
+    `npm run typecheck` fails: `src/fixtures/fixtures.test.ts(44,45): error
+    TS2339: Property 'project_id' does not exist on type 'TrackerItem'.` —
+    lands exactly on the new pin.
+  - Deleted `gcs_uri: string;` from `AnalyzeResponse` →
+    `npm run typecheck` fails: `src/fixtures/fixtures.test.ts(52,39): error
+    TS2339: Property 'gcs_uri' does not exist on type 'AnalyzeResponse'.` —
+    lands exactly on the new pin.
+
+  Unmutated gates, confirmed green after restore: `npm run typecheck` clean,
+  `npm test` 26 passed / 5 files (unchanged from attempt 1 — no test count
+  regression). `git status --short -- web/` shows the same five files
+  attempt 1 declared; no file outside `web/` and this block was touched.
+
+  Deliberately not touched, per the reviewer's own non-blocking framing:
+  the missing/renamed-field cast limitation and the stale "any depth" doc
+  comment at `fixtures.test.ts:14-16` — those are the leader's call, and
+  widening this attempt risked a bounce for scope creep.
+
+  **Review attempt 2 — PASS (2026-09-02).** `Attempts` stays at `1/3`: D49
+  counts `CHANGES_REQUESTED` verdicts, and attempt 1 was the only one.
+
+  Gates, re-run in `web/`: `npm run typecheck` exit 0, `npm test` 26 passed /
+  5 files. Python gates run for information only against the shared tree (they
+  are not this checkpoint's evidence, and the tree carries CP-052's diff):
+  `ruff check .` clean, `ruff format --check .` 117 files formatted, `pytest
+  -q` 477 passed.
+
+  **Both blocking findings independently killed and restored**, on my own
+  throwaway copy of `web/` (`src/` copied, `node_modules` symlinked, baseline
+  reproduced green at typecheck exit 0 and 26/26 before any mutation):
+  - Deleted `project_id: string;` from `TrackerItem` (client.ts:71) →
+    `src/fixtures/fixtures.test.ts(44,45): error TS2339: Property
+    'project_id' does not exist on type 'TrackerItem'.` Restored → exit 0.
+  - Deleted `gcs_uri: string;` from `AnalyzeResponse` (client.ts:91) →
+    `src/fixtures/fixtures.test.ts(52,39): error TS2339: Property 'gcs_uri'
+    does not exist on type 'AnalyzeResponse'.` Restored → exit 0.
+
+  **Five further probes of my own**, because a pin that only catches deletion
+  is half a pin:
+  - Deleted `tracker_items` from `AnalyzeResponse` → fails at the new pin
+    `(58,45)` *and* at the pre-existing `.length` `(80,27)`. The pin fires at
+    the interface, as attempt 1 asked.
+  - Weakened `tracker_items` to `unknown[]` → fails **only** at the new pin,
+    `(58,7) TS2322: Type 'unknown[]' is not assignable to type
+    'TrackerItem[]'`. `unknown[]` still has `.length`, so the old incidental
+    pin misses this entirely. The third pin is genuinely additive, not
+    decoration — it pins the element type, which nothing else did.
+  - `project_id` → `string | null` → `(44,7) TS2322`. `gcs_uri` →
+    `string | null` → `(52,7) TS2322`. Both pins catch weakening, not just
+    deletion.
+  - The pre-existing `contact` pin still fires after the import restructure:
+    `contact` → `string | null` → `(31,7) TS2322`. No regression from
+    reshaping the `import type` block.
+  - Runtime side is load-bearing too: changing `tracker.json[0].contact` to
+    another address fails the new contacts assertion (`expected [
+    'someone@else.example', ... ]`), 1 failed / 25 passed.
+
+  **Byte-identity of `client.ts` proved, not assumed.** A mtime-preserving
+  copy of `web/` taken before attempt 2 (scratchpad `mut/`, its
+  `fixtures.test.ts` still the un-pinned attempt-1 version, separate inode,
+  link count 1) holds a `client.ts` that `diff -u` reports **identical** to
+  the current file. `diff -rq` over the whole of `web/src` reports exactly one
+  differing file — `fixtures.test.ts` — and `package.json`,
+  `package-lock.json`, `tsconfig.json`, `vite.config.ts` and `index.html` are
+  all identical. Corroborated independently: attempt 1 cited `client.ts:71`
+  and `client.ts:91`, and both line numbers still carry exactly those two
+  declarations, so the mutate-and-restore left no residue. mtimes bound
+  attempt 2's whole footprint to three files (`fixtures.test.ts` 12:23:15,
+  `client.ts` 12:23:56 from the restore, this file 12:24:24); every other
+  changed path in the tree is stamped 2026-09-01 22:3x and belongs to CP-052.
+
+  The fix adds no `it()` block, and that is correct rather than a gap: the
+  defect was that two declared interface fields had no consumer, and
+  `npm run typecheck` is a declared gate of this checkpoint. Five kills above
+  show the gate fails without the change. The pins copy the existing
+  `contact`/`litigation_posture`/`note` shape three lines above, `void x;`
+  included, which `tsconfig.json`'s `noUnusedLocals: true` requires. No
+  assertion was deleted or weakened; the diff is purely additive. Nothing in
+  §4 was introduced — no abstraction, no interface, no config, four lines of
+  test code.
+
+  **Both attempt-1 deferrals verified still open and unsmuggled.** Renaming
+  `project_id` to `projectId` inside `tracker.json[0]` still leaves typecheck
+  exit 0 and 26/26 green — the `as` cast's missing/renamed-field blindness is
+  untouched, exactly as deferred, and the new pin does not paper over it (it
+  pins the *interface*, never the *fixture*). The stale "renamed or missing
+  field at any depth" claim survives at `fixtures.test.ts:19`, and now sits
+  fifteen lines above a new comment asserting the opposite ("the `as` cast
+  performs no excess-property check") — both are accurate about different
+  things, but the file now contradicts itself in plain sight, which sharpens
+  the existing deferral rather than adding a new one. Deferral 2 also stands:
+  the three `/api/` spellings in `client.test.ts:68,89,151` `it()` titles are
+  unchanged.
+
+  For the leader: the `## Active` narrative above still reads "Three
+  checkpoints" and dispatches CP-052 and CP-053 in parallel. Rewriting it is
+  the leader's turn, not a reviewer's, and CP-052's reviewer is in this file
+  concurrently.
 
 ### CP-051 — Make the documented environment and the required environment the same set
 - Status: DONE
