@@ -1,0 +1,138 @@
+/* Hand-rolled, roughly a hundred lines (CP-054). Tailwind stays deferred --
+   its Backlog trigger has not fired, and this is the smaller thing the
+   three surfaces actually require. */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: #1a1a1a;
+  background: #f5f5f5;
+}
+
+.app {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+h1 {
+  font-size: 1.75rem;
+}
+
+h2 {
+  font-size: 1.25rem;
+  margin-top: 0;
+}
+
+section {
+  background: #ffffff;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.scene-card {
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  padding: 0.75rem 1rem;
+  margin: 0.75rem 0;
+}
+
+.scene-pages {
+  color: #666666;
+  font-size: 0.85rem;
+}
+
+.finding-list,
+.citation-list,
+.qa-facts {
+  list-style: none;
+  padding-left: 0;
+}
+
+.finding {
+  border-top: 1px solid #eeeeee;
+  padding: 0.5rem 0;
+}
+
+.citation-list {
+  margin-left: 1rem;
+}
+
+.citation-snippet {
+  color: #555555;
+  font-size: 0.85rem;
+  margin: 0.15rem 0 0.5rem;
+}
+
+.contradicts {
+  color: #8a4b00;
+  font-weight: 600;
+}
+
+form label {
+  display: block;
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+}
+
+form input,
+form textarea,
+form select {
+  display: block;
+  width: 100%;
+  max-width: 32rem;
+  padding: 0.35rem 0.5rem;
+  margin-top: 0.15rem;
+}
+
+form button {
+  margin-top: 0.75rem;
+}
+
+.tracker-row {
+  border-top: 1px solid #eeeeee;
+  padding: 0.75rem 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+
+.tracker-row p {
+  margin: 0;
+}
+
+.draft-email {
+  flex-basis: 100%;
+  white-space: pre-wrap;
+  background: #fafafa;
+  border: 1px solid #e0e0e0;
+  padding: 0.5rem;
+}
+
+.error {
+  color: #b00020;
+  font-weight: 600;
+}
+
+.empty-state {
+  color: #666666;
+  font-style: italic;
+}
+
+[data-testid="risk-badge"],
+[data-testid="state-badge"] {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 3px;
+  border: 1px solid #999999;
+  background: #eeeeee;
+  font-size: 0.75rem;
+  font-weight: 600;
+}

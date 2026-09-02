@@ -252,6 +252,12 @@ check() {
   else
     note "no tests yet"
   fi
+  if [ -d "$ROOT/web/node_modules" ]; then
+    (cd "$ROOT/web" && npm run typecheck) && ok "web typecheck" || no "web typecheck"
+    (cd "$ROOT/web" && npm test) && ok "web test" || no "web test"
+  else
+    note "web/node_modules missing — run npm install in web/ first"
+  fi
   sec "Result"
   printf '  %d passed, %d failed\n\n' "$pass" "$fail"
   [ "$fail" -eq 0 ]
