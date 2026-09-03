@@ -32,6 +32,14 @@ gcloud services enable \
   artifactregistry.googleapis.com
 ```
 
+**Enabling an API and being able to use it are minutes apart.** Verified on the
+first real run, 2026-09-03: `provision_data_plane.sh` enabled
+`documentai.googleapis.com` and then failed to create the OCR processor in the
+same pass, printing `DOCAI_PROCESSOR_ID=...<not-yet-created>` without an error.
+Both scripts are idempotent, so the fix is to run each one twice. The second
+pass reports every existing resource as already present and resolves the ids
+the first pass could not.
+
 ## 2. Storage: two GCS buckets
 
 ```bash
@@ -85,6 +93,15 @@ instead of using an index, and a hackathon corpus stays well under that line,
 so skip index tuning entirely.
 
 ## 5. Vertex AI Search data store for legal grounding
+
+**Discovery Engine rejects a bare user token.** Application Default
+Credentials carry no quota project, and every call answers `403
+PERMISSION_DENIED` with `reason: SERVICE_DISABLED` rather than saying so. The
+message names the wrong cause: the API is enabled, the token is simply missing
+a project. Send `x-goog-user-project: clearcut-hack` on every Discovery Engine
+call; `infra/provision_retrieval_plane.sh` now does. Found on the first real
+run, 2026-09-03, where its absence made the whole script a silent no-op that
+still printed its success banner.
 
 Create one Vertex AI Search data store (console: AI Applications > Data
 Stores) over `gs://clearcut-legal-corpus`, type unstructured documents.

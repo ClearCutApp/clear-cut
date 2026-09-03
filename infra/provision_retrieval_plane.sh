@@ -97,6 +97,13 @@ discovery_engine_url() {
     "$PROJECT_ID" "$LOCATION" "$1"
 }
 
+# Discovery Engine rejects a bare user-credential token: ADC carries no
+# quota project, and the API answers 403 PERMISSION_DENIED / SERVICE_DISABLED
+# rather than saying so plainly. Every call below therefore sends the project
+# explicitly. Found on the first real run, 2026-09-03 (CP-055): without it the
+# whole script is a silent no-op that still prints its success banner.
+QUOTA_HEADER="x-goog-user-project: $PROJECT_ID"
+
 # print_curl_get_cmd URL prints URL as a bearer-token GET, trace only.
 # Kept separate from fetch_json below so a caller capturing the response
 # body with command substitution never captures this trace line too.
@@ -105,13 +112,14 @@ print_curl_get_cmd() {
   # shellcheck disable=SC2016 # printed literally; the real call substitutes
   # a fresh token instead of the one captured when this string was built.
   auth='Authorization: Bearer $(gcloud auth print-access-token)'
-  print_cmd curl -sS -H "$auth" "$1"
+  print_cmd curl -sS -H "$auth" -H "$QUOTA_HEADER" "$1"
 }
 
 # fetch_json URL issues the real bearer-token GET and returns the body.
 # Callers guard this behind `[ "$DRY_RUN" -eq 0 ]` themselves.
 fetch_json() {
-  curl -sS -H "Authorization: Bearer $(gcloud auth print-access-token)" "$1"
+  curl -sS -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+    -H "$QUOTA_HEADER" "$1"
 }
 
 # print_curl_post_cmd URL PAYLOAD prints URL and PAYLOAD as a bearer-token
@@ -123,14 +131,15 @@ print_curl_post_cmd() {
   # shellcheck disable=SC2016 # printed literally; the real call substitutes
   # a fresh token instead of the one captured when this string was built.
   auth='Authorization: Bearer $(gcloud auth print-access-token)'
-  print_cmd curl -sS -X POST -H "$auth" -H 'Content-Type: application/json' -d "$2" "$1"
+  print_cmd curl -sS -X POST -H "$auth" -H "$QUOTA_HEADER" \
+    -H 'Content-Type: application/json' -d "$2" "$1"
 }
 
 # post_json URL PAYLOAD issues the real bearer-token POST and returns the
 # body. Callers guard this behind `[ "$DRY_RUN" -eq 0 ]` themselves.
 post_json() {
   curl -sS -X POST -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-    -H 'Content-Type: application/json' -d "$2" "$1"
+    -H "$QUOTA_HEADER" -H 'Content-Type: application/json' -d "$2" "$1"
 }
 
 # curl_auth_post URL PAYLOAD prints URL and PAYLOAD as a bearer-token POST,
