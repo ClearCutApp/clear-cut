@@ -41,6 +41,10 @@ def test_researches_a_real_rights_holder_and_returns_cited_claims() -> None:
         "no citations: the adapter raises NoRightsHolderFound when every claim "
         "is uncited, so reaching here without them means the basis was empty"
     )
-    assert all(citation.uri.startswith("https://") for citation in claim.citations), [
+    # Scheme, not host: Parallel searches the live web, so which sources come
+    # back varies run to run and some are plain http. Asserting on shape keeps
+    # this test about "these are real web citations" rather than about whichever
+    # sources today's search happened to rank.
+    assert all(citation.uri.startswith(("https://", "http://")) for citation in claim.citations), [
         citation.uri for citation in claim.citations
     ]
