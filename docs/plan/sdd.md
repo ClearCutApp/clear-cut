@@ -489,6 +489,16 @@ the findings-by-severity and tracker-by-state breakdowns for the verification
 run in section 8. **The dashboard is MISSING.** Section 8(d) asserts against
 it.
 
+**A retrieval finding, recorded here because it has no better home.** The
+`clearcut-project-qa` engine was created at `SEARCH_TIER_STANDARD` with no
+`searchAddOns`, which is what `infra/provision_retrieval_plane.sh` produces
+when it sets no tier. At that tier the store matches terms rather than meaning.
+The engine has since been patched to `SEARCH_TIER_ENTERPRISE` with
+`SEARCH_ADD_ON_LLM`, and whether that alone fixes retrieval is **unverified**:
+the change had not taken effect when the probes were re-run. Two things hold
+either way. The provisioning script should set the tier explicitly rather than
+inherit a default, and enterprise tier bills in a way standard does not.
+
 ## 7. Delivery phases and dependency edges
 
 **Status: all five phases WIP. No exit criterion has been met.**
@@ -644,6 +654,7 @@ decision starts from the source.
 | Confidence gate below 0.7, escalation to counsel | `agentic-workflow.md` §8 | `Finding` has no confidence field and the tracker has no escalated state |
 | Single project clearance percentage | `proposal.md` | §2 makes percentages presentation-only, and no endpoint or component returns a rollup |
 | Token ceilings, 8,000 in and 1,500 out per scene | `agentic-workflow.md` §8 | No metric in §6 measures them |
+| A grounding query the data store can actually match | nowhere | Probed live 2026-09-03. English `copyright` and `intellectual property law` each retrieve two documents; `Ferrari trademark clearance` and any natural-language question retrieve none. Retrieval matches terms, not meaning. §4.1 step 5 has `AnalyzeScript` ask `LegalGrounding` a sentence, and nothing shapes it into terms the corpus contains. See the §6 note |
 
 One further gap in the coverage rather than the design:
 `NoPreviousScriptVersion` lives in `application/`, so neither
