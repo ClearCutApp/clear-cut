@@ -72,6 +72,17 @@ authenticated (`gcloud auth login`), and pointed at that project
    additive: running it twice indexes the fact twice, because `LoreStore` has
    no way to remove a row (SDD section 4.3).
 
+10. `.venv/bin/python infra/fetch_legal_corpus.py AR --dry-run` — review the
+    searches, then drop `--dry-run` to ask Parallel for each category's statute.
+    It needs `PARALLEL_API_KEY` and prints candidate URLs rather than uploading
+    them: it rejects anything not on a government or intergovernmental domain,
+    and a human still confirms a document is the right law before it becomes
+    something ClearCut cites to a producer.
+
+    Corpus coverage is the limit on legal grounding, not query phrasing. Six of
+    the eight clearance categories currently ground against nothing for
+    Argentina, because no statute covering them has been loaded.
+
 ## The manual step inside Google Cloud
 
 Step 6 above cannot finish the retrieval plane by itself. One step has no
