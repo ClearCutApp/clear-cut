@@ -45,6 +45,18 @@ authenticated (`gcloud auth login`), and pointed at that project
    but nothing under `src/` reads it (section 5 says so explicitly), and
    `tests/unit/test_environment_contract.py` fails if the name appears in
    `.env.example`.
+8. `.venv/bin/python infra/provision_tracker_schema.py --dry-run` — review the
+   two `CREATE TABLE IF NOT EXISTS` statements, then drop `--dry-run` to create
+   `tracker_items` and `script_versions` in ClickHouse Cloud. It reads
+   `CLICKHOUSE_HOST`, `CLICKHOUSE_USER` and `CLICKHOUSE_PASSWORD` from the
+   environment and exits naming any that are missing.
+
+   It needs the project interpreter, not a bare `python3`: it reuses
+   `ClickHouseTrackerStore.ensure_schema()` so the schema has one definition
+   rather than two, which means it imports the adapter and its dependencies.
+
+   ClickHouse Cloud itself is still created by hand — this script provisions
+   the tables inside a service that already exists.
 
 ## The manual step inside Google Cloud
 
