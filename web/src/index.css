@@ -67,6 +67,31 @@ body {
   padding: 32px 0 24px;
 }
 
+/* Reuses the in-progress amber rather than the error red: mock mode is a
+   deliberate hedge, not a fault. It should read as a standing notice the
+   reader cannot miss, not as something broken. */
+.mode-banner {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  margin: 0 0 24px;
+  padding: 12px 16px;
+  border: 1px solid var(--color-in-progress-text);
+  border-radius: var(--radius-container);
+  background: var(--color-in-progress-bg);
+  color: var(--color-in-progress-text);
+}
+
+.mode-banner__label {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.mode-banner__text {
+  color: var(--color-text);
+}
+
 h1 {
   margin: 0;
   font-size: 24px;

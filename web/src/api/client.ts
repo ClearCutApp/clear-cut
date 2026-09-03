@@ -115,6 +115,15 @@ export interface QuestionResponse {
   citations: Citation[];
 }
 
+/** What `CLEARCUT_MODE` the server is serving under. `mock` means every
+ * scene, finding and tracker item came from `adapters/demo/scenario.py`
+ * rather than from a real analysis. */
+export type ServerMode = "mock" | "live";
+
+export interface HealthResponse {
+  mode: ServerMode;
+}
+
 export class ApiError extends Error {
   readonly status: number;
 
@@ -195,4 +204,8 @@ export function postQuestion(
       question,
     }),
   );
+}
+
+export function fetchHealth(): Promise<HealthResponse> {
+  return requestJson<HealthResponse>("/api/health");
 }
