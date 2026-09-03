@@ -57,6 +57,7 @@ from clearcut.composition import (
     _GENAI_LOCATION,
     _build_live_use_cases,
     _build_mock_use_cases,
+    _clickhouse_host,
     create_app,
 )
 
@@ -543,3 +544,37 @@ def test_the_bigquery_dataset_location_is_not_the_genai_location() -> None:
     """
     assert _GCP_LOCATION == "us-central1"
     assert _GENAI_LOCATION == "global"
+
+
+# ---------------------------------------------------------------------------
+# CP-055: the ClickHouse console hands you a URL, the driver wants a hostname.
+#
+# `clickhouse_connect.get_client(host=...)` prepends the scheme itself, so
+# pasting what the Connect panel shows produces
+# `https://https://host:8443` and fails DNS resolution on the literal string
+# "https". Seen on the first real connection attempt, 2026-09-03. Normalising
+# here rather than asking every operator to reformat what the console gave them.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "configured",
+    [
+        "tnm.us-east1.gcp.clickhouse.cloud",
+        "https://tnm.us-east1.gcp.clickhouse.cloud",
+        "https://tnm.us-east1.gcp.clickhouse.cloud:8443",
+        "http://tnm.us-east1.gcp.clickhouse.cloud:8443/",
+        "  https://tnm.us-east1.gcp.clickhouse.cloud:8443  ",
+    ],
+)
+def test_every_form_the_console_offers_reduces_to_the_bare_host(configured: str) -> None:
+    assert _clickhouse_host(configured) == "tnm.us-east1.gcp.clickhouse.cloud"
+
+
+def test_a_host_with_no_scheme_or_port_is_left_alone() -> None:
+    """The already-correct value must survive untouched.
+
+    A normaliser that rewrites valid input is worse than none: it turns one
+    documented format into two, and only one of them is tested.
+    """
+    assert _clickhouse_host("localhost") == "localhost"

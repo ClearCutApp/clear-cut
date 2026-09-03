@@ -175,6 +175,25 @@ def _build_mock_use_cases() -> _UseCaseGraph:
     )
 
 
+def _clickhouse_host(configured: str) -> str:
+    """The bare hostname `clickhouse_connect` wants, from whatever was pasted.
+
+    The Cloud console's Connect panel shows a full URL, and
+    `get_client(host=...)` prepends the scheme itself, so pasting that value
+    verbatim produces `https://https://host:8443` and fails DNS resolution on
+    the literal string "https". Seen on the first real connection attempt
+    (2026-09-03, CP-055).
+
+    Normalised here rather than documented as a footnote, because the console
+    is where every operator will copy from and a runbook note does not survive
+    a copy-paste.
+    """
+    host = configured.strip()
+    if "://" in host:
+        host = host.split("://", 1)[1]
+    return host.split("/", 1)[0].split(":", 1)[0]
+
+
 def _required_env(name: str) -> str:
     """One credential, endpoint, or model id for the live wiring (CP-049):
     read here, once, and passed down as a constructor argument -- no
@@ -208,7 +227,7 @@ def _build_live_use_cases(
     gemini_model = _required_env("GEMINI_MODEL")
     gemini_model_lite = _required_env("GEMINI_MODEL_LITE")
     parallel_api_key = _required_env("PARALLEL_API_KEY")
-    clickhouse_host = _required_env("CLICKHOUSE_HOST")
+    clickhouse_host = _clickhouse_host(_required_env("CLICKHOUSE_HOST"))
     clickhouse_user = _required_env("CLICKHOUSE_USER")
     clickhouse_password = _required_env("CLICKHOUSE_PASSWORD")
     data_store_id = _required_env("VERTEX_SEARCH_DATA_STORE_ID")

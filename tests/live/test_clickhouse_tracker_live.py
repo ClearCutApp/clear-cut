@@ -17,6 +17,7 @@ import clickhouse_connect
 import pytest
 
 from clearcut.adapters.clickhouse.tracker import ClickHouseTrackerStore, _ChClient
+from clearcut.composition import _clickhouse_host
 from clearcut.domain.errors import RecordNotFound
 from clearcut.domain.tracker import TrackerItem, TrackerState
 from tests.live.conftest import env, requires, scratch_id
@@ -29,7 +30,9 @@ def _store() -> ClickHouseTrackerStore:
     client = cast(
         _ChClient,
         clickhouse_connect.get_client(
-            host=env("CLICKHOUSE_HOST"),
+            # Through the same normaliser `composition.py` uses, so this test
+            # accepts exactly what the console hands an operator.
+            host=_clickhouse_host(env("CLICKHOUSE_HOST")),
             username=env("CLICKHOUSE_USER"),
             password=env("CLICKHOUSE_PASSWORD"),
             secure=True,
