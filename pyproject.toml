@@ -39,6 +39,14 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src", "."]
+# `live` tests reach a real external service. They are deselected by default so
+# the loop stays fast and offline; `./.claude/init.sh live` selects them. Without
+# `--strict-markers` a typo'd marker silently selects nothing, which is the same
+# class of defect the live tier exists to close.
+addopts = ["--strict-markers", "-m", "not live"]
+markers = [
+  "live: reaches a real external service; skipped when its credentials are absent",
+]
 
 [tool.ruff]
 line-length = 100

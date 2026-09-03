@@ -2281,6 +2281,55 @@ changing a rule, not after.
 
 ---
 
+### Settled 2026-09-03, the loop could not tell a service from a fake (D66)
+
+**D66. A `live` test tier, a gate that runs it, and the contract clauses that
+make it binding. Delegated-direct work on a user-approved plan, not a
+checkpoint.** The board was terminal at fifty-four checkpoints, and the user
+asked why a finished product could not reach a single service. The audit that
+followed is the reason this entry exists.
+
+*What the audit found.* The `clearcut-hack` project does not exist — `gcloud
+alpha bq datasets list --project=clearcut-hack` returns "not found or deleted".
+`tests/integration/` held one test whose body is `assert True`. All fourteen
+adapter test files use hand-written fakes, so no adapter had ever contacted the
+service it wraps. And two identifier bugs guaranteed to fail on the first real
+call were sitting in `main`, invisible to all 477 passing tests: the Document AI
+processor id, which `document_ai.py:149` needs as a full resource path while
+`infra/provision_data_plane.sh:136-140` strips it to a bare id; and the Vertex
+AI Search data store id, which exists in three mutually incompatible forms
+across the test, the provisioning script and the adapter.
+
+*Why this is not a failure of any agent.* Every checkpoint's acceptance criteria
+were satisfiable with a hand-written fake, and §6 step 5 ends the loop on an
+empty board. Nothing ever asked whether the product worked, so nothing answered.
+D41 named the failure mode exactly — *"a demo store wired into a live use case
+serves planted data and looks perfectly healthy"* — and filed it as Backlog. It
+was right, and filing it was not enough.
+
+*What changed.* `pyproject.toml` declares a `live` marker and defaults to
+`-m "not live"`, so the fast loop stays offline while the tier stays
+collectable. `tests/live/` holds one module per Phase 1 adapter, each asserting
+on a value a fake provably cannot produce — the Gemini token count the fake
+leaves as `None`, a `groundingChunks` citation URI, the `content_hash` BigQuery
+stored and returned. `./.claude/init.sh live` is the gate. AGENT.md §5 makes a
+live test mandatory for any adapter checkpoint *in its acceptance criteria*,
+because §4 binds an implementer to those and to nothing else; §9 adds the box;
+reviewer.md gains item 10 and the `EVIDENCE:` line gains a `live` slot.
+
+*A second instance of the same defect, fixed in passing.* `check()` reported a
+missing tool through `note`, which increments neither counter. A machine with no
+ruff, no mypy, no pytest and no `web/node_modules` printed `0 passed, 0 failed`
+and exited success. Absence read as success there too. Those four branches now
+call `no`; verified on a bare directory, which reports `0 passed, 4 failed` and
+exits 1.
+
+*What was deliberately not done.* No new `Status` value. `.claude/lib/termination.py`
+re-proves the §7 table on every `verify`, and a marker plus a gate leaves that
+proof untouched — `init.sh verify` still returns 87 passed, 0 failed.
+
+---
+
 ## Active
 
 **No checkpoints. The loop is complete for the second time, and by completion
@@ -2508,6 +2557,12 @@ behind.
   as a criterion on CP-030, so this entry is the *live* run only. It stays the
   submission's evidence and does not become redundant: the mocked run proves
   the wiring, this one proves the services.
+  **Amended 2026-09-03 by D66.** This entry named the defect a year of green
+  gates could not see, and then sat here with no `*Trigger:*` — which is how it
+  stayed unpromoted through two terminal boards. The tier it was waiting for now
+  exists (`tests/live/`, `./.claude/init.sh live`), so what remains here is the
+  §8(d) run itself. *Trigger:* the `clearcut-hack` project existing and
+  `./.claude/init.sh live` passing with credentials present.
 
 **Carried from the five adapter reviews, ruled non-demo-critical 2026-08-30.**
 

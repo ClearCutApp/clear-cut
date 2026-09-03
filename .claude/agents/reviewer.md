@@ -43,6 +43,21 @@ Run things. A review with no command output is not a review.
    non-code writing, run the `.claude/WRITING.md` checklist. Banned words, unfixed
    slop patterns, or a failed portability test are blocking, same as a
    failing gate above.
+10. **Connectivity, for any diff touching `src/clearcut/adapters/`.** A
+    `tests/live/` test must exist, and `./.claude/init.sh live` must have run.
+    Three ways this goes wrong, all blocking:
+    - **No live test.** §5 requires one for every adapter change.
+    - **A live test that passed with no credentials set.** It reached nothing.
+      A live test's only honest outcomes are pass with credentials, or skip
+      without them.
+    - **An assertion a fake would also satisfy** — `is not None`, a length, "no
+      exception raised". Item 4's hollow-test rule applies with more force here,
+      because the whole point of the tier is to prove a real service answered.
+      Ask what field in the assertion could only have come from the service.
+
+    Item 4 catches a test that asserts what the fake was told to return. This
+    one catches a suite where *every* test is that, which is how fifty-four
+    checkpoints closed green against services that had never been contacted.
 
 ## Memory
 
@@ -100,7 +115,7 @@ Name the required change; do not write the patch.
 ROLE: reviewer
 CHECKPOINT: CP-00x
 VERDICT: PASS | CHANGES_REQUESTED | BLOCKED
-EVIDENCE: pytest -> <counts> | ruff -> <result>
+EVIDENCE: pytest -> <counts> | ruff -> <result> | live -> <counts, or n/a>
 BLOCKING: <n>
 DEFERRED: <new checkpoint titles, or ->
 NEXT: implementer CP-00x | leader CP-00x | done

@@ -5,6 +5,7 @@
 #   ./.claude/init.sh            bootstrap, then verify
 #   ./.claude/init.sh verify     static checks on the loop configuration
 #   ./.claude/init.sh check      run the project quality gates (ruff, pytest)
+#   ./.claude/init.sh live       run the tests that reach real services
 #
 set -euo pipefail
 
@@ -233,6 +234,12 @@ bootstrap() {
 # (POSIX), so a bare `&&` here would let a broken gate report success. Each
 # step instead follows `verify()`'s own `ok`/`no` bookkeeping, and the
 # function returns non-zero exactly when `no` fired.
+#
+# A gate that cannot run is a failure, not a silence. `note` increments neither
+# counter, so using it here let a machine with no ruff, no mypy, no pytest and
+# no web/node_modules print "0 passed, 0 failed" and exit success — absence
+# reading as success, the same defect the live tier exists to close. Every
+# unrunnable gate below calls `no`.
 check() {
   sec "Quality gates"
   [ -d "$ROOT/.venv" ] && . "$ROOT/.venv/bin/activate"
@@ -240,23 +247,42 @@ check() {
     ruff check "$ROOT" && ok "ruff check" || no "ruff check"
     ruff format --check "$ROOT" && ok "ruff format" || no "ruff format"
   else
-    note "ruff not installed — run ./.claude/init.sh first"
+    no "ruff not installed — run ./.claude/init.sh first"
   fi
   if command -v mypy >/dev/null 2>&1 && [ -d "$ROOT/src" ]; then
     (cd "$ROOT" && mypy src tests infra main.py) && ok "mypy" || no "mypy"
   else
-    note "mypy not installed — run ./.claude/init.sh first"
+    no "mypy not installed — run ./.claude/init.sh first"
   fi
   if command -v pytest >/dev/null 2>&1 && [ -d "$ROOT/tests" ]; then
     (cd "$ROOT" && pytest -q) && ok "pytest" || no "pytest"
   else
-    note "no tests yet"
+    no "pytest not installed or no tests/ — run ./.claude/init.sh first"
   fi
   if [ -d "$ROOT/web/node_modules" ]; then
     (cd "$ROOT/web" && npm run typecheck) && ok "web typecheck" || no "web typecheck"
     (cd "$ROOT/web" && npm test) && ok "web test" || no "web test"
   else
-    note "web/node_modules missing — run npm install in web/ first"
+    no "web/node_modules missing — run npm install in web/ first"
+  fi
+  sec "Result"
+  printf '  %d passed, %d failed\n\n' "$pass" "$fail"
+  [ "$fail" -eq 0 ]
+}
+
+# ------------------------------------------------------------------ live ----
+# The gate `check` cannot be: tests that reach a real external service. Each one
+# skips itself when its own credentials are absent, so an all-skipped run is the
+# honest answer on an unconfigured machine — and is reported as such rather than
+# counted as proof. Deselected from `check` by the `-m "not live"` default in
+# pyproject.toml, so this is the only way to run them.
+live() {
+  sec "Live service gates"
+  [ -d "$ROOT/.venv" ] && . "$ROOT/.venv/bin/activate"
+  if command -v pytest >/dev/null 2>&1 && [ -d "$ROOT/tests/live" ]; then
+    (cd "$ROOT" && pytest -m live -q -rs) && ok "pytest -m live" || no "pytest -m live"
+  else
+    no "pytest not installed or tests/live/ missing — run ./.claude/init.sh first"
   fi
   sec "Result"
   printf '  %d passed, %d failed\n\n' "$pass" "$fail"
@@ -266,6 +292,7 @@ check() {
 case "${1:-bootstrap}" in
   verify)    verify ;;
   check)     check ;;
+  live)      live ;;
   bootstrap) bootstrap; verify ;;
-  *) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  *) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

@@ -45,7 +45,9 @@ src/clearcut/
   composition.py  the ONE place that wires concrete adapters into use cases.
 tests/
   unit/           domain + application, with hand-written fakes. no network.
-  integration/    adapters against a real or contract-faked boundary.
+  live/           adapters against the real service, never a fake. marked
+                  `live`, deselected by default, skipped without credentials.
+  integration/    collection probe only — it catches a missing __init__.py.
 ```
 
 **Hard rules**
@@ -123,8 +125,28 @@ without it.**
 - Every port: one contract test that all its implementations run.
 - Tests name the behaviour: `test_flags_unlicensed_music_as_critical_risk`,
   not `test_analyze_2`.
+- **A checkpoint that introduces or changes an adapter is not `DONE` without a
+  `tests/live/` test that reaches the real service**, and its acceptance
+  criteria must name that test. §4 binds an implementer to the acceptance
+  criteria, so a requirement stated only here is a requirement an implementer
+  may skip.
+- **A live test asserts on a value only a real response carries.** Not "no
+  exception was raised" — a fake raises no exception either. A token count, a
+  citation URI, a server-assigned id, a digest the service stored and returned.
+  If the assertion would still hold against a hand-written fake, it proves
+  nothing that the unit test did not already prove.
 - Gates that must pass before a checkpoint is `DONE`:
-  `pytest -q` green, `ruff check .` clean, `ruff format --check .` clean.
+  `pytest -q` green, `ruff check .` clean, `ruff format --check .` clean,
+  `mypy src tests infra main.py` clean, and for an adapter checkpoint
+  `./.claude/init.sh live` green with its credentials present.
+
+**Why this section grew.** Fifty-four checkpoints closed with 477 green tests,
+`init.sh check` at `6 passed, 0 failed`, and not one adapter had ever contacted
+the service it wraps. Every criterion above the live bullets is satisfiable with
+a hand-written fake, so "done" and "works" were unrelated — and two identifier
+bugs guaranteed to fail on the first real call sat in `main` the whole time,
+invisible to all of it. The live tier is the only gate that can fail because a
+service is unreachable.
 
 ---
 
@@ -238,7 +260,7 @@ NEXT: reviewer CP-004
 ROLE: reviewer
 CHECKPOINT: CP-004
 VERDICT: PASS | CHANGES_REQUESTED | BLOCKED
-EVIDENCE: pytest -> ... | ruff -> ...
+EVIDENCE: pytest -> ... | ruff -> ... | live -> ... (or n/a)
 BLOCKING: <n>
 DEFERRED: <new checkpoint titles, or ->
 NEXT: implementer CP-004 | leader CP-004 | done
@@ -250,7 +272,12 @@ NEXT: implementer CP-004 | leader CP-004 | done
 
 - [ ] Every acceptance criterion checked off.
 - [ ] A test exists that fails without the change.
-- [ ] `pytest -q` green, `ruff check .` and `ruff format --check .` clean.
+- [ ] `./.claude/init.sh check` green — all six gates: `ruff check`,
+      `ruff format --check`, `mypy src tests infra main.py`, `pytest -q`, and
+      the `web/` typecheck and test suite.
+- [ ] **Adapter checkpoints only:** `./.claude/init.sh live` green with
+      credentials present, and its assertion is one a fake could not satisfy
+      (§5). A live test that passes without credentials is testing a fake.
 - [ ] Layer rules (§2) hold — verified by import direction.
 - [ ] No item from §4 introduced.
 - [ ] Prose in the diff satisfies `.claude/WRITING.md` (§4 checklist, at the
