@@ -2496,22 +2496,22 @@ in dispatch order rather than first in dependency order.
   Recording it here rather than shipping untestable breadth.
 
 ### CP-057 — Seed the demo project's bible facts through infrastructure
-- Status: TODO
+- Status: IN_REVIEW
 - Attempts: 0/3
 - Depth: 0
 - Layer: infra
 - Depends on: CP-055
 - Acceptance:
-  - [ ] An infra script indexes the SDD section 8(d) bible fact into the real
+  - [x] An infra script indexes the SDD section 8(d) bible fact into the real
         BigQuery lore table for the demo project, by calling
         `BigQueryLoreStore.index()` rather than repeating its schema.
-  - [ ] `--dry-run` prints what it would index and connects to nothing, so it
+  - [x] `--dry-run` prints what it would index and connects to nothing, so it
         runs on a machine with no credentials. One test asserts that.
-  - [ ] Failure path: a missing credential exits naming that variable, the
+  - [x] Failure path: a missing credential exits naming that variable, the
         same shape `provision_tracker_schema.py` already uses.
-  - [ ] After it runs, a project-scoped search returns the seeded fact, which
+  - [~] After it runs, a project-scoped search returns the seeded fact, which
         is SDD section 8(b)'s check from inside our own code path.
-  - [ ] Gate: pytest, ruff, ruff format, `mypy src tests infra main.py`.
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra main.py`.
 - Files: `infra/seed_project_bible.py`, `tests/unit/infra/test_seed_project_bible.py`,
   `infra/README.md`
 - Notes: ADR 0011 rules this in as infrastructure rather than as
@@ -2519,6 +2519,27 @@ in dispatch order rather than first in dependency order.
   reporting as MISSING. The endpoint is a route plus a use case plus tests; this
   reaches the state section 8(d) needs in an hour. It is a real product gap: a
   producer cannot upload a bible in the demo, the facts are already there.
+
+  **Implemented 2026-09-03.** Eight tests, watched failing first. Two are worth
+  naming. One asserts the seeded fact is the *same object* as
+  `scenario.BIBLE_FACT` rather than merely equal to it, because a copied string
+  passes an equality check and still drifts the day someone edits the scenario.
+  The other greps the script for the words that would remove rows, since
+  `LoreStore` has no such method and a script appearing to offer one would be
+  lying about what it can do.
+
+  **The last criterion is `[~]`, blocked rather than skipped.** Confirming a
+  project-scoped search returns the seeded fact needs the script to actually
+  run, and that needs Application Default Credentials, which do not exist on
+  this machine. `gcloud auth application-default login` is an interactive
+  browser flow no agent can complete. Until then the script is proven against a
+  recording fake and unproven against BigQuery, which is precisely the
+  distinction D66 exists to keep visible.
+
+  A claim in the docstring was wrong and is corrected: the dry run does *not*
+  need the project interpreter. `lore_store.py` and `scenario.py` reach no
+  further than the stdlib-only domain layer, so a bare `python3` runs it. Only
+  a real run, which imports langchain, needs the venv.
 
 ### CP-058 — Export traces to Grafana Cloud and see the five stage spans
 - Status: TODO

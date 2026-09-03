@@ -19,8 +19,13 @@ authenticated (`gcloud auth login`), and pointed at that project
    run: the seven APIs, the two GCS buckets, the `clearcut` BigQuery dataset,
    the Document AI OCR processor, and the Secret Manager containers of
    `docs/plan/infrastructure.md` §8.
-2. `infra/provision_data_plane.sh` — run it for real. It skips any resource
-   that already exists, so re-running it after a partial failure is safe.
+2. `infra/provision_data_plane.sh` — run it for real, then **run it a second
+   time**. Enabling an API and being able to call it are minutes apart: on the
+   first real run, 2026-09-03, the Document AI processor failed to create in
+   the same pass that enabled its API, and the script printed
+   `DOCAI_PROCESSOR_ID=...<not-yet-created>` without an error. The second pass
+   skips every resource that already exists and resolves the ids the first
+   could not.
 3. Copy the printed lines into a `.env` file at the repo root. `.env` is the
    destination for everything these scripts print, both the resolved values
    (`GOOGLE_CLOUD_PROJECT`, `DOCAI_PROCESSOR_ID`, the two Gemini model ids)
@@ -57,6 +62,15 @@ authenticated (`gcloud auth login`), and pointed at that project
 
    ClickHouse Cloud itself is still created by hand — this script provisions
    the tables inside a service that already exists.
+
+9. `.venv/bin/python infra/seed_project_bible.py --dry-run` — review the fact
+   it would index, then drop `--dry-run` to write it into the BigQuery lore
+   table. It reads `GOOGLE_CLOUD_PROJECT` and exits naming it if absent.
+
+   The fact comes from `adapters/demo/scenario.py`, so what this seeds and what
+   mock mode serves cannot disagree about which fact scene 3 contradicts. It is
+   additive: running it twice indexes the fact twice, because `LoreStore` has
+   no way to remove a row (SDD section 4.3).
 
 ## The manual step inside Google Cloud
 
