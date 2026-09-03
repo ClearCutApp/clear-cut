@@ -2390,32 +2390,32 @@ immediately and does not touch the cloud at all, which is why CP-056 is first
 in dispatch order rather than first in dependency order.
 
 ### CP-055 — Provision every Google Cloud resource the live graph reads
-- Status: TODO
+- Status: IN_PROGRESS
 - Attempts: 0/3
 - Depth: 0
 - Layer: infra
 - Depends on: -
 - Acceptance:
-  - [ ] `clearcut-hack` exists with billing linked, and
+  - [x] `clearcut-hack` exists with billing linked, and
         `gcloud alpha bq datasets list --project=clearcut-hack` returns
         `clearcut` instead of "not found or deleted".
-  - [ ] `infra/provision_data_plane.sh` and
+  - [x] `infra/provision_data_plane.sh` and
         `infra/provision_retrieval_plane.sh` have both run for real. Both are
         idempotent, so a second run reports every resource as already present
         and creates nothing.
-  - [ ] `.venv/bin/python infra/provision_tracker_schema.py` has created
+  - [~] `.venv/bin/python infra/provision_tracker_schema.py` has created
         `tracker_items` and `script_versions` in a real ClickHouse Cloud
         service.
-  - [ ] `.env` carries all ten required variables, and
+  - [~] `.env` carries all ten required variables, and
         `DOCAI_PROCESSOR_ID` and `VERTEX_SEARCH_DATA_STORE_ID` are the full
         resource names `test_identifier_agreement.py` demands, taken from the
         scripts' own output rather than retyped.
-  - [ ] Failure path, and the only automated proof the console-only step was
+  - [~] Failure path, and the only automated proof the console-only step was
         done: a query filtered to a jurisdiction with no corpus documents
         returns zero results. `tests/live/test_vertex_search_live.py:55` is
         that test. If `jurisdiction` was never marked Indexable it returns
         Argentine statutes instead and the test fails.
-  - [ ] Gate: `./.claude/init.sh live` runs 10 tests with credentials present.
+  - [~] Gate: `./.claude/init.sh live` runs 10 tests with credentials present.
         Every one that skips names the variable it still needs.
 - Files: `.env` (untracked), `docs/plan/infrastructure.md` if a step proves
   wrong in practice
@@ -2427,6 +2427,49 @@ in dispatch order rather than first in dependency order.
   Grafana Cloud and ClickHouse Cloud have no automation and are created by
   hand. That is stated in `infrastructure.md` sections 6 and 10 and is not a
   gap this checkpoint closes.
+
+  **Partly done, 2026-09-03.** `clearcut-hack` exists (project number
+  `813918777633`) with billing linked. Created and verified by querying each
+  resource rather than by reading script output: both GCS buckets, the
+  `clearcut` BigQuery dataset, the Document AI OCR processor, seven Secret
+  Manager containers, the Vertex AI Search data store, and the
+  `clearcut-project-qa` engine. Both documents imported into branch 0.
+
+  **The Notes above predicted a documented step would prove wrong. Two did.**
+
+  *`provision_retrieval_plane.sh` was a silent no-op.* Application Default
+  Credentials carry no quota project, so Discovery Engine answered every call
+  `403 PERMISSION_DENIED` with `reason: SERVICE_DISABLED` — naming the wrong
+  cause, because the API was enabled and only the token was incomplete. The
+  script discards response bodies through `curl_auth_post`, so it printed its
+  success banner while creating nothing. Adding `x-goog-user-project` turned
+  the 403 into a 404, which proved both halves at once: auth was the problem,
+  and the resource genuinely did not exist. Fixed on all four curl helpers,
+  committed `ca7648e`.
+
+  *Enabling an API and calling it are minutes apart.* The data-plane script
+  enabled Document AI and then failed to create the processor in the same pass,
+  printing `<not-yet-created>` with no error. Both scripts are idempotent, so
+  `infrastructure.md` and `infra/README.md` now say to run each one twice.
+
+  **An unplanned content gap.** The corpus bucket was empty and
+  `provision_retrieval_plane.sh` dies on an empty manifest, but nothing in the
+  repo says where legal documents come from. Sourced two official Argentine
+  laws through the Parallel MCP: Ley 11.723 (copyright, from `ign.gob.ar`) and
+  Ley 22.362 (trademarks, from `portaltramites.inpi.gob.ar`), covering both the
+  "Hotel California" sync-licence finding and the Ferrari trademark finding.
+  `build_manifest.py` derived `jurisdiction: "argentina"` correctly from the
+  prefix. **Only Argentina is populated**; the other nine jurisdictions have no
+  documents, which is what makes CP-055's zero-result criterion testable.
+
+  **What is left, and why none of it is agent work.** Four criteria stay `[~]`.
+  Application Default Credentials do not exist on this machine, and
+  `gcloud auth application-default login` is an interactive browser flow, so
+  every Python SDK in the live path cannot authenticate. The console-only
+  Indexable toggle has no API. ClickHouse Cloud, Grafana Cloud and a Parallel
+  API key are external signups. The identifier fix from `3dca760` did validate
+  against real API responses: `DOCAI_PROCESSOR_ID` and
+  `VERTEX_SEARCH_DATA_STORE_ID` both resolved as full resource names.
 
 ### CP-056 — Translate every SDK exception the three bare adapters can raise
 - Status: IN_REVIEW
