@@ -14,6 +14,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from google.genai import errors as genai_errors
 from google.genai import types
 
 from clearcut.domain.bible import BibleFact
@@ -61,6 +62,16 @@ class ContinuityCheckFailed(SourceUnavailable):
     def __init__(self, category: object) -> None:
         super().__init__(f"unrecognized category: {category!r}")
         self.category = category
+
+
+class ContinuityUnavailable(SourceUnavailable):
+    """Raised when the continuity call fails or its response is unusable.
+
+    Separate from `ContinuityCheckFailed`, which names one recoverable defect
+    in an otherwise valid response. This adapter runs once per scene from both
+    pipeline use cases, so an unguarded call here is the most-repeated
+    unguarded call in the system (ADR 0011, CP-056).
+    """
 
 
 class _GenerateContentResponse(Protocol):
@@ -116,16 +127,30 @@ class GeminiContinuityCheck:
             response_mime_type="application/json",
             response_schema=_CHECK_RESULT_SCHEMA,
         )
-        response = self.client.models.generate_content(
-            model=self.model,
-            contents=[_scene_text(scene)] + [_fact_text(fact) for fact in facts],
-            config=config,
-        )
-        item: dict[str, Any] = json.loads(response.text or "{}")
+        try:
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=[_scene_text(scene)] + [_fact_text(fact) for fact in facts],
+                config=config,
+            )
+        except genai_errors.APIError as exc:
+            raise ContinuityUnavailable(f"continuity call failed: {exc}") from exc
+
+        try:
+            item: dict[str, Any] = json.loads(response.text or "{}")
+        except json.JSONDecodeError as exc:
+            raise ContinuityUnavailable(f"continuity response was not JSON: {exc}") from exc
+
         contradicts = item.get("contradicts")
         if not contradicts:
             return None
-        return self._to_finding(scene, str(contradicts), item)
+        try:
+            return self._to_finding(scene, str(contradicts), item)
+        except KeyError as exc:
+            # `_CHECK_RESULT_SCHEMA` marks only `contradicts` required, so a
+            # response naming a contradiction without the fields that describe
+            # it is legal output this adapter cannot turn into a Finding.
+            raise ContinuityUnavailable(f"contradiction reported without {exc.args[0]!r}") from exc
 
     def _to_finding(self, scene: Scene, contradicts: str, item: dict[str, Any]) -> Finding:
         return Finding(

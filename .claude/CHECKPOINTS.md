@@ -2429,32 +2429,32 @@ in dispatch order rather than first in dependency order.
   gap this checkpoint closes.
 
 ### CP-056 — Translate every SDK exception the three bare adapters can raise
-- Status: TODO
+- Status: IN_REVIEW
 - Attempts: 0/3
 - Depth: 0
 - Layer: adapters
 - Depends on: -
 - Acceptance:
-  - [ ] `VertexSearchGrounding._ground`, `GeminiSceneExtractor._extract_batch`
+  - [x] `VertexSearchGrounding._ground`, `GeminiSceneExtractor._extract_batch`
         and `GeminiContinuityCheck.check` each catch what their SDK raises and
         re-raise a domain error. No `google.genai` `APIError`, no
         `json.JSONDecodeError`, and no `KeyError` from model output crosses the
         port.
-  - [ ] One test per adapter proves an `APIError` becomes the adapter's
+  - [x] One test per adapter proves an `APIError` becomes the adapter's
         existing `SourceUnavailable` subclass, so the route returns 502 rather
         than 500. Each test fails without the change.
-  - [ ] A model response that is not JSON raises the adapter's domain error,
+  - [x] A model response that is not JSON raises the adapter's domain error,
         not `JSONDecodeError`. One test per adapter.
-  - [ ] A model response naming a `scene_number` outside the batch raises the
+  - [x] A model response naming a `scene_number` outside the batch raises the
         adapter's domain error, not `KeyError`. This is the likeliest of the
         three in practice, because it needs only a hallucination rather than
         an outage.
-  - [ ] `ParallelRightsResearch` also catches `APIResponseValidationError`,
+  - [~] `ParallelRightsResearch` also catches `APIResponseValidationError`,
         which sits beside the two exceptions it already handles and currently
         escapes to a 500.
-  - [ ] `test_error_boundaries.py`'s contract walk still passes: every adapter
+  - [x] `test_error_boundaries.py`'s contract walk still passes: every adapter
         exception subclasses exactly one domain error type.
-  - [ ] Gate: pytest, ruff, ruff format, `mypy src tests infra main.py`. No
+  - [x] Gate: pytest, ruff, ruff format, `mypy src tests infra main.py`. No
         live test is required, because these paths are provable with the
         hand-written fakes already in each test file.
 - Files: `src/clearcut/adapters/gcp/vertex_search.py`,
@@ -2470,6 +2470,30 @@ in dispatch order rather than first in dependency order.
   `ContinuityCheck`'s missing span and metric, `EvaluateDelta`'s untested
   failure paths, and `Notifier`'s missing live test all wait until after the
   submission. Do not widen this checkpoint to cover them.
+
+  **Implemented 2026-09-03.** Three new `SourceUnavailable` subclasses, one per
+  adapter: `GroundingUnavailable`, `ExtractionUnavailable`,
+  `ContinuityUnavailable`. Each is separate from the adapter's existing error,
+  which names a recoverable defect in an otherwise valid response; these name
+  the call not completing. `GroundingUnavailable` is deliberately not
+  `NoGroundedSource`, because that one is `EnrichmentMissing` and would degrade
+  a finding to "ungrounded" when the truth is that nobody asked. Ten new tests,
+  508 passing, all six gates green.
+
+  **One criterion is marked `[~]` rather than `[x]`, and the reviewer should
+  rule on it.** The `APIResponseValidationError` clause was written and then
+  removed. Reaching it through the `httpx.MockTransport` seam proved impossible:
+  the SDK accepts a run-create body of any shape, so no test would fail without
+  the clause, and AGENT.md §5 forbids shipping code no test would fail without.
+
+  Writing that test found a nearer defect instead, which is what shipped. A 2xx
+  the SDK accepts but that carries no `run_id` makes
+  `task_run.result(None)` raise a bare `ValueError` from inside the SDK, which
+  `routes.py` maps to 500. `_find` now checks `run.run_id` and raises
+  `ResearchUnavailable`, and the test fails without it. The original clause's
+  risk is therefore narrower than written and still open: an
+  `APIResponseValidationError` from the result call would still reach a 500.
+  Recording it here rather than shipping untestable breadth.
 
 ### CP-057 — Seed the demo project's bible facts through infrastructure
 - Status: TODO

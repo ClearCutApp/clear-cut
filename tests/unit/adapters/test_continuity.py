@@ -11,16 +11,19 @@ from pathlib import Path
 from typing import cast
 
 import pytest
+from google.genai import errors as genai_errors
 from google.genai import types
 
 from clearcut.adapters.gemini.continuity import (
     ContinuityCheckFailed,
+    ContinuityUnavailable,
     GeminiContinuityCheck,
     _GenerateContentModel,
     _GenerateContentResponse,
 )
 from clearcut.application.ports import ContinuityCheck
 from clearcut.domain.bible import BibleFact, FactKind
+from clearcut.domain.errors import SourceUnavailable
 from clearcut.domain.finding import Category
 from clearcut.domain.script import Scene
 
@@ -55,6 +58,8 @@ class _FakeModels:
         self._client.calls.append(
             RecordedCall(model=model, contents=cast(list[str], contents), config=config)
         )
+        if self._client.error is not None:
+            raise self._client.error
         if self._client.responses:
             return self._client.responses.pop(0)
         return _FakeResponse('{"contradicts": null}')
@@ -66,6 +71,8 @@ class FakeGeminiClient:
 
     responses: list[_FakeResponse] = field(default_factory=list)
     calls: list[RecordedCall] = field(default_factory=list)
+    # Set to make `generate_content` raise instead of answering.
+    error: Exception | None = None
 
     def __post_init__(self) -> None:
         self.models: _GenerateContentModel = _FakeModels(self)
@@ -198,3 +205,40 @@ def test_empty_facts_returns_none_and_makes_no_client_calls() -> None:
 
     assert finding is None
     assert client.calls == []
+
+
+# --- CP-056: the SDK call was bare, and this adapter runs once per scene -----
+#
+# Worst positioned of the three: `AnalyzeScript` and `EvaluateDelta` both call
+# it per scene, so a 200-scene script made 200 unguarded network calls whose
+# every failure mode surfaced as a 500 reading "internal error".
+
+
+def _check(client: FakeGeminiClient) -> GeminiContinuityCheck:
+    return GeminiContinuityCheck(client=client, model="gemini-3.1-flash-lite")
+
+
+def test_an_api_error_becomes_continuity_unavailable() -> None:
+    client = FakeGeminiClient(error=genai_errors.ServerError(503, {"error": "unavailable"}))
+
+    with pytest.raises(SourceUnavailable) as caught:
+        _check(client).check(_scene(), [_fact()])
+
+    assert isinstance(caught.value, ContinuityUnavailable)
+    assert not isinstance(caught.value, genai_errors.APIError)
+
+
+def test_a_response_that_is_not_json_becomes_continuity_unavailable() -> None:
+    client = FakeGeminiClient(responses=[_FakeResponse("no contradiction here")])
+
+    with pytest.raises(ContinuityUnavailable):
+        _check(client).check(_scene(), [_fact()])
+
+
+def test_a_contradiction_missing_its_required_fields_becomes_continuity_unavailable() -> None:
+    """The schema marks only `contradicts` required, so this shape is legal
+    output that the finding constructor cannot use."""
+    client = FakeGeminiClient(responses=[_FakeResponse('{"contradicts": "FACT-001"}')])
+
+    with pytest.raises(ContinuityUnavailable):
+        _check(client).check(_scene(), [_fact()])

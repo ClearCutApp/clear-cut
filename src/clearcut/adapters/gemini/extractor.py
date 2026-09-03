@@ -15,6 +15,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from google.genai import errors as genai_errors
 from google.genai import types
 from opentelemetry import metrics, trace
 
@@ -87,6 +88,22 @@ class ExtractionFailed(SourceUnavailable):
     def __init__(self, ner_label: object) -> None:
         super().__init__(f"unrecognized ner_label: {ner_label!r}")
         self.ner_label = ner_label
+
+
+class ExtractionUnavailable(SourceUnavailable):
+    """Raised when the extraction call fails or its response is unusable.
+
+    Separate from `ExtractionFailed`, which names one recoverable defect in an
+    otherwise valid response. This one covers the call not completing and the
+    body not parsing, which are the same thing from a caller's view: no
+    findings, and the reason is upstream.
+
+    It exists because `_extract_batch` called the SDK bare until 2026-09-03, so
+    a `google.genai` `APIError`, a `JSONDecodeError` from a non-JSON body, or a
+    `KeyError` from a model naming a scene outside its own batch all reached
+    `routes.py`'s generic handler and became a 500 reading "internal error".
+    Wrapped, they map to 502, which is what an upstream failure is (ADR 0011).
+    """
 
 
 class _UsageMetadata(Protocol):
@@ -186,13 +203,29 @@ class GeminiSceneExtractor:
             response_schema=_FINDINGS_SCHEMA,
             thinking_config=types.ThinkingConfig(thinking_level=types.ThinkingLevel.HIGH),
         )
-        response = self.client.models.generate_content(
-            model=self.model,
-            contents=[_scene_text(scene) for scene in batch],
-            config=config,
-        )
-        items: list[dict[str, Any]] = json.loads(response.text or "[]")
-        findings = [self._to_finding(item, by_number) for item in items]
+        try:
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=[_scene_text(scene) for scene in batch],
+                config=config,
+            )
+        except genai_errors.APIError as exc:
+            raise ExtractionUnavailable(f"extraction call failed: {exc}") from exc
+
+        try:
+            items: list[dict[str, Any]] = json.loads(response.text or "[]")
+        except json.JSONDecodeError as exc:
+            raise ExtractionUnavailable(f"extraction response was not JSON: {exc}") from exc
+
+        try:
+            findings = [self._to_finding(item, by_number) for item in items]
+        except KeyError as exc:
+            # A missing field, or a `scene_number` naming a scene outside this
+            # batch. `exc.args[0]` is the key or the number, which is the one
+            # detail worth surfacing.
+            raise ExtractionUnavailable(
+                f"extraction response referenced an unknown key or scene: {exc.args[0]!r}"
+            ) from exc
         return findings, _token_counts(response.usage_metadata)
 
     def _to_finding(self, item: dict[str, Any], by_number: dict[int, Scene]) -> Finding:

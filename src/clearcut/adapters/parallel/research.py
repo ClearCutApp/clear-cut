@@ -113,6 +113,14 @@ class ParallelRightsResearch:
                 processor=_PROCESSOR,
                 task_spec=_TASK_SPEC,
             )
+            if not run.run_id:
+                # A 2xx the SDK accepts but that names no run. Without this the
+                # next line raises a bare ValueError from inside the SDK, which
+                # `routes.py` maps to 500 -- an upstream shape change reported
+                # to the producer as a ClearCut bug (ADR 0011, CP-056).
+                raise ResearchUnavailable(
+                    "Parallel Task API accepted the run but returned no run_id"
+                )
             result = self._client.task_run.result(run.run_id)
         except APIStatusError as error:
             raise ResearchUnavailable(

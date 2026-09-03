@@ -6,11 +6,13 @@ built, which is what proves the pinned `response_schema`, the mime type, and
 the batching happen for real rather than by assumption.
 """
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
 
 import pytest
+from google.genai import errors as genai_errors
 from google.genai import types
 from opentelemetry import metrics, trace
 from opentelemetry.sdk.metrics import MeterProvider
@@ -21,11 +23,13 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 
 from clearcut.adapters.gemini.extractor import (
     ExtractionFailed,
+    ExtractionUnavailable,
     GeminiSceneExtractor,
     _GenerateContentModel,
     _GenerateContentResponse,
 )
 from clearcut.application.ports import SceneExtractor
+from clearcut.domain.errors import SourceUnavailable
 from clearcut.domain.finding import Category, RiskLevel
 from clearcut.domain.jurisdiction import jurisdiction_for
 from clearcut.domain.script import Scene
@@ -69,6 +73,8 @@ class _FakeModels:
         self._client.calls.append(
             RecordedCall(model=model, contents=cast(list[str], contents), config=config)
         )
+        if self._client.error is not None:
+            raise self._client.error
         if self._client.responses:
             return self._client.responses.pop(0)
         return _FakeResponse("[]")
@@ -80,6 +86,9 @@ class FakeGeminiClient:
 
     responses: list[_FakeResponse] = field(default_factory=list)
     calls: list[RecordedCall] = field(default_factory=list)
+    # Set to make `generate_content` raise instead of answering, so a test can
+    # drive the transport failures the SDK call can produce.
+    error: Exception | None = None
 
     def __post_init__(self) -> None:
         self.models: _GenerateContentModel = _FakeModels(self)
@@ -265,3 +274,67 @@ def test_extract_opens_an_extract_span_and_records_stage_latency(isolated_otel: 
     latency_points = metric_attributes_by_name(metric_reader)["clearcut_stage_latency_ms"]
     assert latency_points
     assert all(point["stage"] == "extract" for point in latency_points)
+
+
+# --- CP-056: what the SDK can raise, and what must cross the port instead ----
+#
+# `_extract_batch` called `generate_content` bare until 2026-09-03, so an
+# upstream outage, a non-JSON body, or a model naming a scene outside its own
+# batch all reached `routes.py`'s generic handler and became a 500 reading
+# "internal error". Each test below fails without the translation.
+
+
+def _extractor(client: FakeGeminiClient) -> GeminiSceneExtractor:
+    return GeminiSceneExtractor(client=client, model="gemini-3.7-flash")
+
+
+def test_an_api_error_becomes_extraction_unavailable_not_a_bare_api_error() -> None:
+    client = FakeGeminiClient(error=genai_errors.ServerError(503, {"error": "unavailable"}))
+
+    with pytest.raises(SourceUnavailable) as caught:
+        _extractor(client).extract([_scene(1)], jurisdiction_for("AR"))
+
+    assert isinstance(caught.value, ExtractionUnavailable)
+    assert not isinstance(caught.value, genai_errors.APIError)
+
+
+def test_a_response_that_is_not_json_becomes_extraction_unavailable() -> None:
+    client = FakeGeminiClient(responses=[_FakeResponse("I could not answer that.")])
+
+    with pytest.raises(ExtractionUnavailable):
+        _extractor(client).extract([_scene(1)], jurisdiction_for("AR"))
+
+
+def test_a_scene_number_outside_the_batch_becomes_extraction_unavailable() -> None:
+    """The likeliest of the three: it needs a hallucination, not an outage."""
+    client = FakeGeminiClient(
+        responses=[
+            _FakeResponse(
+                json.dumps(
+                    [
+                        {
+                            "scene_number": 99,
+                            "ner_label": "BRAND",
+                            "raw_text": "a Ferrari Testarossa",
+                            "risk_level": "HIGH",
+                            "required_document": "Trademark clearance",
+                        }
+                    ]
+                )
+            )
+        ]
+    )
+
+    with pytest.raises(ExtractionUnavailable) as caught:
+        _extractor(client).extract([_scene(1)], jurisdiction_for("AR"))
+
+    assert "99" in str(caught.value)
+
+
+def test_a_response_missing_a_required_field_becomes_extraction_unavailable() -> None:
+    client = FakeGeminiClient(
+        responses=[_FakeResponse(json.dumps([{"scene_number": 1, "ner_label": "BRAND"}]))]
+    )
+
+    with pytest.raises(ExtractionUnavailable):
+        _extractor(client).extract([_scene(1)], jurisdiction_for("AR"))

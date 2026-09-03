@@ -4,13 +4,16 @@ import json
 from pathlib import Path
 
 import pytest
+from google.genai import errors as genai_errors
 from google.genai import types
 
 from clearcut.adapters.gcp.vertex_search import (
+    GroundingUnavailable,
     NoGroundedSource,
     VertexSearchGrounding,
 )
 from clearcut.application.ports import GroundedAnswer, LegalGrounding
+from clearcut.domain.errors import EnrichmentMissing, SourceUnavailable
 from clearcut.domain.jurisdiction import Jurisdiction, jurisdiction_for
 from tests.unit.conftest import install_in_memory_telemetry, metric_attributes_by_name
 
@@ -29,8 +32,14 @@ _DATA_STORE_ID = (
 class FakeVertexSearchClient:
     """Hand-written fake standing in for `google.genai.Client.models`."""
 
-    def __init__(self, response: types.GenerateContentResponse) -> None:
+    def __init__(
+        self,
+        response: types.GenerateContentResponse | None = None,
+        *,
+        error: Exception | None = None,
+    ) -> None:
         self._response = response
+        self._error = error
         self.calls: list[dict[str, object]] = []
 
     def generate_content(
@@ -41,6 +50,9 @@ class FakeVertexSearchClient:
         config: types.GenerateContentConfig,
     ) -> types.GenerateContentResponse:
         self.calls.append({"model": model, "contents": contents, "config": config})
+        if self._error is not None:
+            raise self._error
+        assert self._response is not None
         return self._response
 
 
@@ -148,3 +160,36 @@ def test_ground_opens_a_ground_span_and_records_stage_latency(isolated_otel: Non
     latency_points = metric_attributes_by_name(metric_reader)["clearcut_stage_latency_ms"]
     assert latency_points
     assert all(point["stage"] == "ground" for point in latency_points)
+
+
+# --- CP-056: an outage is not a missing citation --------------------------
+#
+# `_ground` called the SDK bare, so a Vertex 503 or a bad data-store ACL
+# reached `routes.py`'s generic handler as a 500 reading "internal error".
+# `NoGroundedSource` is EnrichmentMissing and degrades the finding; an outage
+# is SourceUnavailable and must reach the producer as a 502.
+
+
+def test_an_api_error_becomes_grounding_unavailable_not_no_grounded_source() -> None:
+    adapter = VertexSearchGrounding(
+        client=FakeVertexSearchClient(error=genai_errors.ServerError(503, {"error": "down"})),
+        data_store_id=_DATA_STORE_ID,
+    )
+
+    with pytest.raises(SourceUnavailable) as caught:
+        adapter.ground("does this need a licence?", jurisdiction_for("AR"))
+
+    assert isinstance(caught.value, GroundingUnavailable)
+    assert not isinstance(caught.value, EnrichmentMissing)
+
+
+def test_a_client_error_also_becomes_grounding_unavailable() -> None:
+    """A 403 on the data store is the likeliest real failure: the service
+    account exists but was never granted Discovery Engine access."""
+    adapter = VertexSearchGrounding(
+        client=FakeVertexSearchClient(error=genai_errors.ClientError(403, {"error": "denied"})),
+        data_store_id=_DATA_STORE_ID,
+    )
+
+    with pytest.raises(GroundingUnavailable):
+        adapter.ground("does this need a licence?", jurisdiction_for("AR"))

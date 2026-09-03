@@ -13,11 +13,12 @@ rather than trusted (docs/plan/agentic-workflow.md Sections 4 and 8).
 import time
 from typing import Protocol
 
+from google.genai import errors as genai_errors
 from google.genai import types
 from opentelemetry import metrics, trace
 
 from clearcut.application.ports import GroundedAnswer
-from clearcut.domain.errors import EnrichmentMissing
+from clearcut.domain.errors import EnrichmentMissing, SourceUnavailable
 from clearcut.domain.finding import Citation
 from clearcut.domain.jurisdiction import Jurisdiction
 
@@ -43,6 +44,16 @@ class NoGroundedSource(EnrichmentMissing):
     def __init__(self, query: str) -> None:
         super().__init__(f"no grounded source for query: {query!r}")
         self.query = query
+
+
+class GroundingUnavailable(SourceUnavailable):
+    """Raised when the grounding call itself fails.
+
+    Deliberately not `NoGroundedSource`, which is `EnrichmentMissing` and tells
+    `AnalyzeScript` to keep the finding without citations. An outage is not a
+    missing citation: degrading on one would publish a finding as ungrounded
+    when the truth is that nobody asked (ADR 0011, CP-056).
+    """
 
 
 class _VertexSearchClient(Protocol):
@@ -76,11 +87,14 @@ class VertexSearchGrounding:
         if not prefix:
             raise ValueError(f"blank corpus_prefix for jurisdiction {jurisdiction.code!r}")
 
-        response = self._client.generate_content(
-            model=_MODEL,
-            contents=query,
-            config=self._grounded_config(prefix),
-        )
+        try:
+            response = self._client.generate_content(
+                model=_MODEL,
+                contents=query,
+                config=self._grounded_config(prefix),
+            )
+        except genai_errors.APIError as exc:
+            raise GroundingUnavailable(f"grounding call failed: {exc}") from exc
 
         chunks = self._grounding_chunks(response)
         if not chunks:

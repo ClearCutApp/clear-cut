@@ -199,3 +199,32 @@ def test_module_does_not_import_or_reference_risk_level() -> None:
 
     assert "RiskLevel" not in imported_names
     assert "risk_level" not in source
+
+
+# --- CP-056: a 2xx the SDK accepts but cannot use ----------------------------
+#
+# Written to prove APIResponseValidationError became a 502, and it found
+# something nearer to hand instead. The SDK accepts a run-create body of any
+# shape, then `task_run.result(None)` raises a bare ValueError from inside the
+# SDK, which routes.py maps to 500. Schema drift on a partner API reported to
+# the producer as a ClearCut bug is exactly what a partner-track submission
+# cannot afford.
+
+
+def test_a_2xx_run_create_with_no_run_id_becomes_research_unavailable() -> None:
+    """The run-create call answers 200 with a body carrying no `run_id`."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/tasks/runs":
+            return httpx.Response(200, json={"unexpected": "shape"})
+        return httpx.Response(200, json=_result_body())
+
+    adapter = ParallelRightsResearch(
+        httpx.Client(transport=httpx.MockTransport(handler)), "parallel-test-key"
+    )
+
+    with pytest.raises(SourceUnavailable) as caught:
+        adapter.find("Hotel California", Category.COPYRIGHT_WORKS, jurisdiction_for("ES"))
+
+    assert isinstance(caught.value, ResearchUnavailable)
+    assert not isinstance(caught.value, ValueError)
