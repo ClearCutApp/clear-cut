@@ -2330,16 +2330,270 @@ proof untouched — `init.sh verify` still returns 87 passed, 0 failed.
 
 ---
 
+### Settled 2026-09-03, the board reopens to make the submission true (D67)
+
+**D67. The submission runs live on the analyze path. ADR 0011, and CP-055
+through CP-060.** A user goal, following the SDD rewrite that made the state
+legible. The board reopens for the second time in its history, on the same
+mechanism D53 used: a human approving a plan.
+
+*What forced it.* `docs/plan/sdd.md` now grades itself against the user's bar,
+and the grade is one section `DONE`, every port `WIP`, three endpoints and all
+four verification checks `MISSING`, and no phase meeting the exit criterion it
+wrote for itself. `infrastructure.md` section 11 requires "runtime proof that
+calls are real and not mocked" in the submission, and mock mode cannot supply
+that however honestly it is labelled.
+
+*Why §7 is the reframing and not a new standard.* All five phase exit criteria
+already demanded a real service, in the words their authors chose. Nothing was
+under-specified. The phases were reported complete against a gate that could
+not evaluate their own exit conditions, which is D66's defect seen from the
+other end.
+
+*What was ruled out, and why that is written down.* ADR 0011 cuts
+`POST /api/projects` and `GET /api/scripts/{script_id}`: project ids are strings
+the analyze request already carries, and the analyze response already carries
+the ScriptView payload, which is why the SPA renders without either. Bible
+ingestion becomes an infra script (CP-057) rather than
+`POST /api/projects/{id}/bible`, so the endpoint stays `MISSING` and the SDD
+keeps saying so. A producer cannot upload a bible in the demo. That is a real
+product gap and the right trade at four days.
+
+*Why only one of the four known defects is in scope.* CP-056 fixes the three
+unguarded SDK calls because live traffic is what turns them into a 500 reading
+"internal error" while a judge watches. `ContinuityCheck`'s missing
+instrumentation, `EvaluateDelta`'s untested failure paths, and `Notifier`'s
+missing live test are all real, all recorded in SDD sections 3 and 6, and all
+deferred. Widening CP-056 to cover them is the failure mode this decision
+exists to prevent.
+
+*Dispatch order is not dependency order.* CP-056 goes first because it is the
+only one of the six needing no cloud account, so it proceeds while provisioning
+happens.
+
+---
+
 ## Active
 
-**No checkpoints. The loop is complete for the second time, and by completion
-rather than abandonment.**
+**Six checkpoints. The board reopened on 2026-09-03, on a human goal, for the
+second time in its history.**
 
-The approved Browser MVP plan is delivered. CP-052, CP-053 and CP-054 all passed
+The goal is ADR 0011: run the analyze path live for the 2026-09-07 submission.
+It exists because the SDD now grades itself and the grade is unambiguous. One
+section is DONE, every port is WIP, three endpoints and all four verification
+checks are MISSING, and no phase has met the exit criterion it wrote for itself.
+The cause is single: `clearcut-hack` does not exist, so no adapter has ever
+called the service it wraps.
+
+Five of the six below cannot start until that project exists. One can start
+immediately and does not touch the cloud at all, which is why CP-056 is first
+in dispatch order rather than first in dependency order.
+
+### CP-055 — Provision every Google Cloud resource the live graph reads
+- Status: TODO
+- Attempts: 0/3
+- Depth: 0
+- Layer: infra
+- Depends on: -
+- Acceptance:
+  - [ ] `clearcut-hack` exists with billing linked, and
+        `gcloud alpha bq datasets list --project=clearcut-hack` returns
+        `clearcut` instead of "not found or deleted".
+  - [ ] `infra/provision_data_plane.sh` and
+        `infra/provision_retrieval_plane.sh` have both run for real. Both are
+        idempotent, so a second run reports every resource as already present
+        and creates nothing.
+  - [ ] `.venv/bin/python infra/provision_tracker_schema.py` has created
+        `tracker_items` and `script_versions` in a real ClickHouse Cloud
+        service.
+  - [ ] `.env` carries all ten required variables, and
+        `DOCAI_PROCESSOR_ID` and `VERTEX_SEARCH_DATA_STORE_ID` are the full
+        resource names `test_identifier_agreement.py` demands, taken from the
+        scripts' own output rather than retyped.
+  - [ ] Failure path, and the only automated proof the console-only step was
+        done: a query filtered to a jurisdiction with no corpus documents
+        returns zero results. `tests/live/test_vertex_search_live.py:55` is
+        that test. If `jurisdiction` was never marked Indexable it returns
+        Argentine statutes instead and the test fails.
+  - [ ] Gate: `./.claude/init.sh live` runs 10 tests with credentials present.
+        Every one that skips names the variable it still needs.
+- Files: `.env` (untracked), `docs/plan/infrastructure.md` if a step proves
+  wrong in practice
+- Notes: The scripts exist and are unit-tested against `--dry-run`. This
+  checkpoint is the first time any of them touches a real project, so the
+  likeliest outcome is that a documented step is wrong. Amend
+  `infrastructure.md` when that happens rather than working around it.
+
+  Grafana Cloud and ClickHouse Cloud have no automation and are created by
+  hand. That is stated in `infrastructure.md` sections 6 and 10 and is not a
+  gap this checkpoint closes.
+
+### CP-056 — Translate every SDK exception the three bare adapters can raise
+- Status: TODO
+- Attempts: 0/3
+- Depth: 0
+- Layer: adapters
+- Depends on: -
+- Acceptance:
+  - [ ] `VertexSearchGrounding._ground`, `GeminiSceneExtractor._extract_batch`
+        and `GeminiContinuityCheck.check` each catch what their SDK raises and
+        re-raise a domain error. No `google.genai` `APIError`, no
+        `json.JSONDecodeError`, and no `KeyError` from model output crosses the
+        port.
+  - [ ] One test per adapter proves an `APIError` becomes the adapter's
+        existing `SourceUnavailable` subclass, so the route returns 502 rather
+        than 500. Each test fails without the change.
+  - [ ] A model response that is not JSON raises the adapter's domain error,
+        not `JSONDecodeError`. One test per adapter.
+  - [ ] A model response naming a `scene_number` outside the batch raises the
+        adapter's domain error, not `KeyError`. This is the likeliest of the
+        three in practice, because it needs only a hallucination rather than
+        an outage.
+  - [ ] `ParallelRightsResearch` also catches `APIResponseValidationError`,
+        which sits beside the two exceptions it already handles and currently
+        escapes to a 500.
+  - [ ] `test_error_boundaries.py`'s contract walk still passes: every adapter
+        exception subclasses exactly one domain error type.
+  - [ ] Gate: pytest, ruff, ruff format, `mypy src tests infra main.py`. No
+        live test is required, because these paths are provable with the
+        hand-written fakes already in each test file.
+- Files: `src/clearcut/adapters/gcp/vertex_search.py`,
+  `src/clearcut/adapters/gemini/extractor.py`,
+  `src/clearcut/adapters/gemini/continuity.py`,
+  `src/clearcut/adapters/parallel/research.py`, and their four test files
+- Notes: Dispatch this first. It is the only checkpoint here that needs no
+  cloud account, and it is the defect most likely to show on camera: live
+  traffic is exactly what turns an unguarded call into a 500 reading "internal
+  error" while a judge watches.
+
+  ADR 0011 ranks the other three known defects below this one.
+  `ContinuityCheck`'s missing span and metric, `EvaluateDelta`'s untested
+  failure paths, and `Notifier`'s missing live test all wait until after the
+  submission. Do not widen this checkpoint to cover them.
+
+### CP-057 — Seed the demo project's bible facts through infrastructure
+- Status: TODO
+- Attempts: 0/3
+- Depth: 0
+- Layer: infra
+- Depends on: CP-055
+- Acceptance:
+  - [ ] An infra script indexes the SDD section 8(d) bible fact into the real
+        BigQuery lore table for the demo project, by calling
+        `BigQueryLoreStore.index()` rather than repeating its schema.
+  - [ ] `--dry-run` prints what it would index and connects to nothing, so it
+        runs on a machine with no credentials. One test asserts that.
+  - [ ] Failure path: a missing credential exits naming that variable, the
+        same shape `provision_tracker_schema.py` already uses.
+  - [ ] After it runs, a project-scoped search returns the seeded fact, which
+        is SDD section 8(b)'s check from inside our own code path.
+  - [ ] Gate: pytest, ruff, ruff format, `mypy src tests infra main.py`.
+- Files: `infra/seed_project_bible.py`, `tests/unit/infra/test_seed_project_bible.py`,
+  `infra/README.md`
+- Notes: ADR 0011 rules this in as infrastructure rather than as
+  `POST /api/projects/{id}/bible`, which stays MISSING and which the SDD keeps
+  reporting as MISSING. The endpoint is a route plus a use case plus tests; this
+  reaches the state section 8(d) needs in an hour. It is a real product gap: a
+  producer cannot upload a bible in the demo, the facts are already there.
+
+### CP-058 — Export traces to Grafana Cloud and see the five stage spans
+- Status: TODO
+- Attempts: 0/3
+- Depth: 0
+- Layer: adapters
+- Depends on: CP-055
+- Acceptance:
+  - [ ] A Grafana Cloud stack exists and `OTEL_EXPORTER_OTLP_ENDPOINT` and
+        `OTEL_EXPORTER_OTLP_HEADERS` are set, so `composition.py`'s exporters
+        are built rather than returning `None`.
+  - [ ] One live analyze run produces a trace in Grafana carrying all five
+        stage spans (`ingest`, `extract`, `ground`, `research`, `track`) under
+        one trace id. Today `test_observability.py` proves this in mock mode
+        only; no test has ever proven it for the live adapters, because none
+        runs them together.
+  - [ ] `clearcut_gemini_tokens_total` shows non-zero prompt tokens for
+        `gemini-3.7-flash`. A zero means the metric came from mock mode.
+  - [ ] The four panels `infrastructure.md` section 10 names exist: stage
+        latency, tokens per model, findings by severity, tracker items by
+        state.
+  - [ ] Failure path: with the endpoint unset the app still starts and still
+        serves, exporting nowhere. `test_composition.py:187` already proves
+        this and must stay green.
+- Files: `docs/plan/infrastructure.md` section 10 if the dashboard differs from
+  what it describes
+- Notes: SDD section 8(d) asserts against this dashboard, so CP-059 cannot pass
+  without it. The three uninstrumented adapters stay uninstrumented here:
+  `ContinuityCheck`, `LoreStore` and `Notifier` emit neither span nor metric,
+  so the waterfall will under-account for wall-clock latency. That is recorded
+  in SDD section 6 and deferred by ADR 0011, not fixed in this checkpoint.
+
+### CP-059 — Run SDD section 8(d) against live services
+- Status: TODO
+- Attempts: 0/3
+- Depth: 0
+- Layer: tests
+- Depends on: CP-055, CP-056, CP-057, CP-058
+- Acceptance:
+  - [ ] A planted screenplay PDF in `gs://clearcut-scripts-intake` contains a
+        Ferrari Testarossa (BRAND), "Hotel California" on a radio
+        (MUSIC_EXISTING), and one contradiction of the fact CP-057 seeded
+        (CONTINUITY).
+  - [ ] One live analyze call surfaces all three findings with correct page
+        numbers, asserted against the page numbers printed on the PDF.
+  - [ ] The tracker reads exactly three open items at `BLOCKED`.
+  - [ ] The run produced a Grafana trace with the five stage spans and
+        non-zero token metrics.
+  - [ ] The whole check runs under `@pytest.mark.live` and skips without
+        credentials, so it can never pass by exercising the demo adapters.
+  - [ ] Gate: `./.claude/init.sh live` green with credentials present.
+- Files: `tests/live/test_end_to_end_live.py`, a planted PDF fixture
+- Notes: This is the submission's evidence and the thing
+  `infrastructure.md` section 11 means by "runtime proof that calls are real
+  and not mocked". It closes SDD phases 1 through 4 at once, because each of
+  their exit criteria is a subset of this one.
+
+  The same three assertions already run in mock mode as a criterion on CP-043.
+  That proved the wiring. This proves the services, and the Backlog entry that
+  has said so since 2026-08-31 is finally promoted.
+
+### CP-060 — Build the image and deploy it to Cloud Run
+- Status: TODO
+- Attempts: 0/3
+- Depth: 0
+- Layer: infra
+- Depends on: CP-055
+- Acceptance:
+  - [ ] `docker build` succeeds. The Dockerfile exists and its seven static
+        tests pass, but no image has ever been built from it.
+  - [ ] The built image contains `web/dist`. A container run locally serves the
+        SPA at `/`, which is the only proof the in-image `npm run build`
+        actually ran.
+  - [ ] `gcloud run deploy` puts service `clearcut` in `us-central1` behind a
+        public URL, with `--set-secrets` resolving through
+        `roles/secretmanager.secretAccessor` and both `OTEL_EXPORTER_OTLP_*`
+        variables mounted.
+  - [ ] `GET /api/health` on that URL reports `live`, not `mock`. A deployment
+        that silently serves the demo scenario is the failure this criterion
+        exists to catch.
+  - [ ] Failure path: a revision missing a required variable fails at startup
+        naming it, rather than serving and 500ing on the first request.
+        `composition.py:176` already does this; the criterion is that the
+        deployed revision demonstrates it.
+- Files: `Dockerfile` if the build reveals a problem,
+  `docs/plan/infrastructure.md` section 9
+- Notes: The `CMD` is already proven without an image: gunicorn loaded
+  `main:app`, `/api/health` returned `{"mode":"mock"}` at 200, and `/` served
+  the SPA at 200. What is unproven is the build itself, and the two most
+  likely failures are the buildpack fallback and `.gcloudignore` excluding
+  something the build needs.
+
+---
+
+**How this board closed twice before, and why that history still binds.**
+
+The approved Browser MVP plan was delivered. CP-052, CP-053 and CP-054 all passed
 review and are archived, committed as `2172574`, `f3f025e` and `1362bc1` with
-their loop-state chores; HEAD is `a4ad34d`. Nothing is `TODO`, `IN_PROGRESS` or
-`IN_REVIEW` — AGENT.md section 6 step 5's stopping condition — so the conductor
-reports to the human and stops looking for a next block. **Fifty-four
+their loop-state chores. **Fifty-four
 checkpoints, fifty-two `DONE` and two `SUPERSEDED`** (CP-028 and CP-030, each
 split once into `Depth: 1` replacements that landed), CP-001 through CP-054 with
 no gaps, every one behind a review that ran the gates.
@@ -2361,13 +2615,13 @@ board stayed terminal throughout: a direct user order is not an agent reopening
 its own board, and section 6's two rules bind agents, not the person the loop
 reports to.
 
-This section is empty on purpose, and the same two rules keep it that way. A
-leader adds checkpoints only for a new human goal or a `BLOCKED` checkpoint,
+Two rules governed the emptiness both times, and they govern this reopening too.
+A leader adds checkpoints only for a new human goal or a `BLOCKED` checkpoint,
 never in response to a `PASS`; and `BLOCKED` never returns to `TODO`. Between
 them no agent can walk this board from "finished" back to "in progress" on its
-own. The board has now reopened exactly once, on 2026-09-01, and it took a human
-approving a plan to do it (D53) — which is the mechanism working, not an
-exception to it.
+own. The board has now reopened exactly twice, on 2026-09-01 (D53) and on
+2026-09-03 (D67), and both times it took a human approving a plan to do it —
+which is the mechanism working, not an exception to it.
 
 **The Backlog below is not a queue this loop drains.** Every entry carries its
 date, its reasoning and the trigger that would justify promoting it. As of
@@ -2563,6 +2817,9 @@ behind.
   exists (`tests/live/`, `./.claude/init.sh live`), so what remains here is the
   §8(d) run itself. *Trigger:* the `clearcut-hack` project existing and
   `./.claude/init.sh live` passing with credentials present.
+  **Promoted to CP-059 on 2026-09-03 by D67**, without waiting for that trigger:
+  ADR 0011 makes provisioning CP-055 rather than a precondition, so the trigger
+  is now a dependency edge instead of a reason to wait.
 
 **Carried from the five adapter reviews, ruled non-demo-critical 2026-08-30.**
 
