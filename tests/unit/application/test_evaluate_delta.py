@@ -13,6 +13,7 @@ import pytest
 
 from clearcut.application.analyze_script import AnalysisReport
 from clearcut.application.evaluate_delta import EvaluateDelta, NoPreviousScriptVersion
+from clearcut.application.grounding_query import _GROUNDING_TERMS
 from clearcut.application.ports import (
     Confidence,
     ContinuityCheck,
@@ -593,3 +594,32 @@ def test_execute_diffs_the_new_script_against_the_stored_latest_script() -> None
     use_case.execute("proj-1", "scr-1", 2, "gs://bucket/v2.pdf", _MEXICO, _AT)
 
     assert {scene.number for scene in extractor.calls[0]} == {2}
+
+
+def test_the_delta_grounding_query_never_contains_the_script_text() -> None:
+    """The same defect `AnalyzeScript` had, duplicated inline here.
+
+    `evaluate_delta.py` built its own copy of the query rather than sharing
+    one, so fixing the pipeline left the delta path still searching for an enum
+    name and a car model. Both now use `grounding_query`.
+    """
+    # A changed scene, so the delta path actually re-enriches. The default
+    # fixture grounds nothing, which is what the first assertion below catches.
+    old_scenes = [_scene(2, text="old text")]
+    new_scenes = [_scene(2, text="new text")]
+    grounding = _Grounding()
+    use_case = _use_case(
+        ingestion=_Ingestion(new_scenes),
+        extractor=_Extractor(
+            findings=[_finding(finding_id="uuid-a", raw_text="Quilmes", scene_number=2)]
+        ),
+        tracker=_Tracker(script=_script(old_scenes)),
+        grounding=grounding,
+    )
+
+    use_case.execute("proj-1", "scr-2", 2, "gs://bucket/v2.pdf", _MEXICO, _AT)
+
+    assert grounding.calls, "the delta path never grounded, so this proves nothing"
+    for query, _ in grounding.calls:
+        assert "clearance:" not in query
+        assert query in set(_GROUNDING_TERMS.values())

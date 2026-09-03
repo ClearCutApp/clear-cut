@@ -33,6 +33,7 @@ script that never parsed would be a lie.
 
 from dataclasses import dataclass, replace
 
+from clearcut.application.grounding_query import grounding_query
 from clearcut.application.ports import (
     ContinuityCheck,
     LegalGrounding,
@@ -70,10 +71,6 @@ class AnalysisReport:
     script: Script
     findings: tuple[Finding, ...]
     tracker_items: tuple[TrackerItem, ...]
-
-
-def _grounding_query(finding: Finding) -> str:
-    return f"{finding.category.value} clearance: {finding.raw_text}"
 
 
 def _resolve(finding: Finding, claim: RightsClaim | None) -> tuple[RiskLevel, bool]:
@@ -200,7 +197,7 @@ class AnalyzeScript:
         if finding.category in _NO_LOOKUP_CATEGORIES:
             return ()
         try:
-            grounded = self._grounding.ground(_grounding_query(finding), jurisdiction)
+            grounded = self._grounding.ground(grounding_query(finding), jurisdiction)
         except EnrichmentMissing:
             # `NoGroundedSource` (adapters/gcp/vertex_search.py) subclasses
             # `EnrichmentMissing` (D23) -- an unlicensed source for one

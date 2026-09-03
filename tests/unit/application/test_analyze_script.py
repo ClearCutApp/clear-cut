@@ -14,7 +14,8 @@ import pytest
 
 from clearcut.adapters.gcp.vertex_search import NoGroundedSource
 from clearcut.adapters.parallel.research import NoRightsHolderFound
-from clearcut.application.analyze_script import AnalysisReport, AnalyzeScript
+from clearcut.application.analyze_script import _NO_LOOKUP_CATEGORIES, AnalysisReport, AnalyzeScript
+from clearcut.application.grounding_query import _GROUNDING_TERMS
 from clearcut.application.ports import (
     Confidence,
     ContinuityCheck,
@@ -437,8 +438,8 @@ def test_continuity_and_policy_findings_skip_the_legal_grounding_lookup() -> Non
     use_case.execute("proj-1", "scr-1", 1, "gs://bucket/v1.pdf", _MEXICO, _AT)
 
     assert len(grounding.calls) == 6
-    called_categories = {query.split(" clearance:")[0] for query, _ in grounding.calls}
-    assert called_categories == {category.value for category, _ in ip_categories}
+    called_queries = {query for query, _ in grounding.calls}
+    assert called_queries == {_GROUNDING_TERMS[category] for category, _ in ip_categories}
 
 
 def test_a_continuity_finding_reaches_the_report_with_no_citations() -> None:
@@ -503,13 +504,23 @@ def test_every_finding_becomes_a_blocked_tracker_item_at_version_1_scoped_to_pro
 
 
 def test_a_no_grounded_source_leaves_that_finding_without_citations() -> None:
+    # `raise_for` matches on the query, and since CP-055 the query is the
+    # category's legal terms rather than the script text. The fake also answers
+    # with a citation by default, so empty citations can only mean the
+    # degradation ran -- otherwise this test passes whether or not it does.
     grounding = _Grounding(
-        raise_for="Quilmes", error=NoGroundedSource("INDUSTRIAL_PROPERTY: Quilmes")
+        answer=GroundedAnswer(
+            text="grounded",
+            citations=(Citation(uri="https://law.example/mx", title="Ley", snippet="..."),),
+        ),
+        raise_for="trademark",
+        error=NoGroundedSource("INDUSTRIAL_PROPERTY"),
     )
     use_case = _use_case(grounding=grounding)
 
     report = use_case.execute("proj-1", "scr-1", 1, "gs://bucket/v1.pdf", _MEXICO, _AT)
 
+    assert grounding.calls, "grounding was never called, so nothing was degraded"
     assert report.findings[0].citations == ()
 
 
@@ -567,7 +578,7 @@ def test_a_source_unavailable_from_grounding_propagates_instead_of_being_caught(
     # Same guarantee on the `LegalGrounding` catch site: an outage there must
     # not degrade into a citation-less finding that looks like a normal
     # clearance outcome.
-    grounding = _Grounding(raise_for="Quilmes", error=SourceUnavailable("Vertex is down"))
+    grounding = _Grounding(raise_for="trademark", error=SourceUnavailable("Vertex is down"))
     use_case = _use_case(grounding=grounding)
 
     with pytest.raises(SourceUnavailable):
@@ -695,3 +706,60 @@ def test_port_methods_are_called_positionally() -> None:
 
     assert len(report.findings) == 1
     assert len(tracker.saved) == 1
+
+
+# --- CP-055 follow-up: the grounding query has to be findable ---------------
+#
+# `_grounding_query` built `f"{category.value} clearance: {raw_text}"`, so the
+# Ferrari finding searched for "INDUSTRIAL_PROPERTY clearance: a Ferrari
+# Testarossa". No statute contains an enum name, the word "clearance", or a car
+# model. Probed against the real data store on 2026-09-03: that shape retrieves
+# zero documents, and adding the asset name to a query that does work drops it
+# from two hits to one.
+#
+# SDD section 4.1 step 5 always said grounding asks what the law says about
+# "this category of use". The asset name was never meant to be in the query;
+# the asset is what RightsResearch looks up, not what the statute is about.
+
+
+def test_the_grounding_query_never_contains_the_script_text() -> None:
+    """The bug, stated as a property.
+
+    A statute is about a category of use. Putting the quoted script fragment in
+    the query only adds terms no legal text contains.
+    """
+    grounding = _Grounding()
+    finding = _finding(raw_text="a Ferrari Testarossa", category=Category.INDUSTRIAL_PROPERTY)
+    use_case = _use_case(findings=[finding], grounding=grounding)
+
+    use_case.execute("proj-1", "scr-1", 1, "gs://bucket/v1.pdf", _MEXICO, _AT)
+
+    query, _ = grounding.calls[0]
+    assert "Ferrari" not in query
+    assert "Testarossa" not in query
+
+
+def test_the_grounding_query_names_the_legal_subject_not_the_enum() -> None:
+    grounding = _Grounding()
+    finding = _finding(raw_text="a Ferrari Testarossa", category=Category.INDUSTRIAL_PROPERTY)
+    use_case = _use_case(findings=[finding], grounding=grounding)
+
+    use_case.execute("proj-1", "scr-1", 1, "gs://bucket/v1.pdf", _MEXICO, _AT)
+
+    query, _ = grounding.calls[0]
+    assert "INDUSTRIAL_PROPERTY" not in query
+    assert "trademark" in query
+
+
+def test_every_category_that_grounds_has_search_terms() -> None:
+    """No category reaches the store with an empty or enum-shaped query.
+
+    CONTINUITY and POLICY never ground at all, so they are excluded here rather
+    than given terms they would not use.
+    """
+    for category in Category:
+        if category in _NO_LOOKUP_CATEGORIES:
+            continue
+        terms = _GROUNDING_TERMS[category]
+        assert terms.strip()
+        assert category.value not in terms

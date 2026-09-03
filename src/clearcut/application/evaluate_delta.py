@@ -49,6 +49,7 @@ import re
 from dataclasses import replace
 
 from clearcut.application.analyze_script import AnalysisReport
+from clearcut.application.grounding_query import grounding_query
 from clearcut.application.ports import (
     ContinuityCheck,
     LegalGrounding,
@@ -330,7 +331,7 @@ class EvaluateDelta:
     def _citations_for(self, finding: Finding, jurisdiction: Jurisdiction) -> tuple[Citation, ...]:
         if finding.category in _NO_LOOKUP_CATEGORIES:
             return ()
-        query = f"{finding.category.value} clearance: {finding.raw_text}"
+        query = grounding_query(finding)
         try:
             grounded = self._grounding.ground(query, jurisdiction)
         except EnrichmentMissing:
