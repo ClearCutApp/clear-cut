@@ -72,6 +72,15 @@ logger = logging.getLogger(__name__)
 # Sections 4 and 5); none of these has ever varied, so none is a constructor
 # argument or an environment variable (AGENT.md Section 4).
 _GCP_LOCATION = "us-central1"
+# The Gemini 3 family answers only on the global endpoint. Probed against the
+# real API on 2026-09-03 (CP-055): gemini-3.7-flash, gemini-3.1-flash-lite and
+# gemini-3-flash-preview all return 404 NOT_FOUND at us-central1 with "your
+# project does not have access to it", and all answer at global; the 2.5 family
+# answers at both. ADR 0002 noted the global-only constraint for
+# gemini-3.1-pro-preview -- it holds for the whole generation, including the two
+# models that ADR pins. Kept separate from `_GCP_LOCATION` because the BigQuery
+# dataset and the embeddings live in us-central1 and do not exist at global.
+_GENAI_LOCATION = "global"
 _BIGQUERY_DATASET = "clearcut"
 _BIGQUERY_LORE_TABLE = "lore_vectors"
 _EMBEDDING_MODEL = "text-embedding-005"
@@ -229,7 +238,7 @@ def _build_live_use_cases(
             location=_GCP_LOCATION,
         )
 
-    genai_client = genai.Client(vertexai=True, project=project, location=_GCP_LOCATION)
+    genai_client = genai.Client(vertexai=True, project=project, location=_GENAI_LOCATION)
     documentai_client = documentai.DocumentProcessorServiceClient()
 
     ingestion = DocumentAIIngestion(documentai_client, processor_id)

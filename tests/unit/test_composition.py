@@ -29,7 +29,7 @@ import logging
 import os
 import socket
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import Any, NoReturn, cast
 
 import pytest
 from flask import Flask
@@ -52,7 +52,13 @@ from clearcut.adapters.gemini.continuity import GeminiContinuityCheck
 from clearcut.adapters.gemini.extractor import GeminiSceneExtractor
 from clearcut.adapters.notify.webhook import WebhookNotifier
 from clearcut.adapters.parallel.research import ParallelRightsResearch
-from clearcut.composition import _build_live_use_cases, _build_mock_use_cases, create_app
+from clearcut.composition import (
+    _GCP_LOCATION,
+    _GENAI_LOCATION,
+    _build_live_use_cases,
+    _build_mock_use_cases,
+    create_app,
+)
 
 _ANALYZE_BODY = {
     "project_id": "demo-project",
@@ -489,3 +495,51 @@ def test_live_mode_with_unreachable_credentials_fails_during_construction(
     _clear_env(monkeypatch, CLEARCUT_MODE="live", **_LIVE_ENV_VALUES)
     with pytest.raises(Exception, match="(?i)clickhouse"):
         create_app()
+
+
+# ---------------------------------------------------------------------------
+# CP-055: the Gemini 3 family answers only on the global endpoint.
+#
+# ADR 0002 pins gemini-3.7-flash and gemini-3.1-flash-lite, and composition
+# built every client at us-central1, where both return 404 NOT_FOUND with
+# "your project does not have access to it". Probed against the real API on
+# 2026-09-03: every Gemini 3 model 404s at us-central1 and answers at global,
+# while the 2.5 family answers at both. BigQuery and the embeddings must stay
+# at us-central1, because that is where the dataset lives, so the two
+# locations are genuinely different values rather than one constant.
+# ---------------------------------------------------------------------------
+
+
+def test_the_genai_client_is_built_on_the_global_endpoint(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _clear_env(
+        monkeypatch,
+        CLEARCUT_MODE="live",
+        GOOGLE_APPLICATION_CREDENTIALS=_write_fake_adc(tmp_path),
+        **_LIVE_ENV_VALUES,
+    )
+    _forbid_sockets(monkeypatch)
+
+    graph = _build_live_use_cases(ch_client=_FakeChClient(), vector_store=_FakeVectorStore())
+
+    extractor = graph.analyze_script._extractor
+    assert isinstance(extractor, GeminiSceneExtractor)
+    # Reaching into `_api_client` because `genai.Client` exposes its location
+    # nowhere public, and the port protocol the field is typed as declares only
+    # the one method the adapter calls.
+    location = cast(Any, extractor.client)._api_client.location
+    assert location == "global", (
+        "the Gemini 3 models ADR 0002 pins return 404 outside the global endpoint"
+    )
+
+
+def test_the_bigquery_dataset_location_is_not_the_genai_location() -> None:
+    """Two locations, deliberately different.
+
+    Collapsing them back into one constant breaks whichever service loses:
+    the dataset does not exist at global, and the Gemini 3 models do not
+    answer at us-central1.
+    """
+    assert _GCP_LOCATION == "us-central1"
+    assert _GENAI_LOCATION == "global"

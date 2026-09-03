@@ -39,7 +39,7 @@ def test_extracts_findings_from_a_real_scene_and_reports_token_usage(isolated_ot
         client=genai.Client(
             vertexai=True,
             project=env("GOOGLE_CLOUD_PROJECT"),
-            location="us-central1",
+            location="global",  # Gemini 3 is global-only; see composition._GENAI_LOCATION
         ),
         model=env("GEMINI_MODEL"),
     )
