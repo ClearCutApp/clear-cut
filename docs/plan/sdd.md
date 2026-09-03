@@ -1,12 +1,48 @@
 # ClearCut Software Design Document
 
+## Status of this document
+
+This document is both the design contract and the current state of the build.
+Every section carries markers saying how much of what it specifies actually
+runs. Read this legend before the first marker.
+
+**DONE** means integrated with the actual provider, with unit tests, defensive
+tests, and live integration tests all green. All three kinds, against the real
+service.
+
+**WIP** means the code exists and its unit tests pass, but at least one of:
+it has never run against the provider, its failure paths are untested, or no
+live test covers it.
+
+**MISSING** means there is no implementation, or an implementation nothing
+calls.
+
+Two rules keep the markers honest. Every marker names its evidence: a test
+file, a gate result, or the specific absence. And a live test that passes
+without credentials is not evidence, because its only honest outcomes are pass
+with credentials or skip without them.
+
+**Aggregate as of 2026-09-03.** The domain layer is DONE. Everything that
+crosses a network boundary is WIP, because the `clearcut-hack` Google Cloud
+project does not exist and no adapter has ever contacted the service it wraps.
+Three endpoints and one verification suite are MISSING. Section 9 carries the
+counts, the gate numbers, and the shortest path out.
+
+**Why this document grew a status column.** Fifty-four checkpoints closed
+against it with 477 passing tests while no service had been called even once.
+Two identifier bugs certain to fail on the first real call sat in the branch
+throughout, invisible to every test. A design document that cannot separate
+"specified" from "working" is what allowed that. Section 7 already demanded
+real services in every one of its five exit criteria; nothing ever checked.
+
 ## 1. Scope and constraints
 
-ClearCut is a 9-day hackathon build (today is August 29, 2026; Agentic Cinema
-closes September 7, 2026). This document is the design contract the leader
-decomposes into `CHECKPOINTS.md`. `AGENT.md` governs how the code is written:
-three layers with dependencies pointing inward, ports only at real I/O
-boundaries, no abstraction from §4's banned list, tests before code.
+ClearCut is a 9-day hackathon build, now at day 6 of 9: Agentic Cinema closes
+September 7, 2026, four days from this revision. This document is the design
+contract the leader decomposes into `CHECKPOINTS.md`. `AGENT.md` governs how
+the code is written: three layers with dependencies pointing inward, ports only
+at real I/O boundaries, no abstraction from §4's banned list, tests before
+code, and since D66 a live test for every adapter.
 
 The build supersedes the architecture in
 `docs/resources/Technical-Architecture-and-Hackathon-Framing.md`. Two of that
@@ -18,9 +54,18 @@ below defines it as content-hash scene diffing.
 
 Out of scope for the hackathon: computer vision over attached images, audio
 fingerprinting, auto-sending any legal correspondence (drafts only, a human
-sends), and jurisdictions beyond the ten in the rights-mapping document.
+sends), and jurisdictions beyond the ten in the rights-mapping document. These
+four are decisions, not gaps. No status marker applies to them and none should
+be added later.
 
 ## 2. Domain model
+
+**Status: DONE.** Eight modules, all pure.
+`tests/unit/test_layer_boundaries.py:133` proves mechanically that they import
+only the stdlib or each other, so "integrated with the actual provider" is
+vacuous here and the bar reduces to tests. Those are green: 79 test functions
+across `tests/unit/domain/`, with rejection paths on every dataclass that has
+an invariant. This is the only section of this document that qualifies.
 
 Everything in this section lives in `src/clearcut/domain/` as plain
 dataclasses. No I/O, no third-party imports, stdlib only. Time and identifiers
@@ -92,6 +137,20 @@ LoreStore indexes.
 list[Scene]) -> list[SceneDelta]` that joins on `number` plus `heading` and
 compares hashes.
 
+**Evidence per module.**
+
+| Module | Tests | Rejection paths proven |
+|---|---|---|
+| `jurisdiction.py` | `test_jurisdiction.py`, 5 | unknown code raises `UnknownJurisdiction`, not `KeyError` |
+| `script.py` | `test_script.py`, 10 | version below one, scene numbers not strictly increasing, scenes out of order |
+| `finding.py` | `test_finding.py`, 9 | CONTINUITY or POLICY finding carrying a `ner_label` |
+| `taxonomy.py` | `test_taxonomy.py`, 3 | a value that is not a `NerLabel` |
+| `bible.py` | `test_bible.py`, 6 | blank text, blank source, duplicate `fact_id` |
+| `dedupe.py` | `test_dedupe.py`, 9 | empty input returns empty; the function cannot otherwise fail |
+| `delta.py` | `test_delta.py`, 9 | duplicate join key within one version, named in the error |
+| `tracker.py` | `test_tracker.py`, 28 | version below one, empty `scene_numbers`, blank `project_id`, blank draft, blank note |
+| `errors.py` | via `test_error_translation.py`, 12 | four base types, each catchable as itself |
+
 ## 3. Ports, adapters, and use cases
 
 Ports are `typing.Protocol` classes declared in `src/clearcut/application/`.
@@ -104,9 +163,38 @@ code, per `AGENT.md` §4. `composition.py` is the single wiring point.
 | `SceneExtractor` | `adapters/gemini/extractor.py`, gemini-3.7-flash | One Gemini API call per batch of up to eight scenes; `response_schema` pinned to the six-category finding shape; `thinking_level` set explicitly per call; temperature left at the default 1.0 because lowering it degrades Gemini 3 output |
 | `RightsResearch` | `adapters/parallel/research.py`, Parallel Task API | HTTPS call that searches the live web for the rights holder, a contact address, litigation posture, and per-claim confidence (ASCAP/BMI Songview, SADAIC, WIPO Global Brand Database and peers) |
 | `LegalGrounding` | `adapters/gcp/vertex_search.py`, Vertex AI Search | Query against the one data store built over `gs://clearcut-legal-corpus/`, filtered on the `jurisdiction` metadata field; returns grounded text plus `groundingMetadata` (groundingChunks and groundingSupports) as citations |
+| `ContinuityCheck` | `adapters/gemini/continuity.py`, gemini-3.1-flash-lite | One call per scene comparing the scene against retrieved bible facts; emits a CONTINUITY or POLICY finding on contradiction, or nothing. Called from step 5 of section 4.1 |
 | `LoreStore` | `adapters/bigquery/lore_store.py`, BigQueryVectorStore from langchain-google-community | BigQuery reads and writes; the store auto-creates its dataset and table and brute-force scans under 5,000 rows |
 | `TrackerStore` | `adapters/clickhouse/tracker.py`, ClickHouse Cloud | Inserts and reads over the ClickHouse HTTPS interface; versioned rows in a ReplacingMergeTree keyed by `item_id`; also owns the `script_versions` table, the per-version scene hash sets EvaluateDelta reads |
 | `Notifier` | `adapters/notify/webhook.py`, outbound webhook | HTTP POST to the configured webhook on producer-triggered notification actions and automatically on delta regressions |
+
+`ContinuityCheck` was absent from this table until 2026-09-03, although
+`application/ports.py:128` has always declared it and `composition.py` has
+always wired it. It is also the only adapter emitting neither a span nor a
+metric, so it was invisible in the design and invisible in the trace at the
+same time.
+
+**Status per port.** Every one is WIP. None has run against its provider,
+because the project holding those providers does not exist.
+
+| Port | State | Unit | Defensive | Live | What stands between it and DONE |
+|---|---|---|---|---|---|
+| `ScriptIngestion` | WIP | 13 tests, hand-written client fake | transport error, no slugline, empty text segments, no pages | 1 test, skipped | Provisioning only. Coverage is otherwise complete |
+| `LoreStore` | WIP | 10 tests, hand-written store and embedder fakes | blank project id, store raising on both read and write, project isolation | 2 tests, skipped | Provisioning, plus it emits no span and no metric |
+| `TrackerStore` | WIP | 23 tests, hand-written client fake raising a real `DatabaseError` | all five methods wrapped, unknown item, empty project, absent script version | 3 tests, skipped | Provisioning. Only `save` is instrumented; the four read siblings are silent |
+| `RightsResearch` | WIP | 11 tests over `httpx.MockTransport` | non-2xx, read timeout, connect error, uncited claims dropped, unknown confidence | 1 test, skipped | Provisioning. `APIResponseValidationError` escapes both handlers and would return 500 |
+| `LegalGrounding` | WIP | 6 tests, hand-written client fake | blank prefix, response without grounding chunks | 2 tests, skipped | The SDK call has no `try/except`. A Vertex 503 returns 500, not 502 |
+| `SceneExtractor` | WIP | 9 tests, hand-written client fake | unrecognized `ner_label`, empty scene list | 1 test, skipped | The SDK call has no `try/except`. Malformed JSON or a hallucinated scene number returns 500 |
+| `Notifier` | WIP | 7 tests over `httpx.MockTransport` | blank URL, non-2xx, connect error, read timeout | none | No live test exists, although `NOTIFY_WEBHOOK_URL` is a required live variable |
+| `ContinuityCheck` | WIP | 9 tests, hand-written client fake | category outside CONTINUITY/POLICY, empty facts short-circuit | none | Fails every axis: no live test, no span, no metric, no `try/except`. Called once per scene |
+
+The three unguarded adapters are worth stating plainly, because the symptom is
+misleading. `VertexSearchGrounding._ground`, `GeminiSceneExtractor._extract_batch`
+and `GeminiContinuityCheck.check` all call the SDK bare. A `google.genai`
+`APIError`, a `JSONDecodeError` from a non-JSON response, or a `KeyError` from
+a model inventing a scene number reaches `routes.py:106`'s generic handler and
+becomes a 500 reading "internal error". An upstream outage is reported to the
+producer as a ClearCut bug.
 
 Notes on the two retrieval adapters, since both hide sharp edges:
 
@@ -123,21 +211,35 @@ Notes on the two retrieval adapters, since both hide sharp edges:
   a `jurisdiction` metadata field; the adapter filters on it at query time.
 
 Application-layer use cases, each one behaviour with a single `execute` entry
-point:
+point. The two pipeline use cases take `continuity` as a collaborator, which
+earlier revisions of this section omitted:
 
-- `AnalyzeScript(ingestion, extractor, grounding, research, lore, tracker)`:
-  the full pipeline of section 4.1. Returns an AnalysisReport (script,
-  findings, tracker items).
-- `EvaluateDelta(ingestion, extractor, grounding, research, lore, tracker)`:
-  the incremental path of section 4.3.
+- `AnalyzeScript(ingestion, extractor, grounding, research, lore, tracker,
+  continuity)`: the full pipeline of section 4.1. Returns an AnalysisReport
+  (script, findings, tracker items).
+- `EvaluateDelta(ingestion, extractor, grounding, research, lore, tracker,
+  continuity, notifier)`: the incremental path of section 4.3.
 - `ResolveFinding(tracker, notifier)`: state transitions and action triggers
   on one tracker item.
 - `AnswerProjectQuestion(lore, grounding, tracker)`: the Q&A path of section
   4.2, backed by gemini-3.1-flash-lite over retrieved context. It reads
   tracker state for questions about territory blockers and outreach status.
 
+**Status per use case.** These have no provider of their own, so their bar is
+unit and defensive coverage over fake ports, plus whatever the ports beneath
+them can prove.
+
+| Use case | State | Evidence |
+|---|---|---|
+| `AnalyzeScript` | WIP | 27 tests. The strongest defensive coverage in the codebase: enrichment degradation on `EnrichmentMissing`, propagation on `SourceUnavailable`, a stray `TypeError` proven to propagate rather than be swallowed, and port call order asserted against section 4.1 |
+| `AnswerProjectQuestion` | WIP | 24 tests, including dedicated raising fakes. A tracker outage propagates rather than reading as "nothing is blocked", which is the failure that would matter most |
+| `ResolveFinding` | WIP | 12 tests. A notifier failure does not lose an already-saved transition |
+| `ListTrackerItems` | WIP | 4 tests. A pass-through with an empty-result case |
+| `EvaluateDelta` | WIP | 16 tests, and **not one in which any port raises**. Its two `except EnrichmentMissing` blocks are untested, where `AnalyzeScript` has six tests for the same construct. The largest module in the codebase at 408 lines |
+
 If gemini-3.1-pro-preview becomes allowlisted, it replaces flash only inside
-the extractor adapter; no other file changes.
+the extractor adapter; no other file changes. It is not allowlisted, so this
+remains conditional rather than MISSING.
 
 ## 4. API surface
 
@@ -150,7 +252,35 @@ nothing deploys as a separate orchestrator agent. The project Q&A agent is
 the one component hosted on Google Cloud Agent Builder, with the Vertex AI
 Search data store attached as its grounding source.
 
+**Status: eight routes specified, five built.** `routes.py` carries five
+`@bp.route` decorators. A sixth route, `GET /api/health`, exists and is
+described below; it was added after this section was first written.
+
+| Route | State | Evidence |
+|---|---|---|
+| `POST /api/analyze` | WIP | Built. 39 tests in `test_routes.py`, the largest test file at 947 lines. Never called against live adapters |
+| `GET /api/tracker` | WIP | Built and tested, including the 400 and 502 paths |
+| `PATCH /api/tracker/{item_id}` | WIP | Built and tested, including an invalid state naming the accepted values |
+| `POST /api/tracker/{item_id}/actions` | WIP | Built for `draft_email` and `notify`. `generate_document` and `stakeholder_link` return 500 by decision, not by defect |
+| `POST /api/question` | WIP | Built and tested, including blank project id and unknown jurisdiction |
+| `GET /api/health` | WIP | Built. Reports the wired `CLEARCUT_MODE` so the SPA can say when it is serving planted data. 3 tests, one covering the SPA catch-all shadowing it |
+| `POST /api/projects` | MISSING | No route, no test |
+| `POST /api/projects/{id}/bible` | MISSING | No route, no test. Nothing else populates the LoreStore through the API |
+| `GET /api/scripts/{script_id}` | MISSING | No route. ScriptView renders from the analyze response instead |
+
+The bible upload is the consequential absence. Without it the LoreStore is
+never filled through the API, so the CONTINUITY finding that section 8(d)
+demands has no supported route by which to come into existence. The demo
+scenario seeds it directly through the mock adapter instead.
+
+Route-level error mapping is complete and tested: `RecordNotFound` to 404,
+`SourceUnavailable` to 502, everything else to a 500 that leaks no internals.
+Ten tests cover the three classes.
+
 ### 4.1 POST /api/analyze (the pipeline)
+
+**Status: WIP.** All eight steps are built and covered by unit tests over fake
+ports. None has run against a real service.
 
 Input: `project_id`, `jurisdiction_code`, and the screenplay PDF (multipart or
 an existing GCS URI). Ordered flow:
@@ -197,17 +327,23 @@ an existing GCS URI). Ordered flow:
    findings with citations, and tracker items. The SPA needs no second call
    to render the first view.
 
+Step 1 is the exception worth naming: no route accepts a multipart upload
+today. The request carries an existing `gcs_uri`, and putting the PDF in the
+bucket is a manual step. Steps 2 through 8 run as written.
+
 ### 4.2 The remaining endpoints
 
-- `POST /api/projects`: create a project with a jurisdiction.
+Status for each appears in the table at the head of section 4.
+
+- `POST /api/projects`: create a project with a jurisdiction. **MISSING.**
 - `POST /api/projects/{id}/bible`: upload bible documents; the backend
-  splits them into BibleFacts and indexes them in the LoreStore.
+  splits them into BibleFacts and indexes them in the LoreStore. **MISSING.**
 - `GET /api/scripts/{script_id}`: scenes plus findings, the ScriptView
-  payload.
+  payload. **MISSING.**
 - `GET /api/tracker?project_id=`: tracker items with current state, the
-  TrackerDashboard payload.
+  TrackerDashboard payload. **WIP**, built.
 - `PATCH /api/tracker/{item_id}`: state transition; writes a new versioned
-  row.
+  row. **WIP**, built.
 - `POST /api/tracker/{item_id}/actions`: body `{"action": "draft_email" |
   "generate_document" | "stakeholder_link" | "notify"}`. Draft email fills
   the outreach template from the rights-mapping document with the finding's
@@ -216,12 +352,21 @@ an existing GCS URI). Ordered flow:
   named on the finding. `stakeholder_link` returns the rights holder's
   registry or contact link, resolved by RightsResearch and stored on the
   tracker item; the dashboard opens it. `notify` calls the Notifier.
+  **WIP** for `draft_email` and `notify`; the other two are ruled to the
+  Backlog and return 500 on purpose.
 - `POST /api/question`: body `{project_id, question}`; AnswerProjectQuestion
   retrieves bible facts and scene history from the LoreStore, adds
   LegalGrounding context when the question names a legal topic, and answers
-  with citations.
+  with citations. **WIP**, built.
+- `GET /api/health`: returns the wired `CLEARCUT_MODE`. **WIP**, built. Not
+  part of the original design; added so the SPA can state when its data is a
+  fixed sample rather than an analysis.
 
 ### 4.3 EvaluateDelta (incremental re-analysis)
+
+**Status: WIP, with one MISSING inside it.** The path is built and routed:
+`POST /api/analyze` sends `version` greater than 1 here. Sixteen tests cover
+it, and none of them makes a port raise.
 
 Triggered when `POST /api/analyze` receives a project that already has a
 script version. After step 2 (parse plus hash), the use case runs
@@ -231,9 +376,10 @@ script version. After step 2 (parse plus hash), the use case runs
   items survive as they are.
 - ADDED and CHANGED scenes are re-extracted, re-enriched, and re-embedded.
   The design calls for deleting a CHANGED scene's old LoreStore rows first.
-  That part is not built, because the `LoreStore` port has no `delete`
+  **That part is MISSING**, because the `LoreStore` port has no `delete`
   method, so a changed scene leaves a stale row that later retrieval can
-  return as history.
+  return as history. This is a known defect with a known cause, not an
+  oversight.
 - REMOVED scenes keep their open tracker items with a note; nothing is
   deleted, because a cut scene can return in v3.
 - Carry-forward matches by scene: a re-extracted finding on a CHANGED scene
@@ -255,32 +401,54 @@ called the Dynamic Scalability Module.
 
 ## 5. Frontend separation of concerns
 
-The SPA lives in `web/` at the repo root, outside `src/clearcut/`, built with
-React, Vite, and Tailwind. The backend never renders a template; one Cloud Run
-service serves the JSON API and the static `web/` build output.
+**Status: WIP.** All three surfaces are built and tested, 60 vitest cases
+across 13 files. The component names below were written before the components
+existed and have been corrected to what shipped.
 
-Structure follows atomic design: atoms (RiskBadge, StateBadge, CitationLink),
-molecules (FindingCard, SceneHeader, TrackerRow), organisms (FindingsOverlay,
-TrackerTable, ChatPanel), then pages. Container components own data fetching
-and state; presentational components receive props and stay pure. One typed
-API client module, `web/src/api/client.ts`, is the single point of contact
-with the backend; every request/response type in it mirrors the JSON shapes of
-section 4, so a backend shape change breaks the frontend build instead of a
-demo.
+The SPA lives in `web/` at the repo root, outside `src/clearcut/`, built with
+React and Vite. Styling is vanilla CSS over design tokens rather than Tailwind:
+the dependency was never added, and `web/src/index.css` records the decision
+next to the tokens. The backend never renders a template; one Cloud Run service
+serves the JSON API and the static `web/` build output.
+
+Structure follows atomic design: atoms (`RiskBadge`, `StateBadge`,
+`ModeBanner`), molecules (`SceneCard`, `TrackerRow`, `AnalyzeForm`), organisms
+(`ScriptView`, `TrackerDashboard`, `ProjectQA`). There is no `pages/` layer;
+`App.tsx` composes the three organisms directly, which is enough for three
+surfaces and would be an empty indirection otherwise. Container components own
+data fetching and state; presentational components receive props and stay pure.
+One typed API client module, `web/src/api/client.ts`, is the single point of
+contact with the backend; every request/response type in it mirrors the JSON
+shapes of section 4, so a backend shape change breaks the frontend build
+instead of a demo. `web/src/architecture.test.ts` enforces both rules: only
+`client.ts` may name an API path, and no atom may import from `src/api/`.
 
 Three surfaces:
 
-- **ScriptView** consumes `GET /api/scripts/{id}` and renders the screenplay
-  text with findings overlaid inline at their scenes, each finding showing
-  category, risk, and citations.
+- **ScriptView** renders the screenplay text with findings overlaid inline at
+  their scenes, each finding showing category, risk, and citations. It reads
+  the `POST /api/analyze` response, because the `GET /api/scripts/{id}` this
+  section originally specified is MISSING.
 - **TrackerDashboard** consumes `GET /api/tracker`, renders items grouped by
   state (BLOCKED, IN_PROGRESS, CLEARED), and issues `PATCH` for transitions
-  and `POST .../actions` for draft-email, generate-document,
-  stakeholder-link, and notify triggers.
+  and `POST .../actions` for draft-email and notify triggers. The
+  generate-document and stakeholder-link triggers are deliberately absent
+  from the client's action type, so a component cannot compile its way into a
+  guaranteed server error.
 - **ProjectQA** consumes `POST /api/question` and renders the conversational
   panel with the answer's citations linked.
 
+**On honesty.** The SPA contains no hardcoded findings; `web/src/fixtures/`
+is imported by tests only. What it renders in `CLEARCUT_MODE=mock` is a fixed
+sample served by the backend, and `ModeBanner` now says so on the page. The
+code was always honest; the data was not, and nothing admitted it.
+
 ## 6. Observability
+
+**Status: WIP.** Every span and metric this section specifies is emitted in
+code. None has ever left the process: no Grafana Cloud stack exists,
+`OTEL_EXPORTER_OTLP_ENDPOINT` is unset, and `composition.py:95` treats an
+absent endpoint as "export nowhere". Spans are created and discarded.
 
 Grafana Cloud receives traces and metrics over OTLP. The OpenTelemetry SDK is
 configured once in `composition.py` (tracer provider, meter provider, OTLP
@@ -293,6 +461,13 @@ One trace per `/api/analyze` request, with one span per pipeline stage:
 `script_id`, `scene_number` where applicable, the Gemini model name, and token
 counts read from each response's usage metadata.
 
+All five stages are instrumented. What this section never named as a stage, and
+what is therefore invisible in a trace, is three adapters that each cross a real
+network boundary: `ContinuityCheck`, `LoreStore`, and `Notifier` emit neither a
+span nor a metric. On a 200-scene analysis the continuity calls and the vector
+reads are the bulk of the wall clock, so a Grafana waterfall will
+under-account for latency until they are instrumented.
+
 Metrics:
 
 - `clearcut_stage_latency_ms`: histogram, labeled by stage.
@@ -302,11 +477,35 @@ Metrics:
 - `clearcut_tracker_items`: gauge, labeled by state, refreshed on every
   tracker write.
 
+All four are emitted. One caveat on the evidence:
+`tests/unit/test_observability.py` proves the five spans share one trace id
+and the four metrics record their labels **in `CLEARCUT_MODE=mock`**, driving
+the in-memory adapters. Each live adapter's instrumentation is proven
+individually in its own test file, but no test runs the five live adapters
+together, so nothing yet proves they share a trace.
+
 The demo Grafana dashboard shows stage latency, token spend per model, and
 the findings-by-severity and tracker-by-state breakdowns for the verification
-run in section 8.
+run in section 8. **The dashboard is MISSING.** Section 8(d) asserts against
+it.
 
 ## 7. Delivery phases and dependency edges
+
+**Status: all five phases WIP. No exit criterion has been met.**
+
+Read that against what the criteria say. Every one of the five was written to
+demand a real service, and every one still does. Nothing here was
+under-specified. The phases were reported complete against a gate that could
+not evaluate their own exit conditions, which is the defect D66 closed and the
+reason this document now carries status at all.
+
+| Phase | Exit criterion, verbatim | Met |
+|---|---|---|
+| 1 Ingestion | "a test turns a real screenplay PDF into scenes with page anchors and raw findings JSON" | No. `tests/live/test_document_ai_live.py` is exactly this test and it skips |
+| 2 Lore | "seeded bible facts come back from a project-scoped similarity query" | No. `tests/live/test_bigquery_lore_store_live.py` is exactly this test and it skips |
+| 3 Grounding | "a jurisdiction-filtered query returns grounded text with groundingChunks" | No. `tests/live/test_vertex_search_live.py` is exactly this test and it skips |
+| 4 Wiring | "the end-to-end check of section 8(d) passes" | No. It has never been run |
+| 5 Delta | "uploading v2 with one edited scene re-analyzes exactly that scene and preserves CLEARED items" | No. Proven in mock mode only |
 
 Five phases. The first three are independent verticals; the leader can assign
 them to parallel implementers on day one.
@@ -338,7 +537,13 @@ Phase 4 → Phase 5. No edge connects Phases 1, 2, and 3 to each other. The
 `web/` scaffold and presentational components can start any time before Phase
 4 against fixture JSON, since the typed client is the only integration point.
 
+Each phase's code is written. What separates every one of them from DONE is the
+same thing: the `clearcut-hack` project does not exist, so the tests that would
+close them skip instead of running.
+
 ## 8. Verification
+
+**Status: all four MISSING. None has ever been run.**
 
 Four checks, run in this order once their phases land:
 
@@ -346,16 +551,26 @@ a. **Ingestion (Phase 1).** Parse a real screenplay PDF. Assert the scene
    count against a manual count, and for 5 spot-checked scenes assert that
    `page_start` equals the page number printed on the PDF page where the
    slugline appears.
+   **MISSING.** Blocked on the Document AI processor and a screenplay PDF in
+   `gs://clearcut-scripts-intake`. The spot-check against printed page numbers
+   is manual and has no test.
 
 b. **Lore isolation (Phase 2).** Seed bible facts for two projects, A and B.
    Run VECTOR_SEARCH directly via `bq query` with the project filter for A
    and assert zero returned rows belong to B. This proves the metadata filter
    in SQL, outside our own code path.
+   **MISSING.** Blocked on the BigQuery dataset. Note the deliberate design:
+   this check runs outside our code, so the live test that proves the same
+   filter from inside it does not replace this one.
 
 c. **Grounding citations (Phase 3).** Query the data store with jurisdiction
    = "Argentina" and confirm the response carries citation URIs in
    groundingChunks, not only answer text. A grounded answer without a URI
    fails the check.
+   **MISSING.** Blocked on the data store, and on the console-only step that
+   marks `jurisdiction` Indexable. Skip that step and filtered queries return
+   every jurisdiction with no error at all, so this check is the only thing
+   standing between a Mexico script and Argentine statute.
 
 d. **End to end (Phase 4).** Analyze a planted script containing a Ferrari
    Testarossa (BRAND, trademark clearance), "Hotel California" playing on a
@@ -364,3 +579,74 @@ d. **End to end (Phase 4).** Analyze a planted script containing a Ferrari
    correct page numbers, the tracker reads exactly 3 open items at BLOCKED,
    and the run produced a visible trace with the five stage spans and
    non-zero token metrics in the Grafana dashboard.
+   **MISSING.** This is the submission's evidence. It needs every provider,
+   the Grafana stack, and the bible ingestion path that section 4.2 marks
+   MISSING. The same three assertions run today in mock mode, which proves
+   the wiring and nothing about the services.
+
+## 9. Status summary
+
+### 9.1 Counts and gates
+
+| Area | DONE | WIP | MISSING |
+|---|---|---|---|
+| Domain entities (§2) | 8 | 0 | 0 |
+| Ports (§3) | 0 | 8 | 0 |
+| Use cases (§3) | 0 | 5 | 0 |
+| Endpoints (§4) | 0 | 6 | 3 |
+| Frontend surfaces (§5) | 0 | 3 | 0 |
+| Observability (§6) | 0 | 5 spans, 4 metrics | dashboard |
+| Phases (§7) | 0 | 5 | 0 |
+| Verification (§8) | 0 | 0 | 4 |
+
+Gates as of 2026-09-03:
+
+- `./.claude/init.sh verify`: 87 passed, 0 failed
+- `./.claude/init.sh check`: 6 passed, 0 failed: ruff, ruff format,
+  `mypy src tests infra main.py`, 498 backend cases, `tsc --noEmit`, 60
+  frontend cases across 13 files
+- `./.claude/init.sh live`: 10 collected, 10 skipped. Skipping is the honest
+  result with no credentials; a live test that passed here would be exercising
+  a fake
+
+Submission checklist from `infrastructure.md` §11:
+
+| Item | State |
+|---|---|
+| Public repo with Apache-2.0 LICENSE at root | DONE |
+| Hosted Cloud Run URL, publicly reachable | MISSING. The container is written and its `CMD` proven locally; the image has never been built |
+| Three-minute demo video | MISSING |
+| Devpost form before 2026-09-07 | MISSING |
+| Runtime proof that calls are real and not mocked | MISSING. This is the same bar the whole document now grades against |
+
+**The shortest path.** One action moves more rows than any other: create the
+`clearcut-hack` project and run `infra/provision_data_plane.sh` and
+`infra/provision_retrieval_plane.sh`. That alone converts five ports, four
+phases, and three of the four verification checks from blocked to runnable.
+Four rows would still fail after it, and they are code, not configuration:
+`ContinuityCheck`'s missing live test and instrumentation, `Notifier`'s missing
+live test, `EvaluateDelta`'s untested failure paths, and the three unguarded
+SDK calls that turn upstream outages into 500s.
+
+### 9.2 Promised elsewhere, with no home in this document
+
+These are capabilities `proposal.md`, `agentic-workflow.md`, or an ADR commits
+to, which sections 1 through 8 never place. They are listed rather than
+resolved: giving them a design would be a change to the design, and this
+revision reports state. Each row names where the promise lives so a later
+decision starts from the source.
+
+| Promise | Stated in | Why it has no home here |
+|---|---|---|
+| Policy and ratings agent: age-rating, brand and sponsor rules, tone rules | `agentic-workflow.md` §2.3 | Mapped onto `SceneExtractor`, whose `response_schema` §3 pins to the six IP categories, with no retrieval input. It cannot emit POLICY findings as specified |
+| Parallel Search MCP for the on-camera lookup | ADR 0003, `infrastructure.md` §7 | The partner track's demo path. §3 defines only `RightsResearch` over the Task API. No port, no adapter, no endpoint |
+| Declared territories, plural | `proposal.md`, `agentic-workflow.md` §4 | `Script` carries one `jurisdiction_code` (§2). An Argentina-Mexico co-production cannot be expressed |
+| Confidence gate below 0.7, escalation to counsel | `agentic-workflow.md` §8 | `Finding` has no confidence field and the tracker has no escalated state |
+| Single project clearance percentage | `proposal.md` | §2 makes percentages presentation-only, and no endpoint or component returns a rollup |
+| Token ceilings, 8,000 in and 1,500 out per scene | `agentic-workflow.md` §8 | No metric in §6 measures them |
+
+One further gap in the coverage rather than the design:
+`NoPreviousScriptVersion` lives in `application/`, so neither
+`test_error_translation.py` nor the contract walk in `test_error_boundaries.py`
+covers it. Both scan `clearcut.adapters`. Its raise is proven in
+`test_evaluate_delta.py`.
