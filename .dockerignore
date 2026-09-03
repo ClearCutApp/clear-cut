@@ -1,0 +1,32 @@
+# Secrets. .env carries ten live credentials; a COPY of the repo root would
+# bake them into a layer readable by anyone who can pull the image.
+.env
+.env.*
+!.env.example
+*.pem
+**/credentials*.json
+**/service-account*.json
+
+# Build artifacts and caches. web/dist is built inside the image (see
+# Dockerfile), so shipping a host copy would only risk a stale one.
+.venv/
+__pycache__/
+*.pyc
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+node_modules/
+web/node_modules/
+web/dist/
+
+# Not needed at runtime.
+.git/
+.github/
+.claude/
+.atl/
+tests/
+infra/
+docs/
+plan/
+*.md
+!README.md
