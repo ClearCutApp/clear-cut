@@ -37,7 +37,14 @@ authenticated (`gcloud auth login`), and pointed at that project
 6. `infra/provision_retrieval_plane.sh` — run it for real. It prints a
    warning as the last thing it does, on every run; read the section below
    before trusting any grounded answer this system produces.
-7. Copy `AGENT_BUILDER_AGENT_ID` from the script's output into `.env`.
+7. Copy `VERTEX_SEARCH_DATA_STORE_ID` from the script's output into `.env`.
+   It is the **full resource name**, not the bare id, because
+   `types.VertexAISearch(datastore=...)` rejects anything shorter.
+
+   Do not add `AGENT_BUILDER_AGENT_ID`. The script reports the agent app id,
+   but nothing under `src/` reads it (section 5 says so explicitly), and
+   `tests/unit/test_environment_contract.py` fails if the name appears in
+   `.env.example`.
 
 ## The manual step inside Google Cloud
 

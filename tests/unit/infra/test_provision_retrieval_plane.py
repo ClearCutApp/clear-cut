@@ -88,7 +88,12 @@ def test_dry_run_prints_vertex_search_data_store_id_env_line(manifest_file: Path
     prefix = "VERTEX_SEARCH_DATA_STORE_ID="
     lines = [line for line in result.stdout.splitlines() if line.startswith(prefix)]
     assert len(lines) == 1
-    assert lines[0] == "VERTEX_SEARCH_DATA_STORE_ID=clearcut-legal-corpus"
+    # The full resource path, not the bare id: `types.VertexAISearch(datastore=...)`
+    # rejects anything shorter. "global" is where create_data_store puts it.
+    assert lines[0] == (
+        "VERTEX_SEARCH_DATA_STORE_ID=projects/clearcut-hack/locations/global"
+        "/collections/default_collection/dataStores/clearcut-legal-corpus"
+    )
 
 
 def test_missing_gcloud_exits_nonzero_before_printing_any_create(manifest_file: Path) -> None:

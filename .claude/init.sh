@@ -220,7 +220,7 @@ bootstrap() {
     # shellcheck disable=SC1091
     . "$ROOT/.venv/bin/activate"
     python -m pip install --quiet --upgrade pip
-    python -m pip install --quiet -e "$ROOT[dev]" && ok "clearcut + dev tools installed"
+    python -m pip install --quiet -e "${ROOT}[dev]" && ok "clearcut + dev tools installed"
     note "activate with: source .venv/bin/activate"
   else
     note "no pyproject.toml / requirements.txt yet — nothing to install"

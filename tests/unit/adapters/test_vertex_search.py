@@ -15,8 +15,13 @@ from clearcut.domain.jurisdiction import Jurisdiction, jurisdiction_for
 from tests.unit.conftest import install_in_memory_telemetry, metric_attributes_by_name
 
 _FIXTURE = Path(__file__).resolve().parents[2] / "fixtures" / "vertex_grounded_answer.json"
+# `locations/global`, because that is where `infra/provision_retrieval_plane.sh`
+# creates the store. This constant said `locations/us` until 2026-09-03; the
+# fake accepts either, so nothing failed, and the value only had to be right on
+# the first real call. `test_identifier_agreement.py` now holds it to what the
+# script prints.
 _DATA_STORE_ID = (
-    "projects/clearcut-hack/locations/us/collections/default_collection/"
+    "projects/clearcut-hack/locations/global/collections/default_collection/"
     "dataStores/clearcut-legal-corpus"
 )
 

@@ -63,9 +63,12 @@ Create one Document OCR processor (the layout-aware kind) in the console under
 Document AI > Processors, region `us`. It converts screenplay PDFs into text
 with page and block structure, which the scene splitter downstream depends on.
 
-The console shows the processor ID after creation. Copy it into configuration
-as `DOCAI_PROCESSOR_ID` (section 8); the ingestion code reads it from the
-environment, never from a hardcoded string.
+The console shows the processor after creation. `DOCAI_PROCESSOR_ID` takes its
+**full resource name**, `projects/clearcut-hack/locations/us/processors/<id>`,
+not the bare id the console displays on its own: `DocumentAIIngestion` passes
+the value straight into `ProcessRequest(name=...)`, which rejects anything
+shorter. `infra/provision_data_plane.sh` prints the correct form. The ingestion
+code reads it from the environment, never from a hardcoded string.
 
 ## 4. BigQuery dataset for lore vectors
 
@@ -212,7 +215,7 @@ Secret Manager entries mounted as environment variables. The full set:
 |---|---|
 | `CLEARCUT_MODE` | `mock` for the in-memory demo, `live` for the real adapter graph; unset defaults to `live` |
 | `GOOGLE_CLOUD_PROJECT` | project ID, `clearcut-hack` |
-| `DOCAI_PROCESSOR_ID` | Document AI processor from section 3 |
+| `DOCAI_PROCESSOR_ID` | Document AI processor from section 3, as a full resource name: `projects/clearcut-hack/locations/us/processors/<id>` |
 | `PARALLEL_API_KEY` | Parallel Task API, Search API, and MCP auth (`x-api-key`) |
 | `CLICKHOUSE_HOST` | ClickHouse Cloud endpoint |
 | `CLICKHOUSE_USER` | ClickHouse user |
@@ -221,7 +224,7 @@ Secret Manager entries mounted as environment variables. The full set:
 | `OTEL_EXPORTER_OTLP_HEADERS` | Grafana Cloud OTLP auth header |
 | `GEMINI_MODEL` | `gemini-3.7-flash` |
 | `GEMINI_MODEL_LITE` | `gemini-3.1-flash-lite` |
-| `VERTEX_SEARCH_DATA_STORE_ID` | Vertex AI Search data store from section 5, `clearcut-legal-corpus` |
+| `VERTEX_SEARCH_DATA_STORE_ID` | data store from section 5, as a full resource name: `projects/clearcut-hack/locations/global/collections/default_collection/dataStores/clearcut-legal-corpus` |
 | `NOTIFY_WEBHOOK_URL` | outbound webhook the Notifier posts to |
 
 The Notifier delivers every notification as an HTTP POST to
@@ -259,7 +262,7 @@ gcloud run deploy clearcut \
   --allow-unauthenticated \
   --min-instances 0 \
   --set-secrets "PARALLEL_API_KEY=PARALLEL_API_KEY:latest,CLICKHOUSE_PASSWORD=CLICKHOUSE_PASSWORD:latest" \
-  --set-env-vars "GOOGLE_CLOUD_PROJECT=clearcut-hack,GEMINI_MODEL=gemini-3.7-flash,GEMINI_MODEL_LITE=gemini-3.1-flash-lite,DOCAI_PROCESSOR_ID=$DOCAI_PROCESSOR_ID,CLICKHOUSE_HOST=$CLICKHOUSE_HOST,CLICKHOUSE_USER=$CLICKHOUSE_USER,VERTEX_SEARCH_DATA_STORE_ID=clearcut-legal-corpus,NOTIFY_WEBHOOK_URL=$NOTIFY_WEBHOOK_URL"
+  --set-env-vars "GOOGLE_CLOUD_PROJECT=clearcut-hack,GEMINI_MODEL=gemini-3.7-flash,GEMINI_MODEL_LITE=gemini-3.1-flash-lite,DOCAI_PROCESSOR_ID=$DOCAI_PROCESSOR_ID,CLICKHOUSE_HOST=$CLICKHOUSE_HOST,CLICKHOUSE_USER=$CLICKHOUSE_USER,VERTEX_SEARCH_DATA_STORE_ID=$VERTEX_SEARCH_DATA_STORE_ID,NOTIFY_WEBHOOK_URL=$NOTIFY_WEBHOOK_URL"
 ```
 
 Min instances stays at 0. This is a demo; a cold start of a few seconds costs

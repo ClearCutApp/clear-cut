@@ -211,11 +211,23 @@ create_engine_call() {
   fi
 }
 
+# data_store_path is the form VERTEX_SEARCH_DATA_STORE_ID must carry.
+#
+# `VertexSearchGrounding` passes the value straight into
+# `types.VertexAISearch(datastore=...)` (adapters/gcp/vertex_search.py:92),
+# which needs a complete resource name. LOCATION is "global" because that is
+# where create_data_store puts it -- an earlier unit test asserted
+# "locations/us" against a fake, and a fake accepts either.
+data_store_path() {
+  printf 'projects/%s/locations/%s/collections/default_collection/dataStores/%s' \
+    "$PROJECT_ID" "$LOCATION" "$DATA_STORE_ID"
+}
+
 print_env_line() {
   cat <<EOF
 
 # .env line this run resolved -- paste into the repo-root .env file:
-VERTEX_SEARCH_DATA_STORE_ID=$DATA_STORE_ID
+VERTEX_SEARCH_DATA_STORE_ID=$(data_store_path)
 EOF
 }
 

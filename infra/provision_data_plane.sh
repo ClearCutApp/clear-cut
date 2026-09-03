@@ -131,11 +131,19 @@ docai_processors_url() {
     "$DOCAI_LOCATION" "$PROJECT_ID" "$DOCAI_LOCATION"
 }
 
-# docai_processor_id_from BODY extracts the trailing id off a processor's
-# "name" field ("projects/P/locations/L/processors/ID") in a JSON response.
+# docai_processor_id_from BODY extracts a processor's full "name" field
+# ("projects/P/locations/L/processors/ID") from a JSON response.
+#
+# The full path, not the trailing id. `DocumentAIIngestion` passes this value
+# straight into `ProcessRequest(name=...)` (adapters/gcp/document_ai.py:149),
+# which the API rejects unless it is a complete resource name. An earlier
+# version of this function stripped the path down to the bare id, which meant
+# provisioning as documented produced a .env that failed on the first
+# ingestion call -- and no test could see it, because the only consumer under
+# test was a fake that accepts any string.
 docai_processor_id_from() {
   printf '%s' "$1" | sed -n \
-    's#.*"name": *"projects/[^"]*/locations/[^"]*/processors/\([^"]*\)".*#\1#p' \
+    's#.*"name": *"\(projects/[^"]*/locations/[^"]*/processors/[^"]*\)".*#\1#p' \
     | head -1
 }
 
@@ -189,7 +197,7 @@ print_env_lines() {
 
 # .env lines this run resolved -- paste into the repo-root .env file:
 GOOGLE_CLOUD_PROJECT=$PROJECT_ID
-DOCAI_PROCESSOR_ID=${DOCAI_PROCESSOR_ID:-<processor-id-not-yet-created>}
+DOCAI_PROCESSOR_ID=${DOCAI_PROCESSOR_ID:-projects/$PROJECT_ID/locations/$DOCAI_LOCATION/processors/<not-yet-created>}
 GEMINI_MODEL=gemini-3.7-flash
 GEMINI_MODEL_LITE=gemini-3.1-flash-lite
 
