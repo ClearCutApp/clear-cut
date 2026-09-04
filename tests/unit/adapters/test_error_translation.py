@@ -12,7 +12,8 @@ class statement.
 import pytest
 
 from clearcut.adapters.bigquery.lore_store import LoreUnavailable
-from clearcut.adapters.clickhouse.tracker import TrackerItemNotFound, TrackerUnavailable
+from clearcut.adapters.clickhouse.client import ClickHouseUnavailable
+from clearcut.adapters.clickhouse.tracker import TrackerItemNotFound
 from clearcut.adapters.gcp.document_ai import IngestionFailed, NoScenesFound
 from clearcut.adapters.gcp.vertex_search import NoGroundedSource
 from clearcut.adapters.gemini.continuity import ContinuityCheckFailed
@@ -39,7 +40,7 @@ def test_no_rights_holder_found_is_an_enrichment_missing() -> None:
 
 def test_tracker_unavailable_is_a_source_unavailable() -> None:
     with pytest.raises(SourceUnavailable):
-        raise TrackerUnavailable("failed to save 1 item(s): boom")
+        raise ClickHouseUnavailable("failed to save 1 item(s): boom")
 
 
 def test_lore_unavailable_is_a_source_unavailable() -> None:

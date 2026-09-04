@@ -40,7 +40,8 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from clearcut.adapters.bigquery.lore_store import BigQueryLoreStore, _VectorStore
-from clearcut.adapters.clickhouse.tracker import ClickHouseTrackerStore, _ChClient
+from clearcut.adapters.clickhouse.client import _ChClient
+from clearcut.adapters.clickhouse.tracker import ClickHouseTrackerStore
 from clearcut.adapters.demo.in_memory import (
     InMemoryContinuityCheck,
     InMemoryLegalGrounding,

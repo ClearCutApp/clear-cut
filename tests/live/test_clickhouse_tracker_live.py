@@ -16,7 +16,8 @@ from typing import cast
 import clickhouse_connect
 import pytest
 
-from clearcut.adapters.clickhouse.tracker import ClickHouseTrackerStore, _ChClient
+from clearcut.adapters.clickhouse.client import _ChClient
+from clearcut.adapters.clickhouse.tracker import ClickHouseTrackerStore
 from clearcut.composition import _clickhouse_host
 from clearcut.domain.errors import RecordNotFound
 from clearcut.domain.tracker import TrackerItem, TrackerState

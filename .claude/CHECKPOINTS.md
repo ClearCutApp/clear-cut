@@ -3066,32 +3066,36 @@ and CP-077 last.
   layer each.
 
 ### CP-062 — Split the ClickHouse adapter into a package, changing no behaviour
-- Status: TODO
+- Status: IN_REVIEW
 - Attempts: 0/3
 - Depth: 0
 - Layer: adapters
 - Depends on: -
 - Acceptance:
-  - [ ] `adapters/clickhouse/tracker.py` (308 lines) becomes `client.py` (the
+  - [x] `adapters/clickhouse/tracker.py` (308 lines) becomes `client.py` (the
         `_ChClient` protocol and `ClickHouseUnavailable`), `schema.py` (`DDL`
         and `ensure_schema`) and `tracker.py` (the store). Every name keeps its
         spelling, `TrackerItemNotFound` included —
         `tests/unit/test_error_boundaries.py:34` names it.
-  - [ ] The three import sites move with it: `composition.py`,
+  - [x] The three import sites move with it: `composition.py`,
         `infra/provision_tracker_schema.py`,
         `tests/live/test_clickhouse_tracker_live.py`. `rg "clickhouse.tracker"`
         finds no stale path.
-  - [ ] `tests/unit/adapters/test_clickhouse_tracker.py` passes with only its
+  - [x] `tests/unit/adapters/test_clickhouse_tracker.py` passes with only its
         import lines changed. No assertion is edited, because no behaviour
         changed — that is this checkpoint's whole invariant.
-  - [ ] `tests/unit/test_error_boundaries.py` still walks every adapter
+  - [x] `tests/unit/test_error_boundaries.py` still walks every adapter
         exception to exactly one domain error type.
-  - [ ] Live: `./.claude/init.sh live` still green, and
+  - [~] Live: `./.claude/init.sh live` still green, and
         `tests/live/test_clickhouse_tracker_live.py` still asserts what it
         asserted before against the real ClickHouse Cloud service. It runs
         through the moved `_ChClient` import, which is the only proof the split
-        did not break the wiring the unit tests fake.
-  - [ ] Gate: `./.claude/init.sh check`.
+        did not break the wiring the unit tests fake. This worktree has no
+        `.env`, so `init.sh live` ran green with the three tracker-live tests
+        *skipped*, not executed — proving only that the moved import collects
+        cleanly, not that the real service still round-trips. Needs a run with
+        credentials before this box is fully earned.
+  - [x] Gate: `./.claude/init.sh check`.
 - Files: `src/clearcut/adapters/clickhouse/{client.py,schema.py,tracker.py}`,
   `src/clearcut/composition.py`, `infra/provision_tracker_schema.py`,
   `tests/unit/adapters/test_clickhouse_tracker.py`,
@@ -3099,6 +3103,35 @@ and CP-077 last.
 - Notes: Mechanical, and deliberately alone. CP-063 changes the DDL and the
   keys; doing both in one turn would make a data-integrity fix (D77) arrive
   inside a 300-line move, where a reviewer cannot see it.
+
+  **Implementer 2026-09-04.** Two decisions the acceptance text left implicit:
+
+  1. `ClickHouseUnavailable` replaces `TrackerUnavailable` (the class moves to
+     `client.py` under the name the checkpoint text already uses for it, and
+     which CP-063/CP-064 both assume exists there). That rename reaches one
+     file the "Files" list above does not name:
+     `tests/unit/adapters/test_error_translation.py` (import line and one
+     `raise` site only, same "no assertion edited" invariant `Files` already
+     holds the rest of the diff to). Flagging it explicitly since it is a
+     deviation from the stated file set, not an omission.
+  2. `tests/unit/test_layer_boundaries.py::test_composition_is_the_only_module_
+     importing_adapters` only exempts a same-package import shaped
+     `from clearcut.adapters.<pkg> import <sibling>` (package-level, matching
+     `adapters/demo/in_memory.py`'s existing `from clearcut.adapters.demo
+     import scenario`) — not `from clearcut.adapters.<pkg>.<sibling> import
+     X`. `tracker.py` and `schema.py` therefore import `client`/`schema` as
+     modules (`ch_client._ChClient`, `ch_client.ClickHouseUnavailable`,
+     `schema.ensure_schema`) rather than importing names directly, or the
+     layer gate fails. This is worth a Backlog note if a future split ever
+     wants the direct-name-import ergonomics back — it would need the gate
+     widened first.
+
+  Live tier: this worktree carries no ClickHouse credentials, so
+  `./.claude/init.sh live` passed with the three
+  `test_clickhouse_tracker_live.py` cases **skipped**, not run — the
+  acceptance box above is left `[~]` rather than checked. `./.claude/init.sh
+  check` (7/7, including `pytest -q` at 558 passed) is the gate this turn
+  actually cleared.
 
 ### CP-063 — Give the script aggregate its own store, keyed so versions survive
 - Status: TODO
