@@ -1,110 +1,136 @@
 {
-  "script_id": "scr_demo_001",
-  "project_id": "proj_demo_001",
-  "version": 1,
-  "gcs_uri": "gs://clearcut-demo/scripts/scr_demo_001.pdf",
-  "jurisdiction_code": "US",
-  "scenes": [
-    {
-      "number": 1,
-      "heading": "INT. DINER - DAY",
-      "page_start": 1,
-      "page_end": 1,
-      "text": "MAYA sips a coffee while a BILLBOARD for a national soda brand looms outside the window.",
-      "content_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
-    },
-    {
-      "number": 2,
-      "heading": "EXT. CITY PARK - CONTINUOUS",
-      "page_start": 1,
-      "page_end": 2,
-      "text": "MAYA walks past a busker playing a recognizable pop song on guitar.",
-      "content_hash": "b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3"
-    }
-  ],
   "findings": [
     {
-      "finding_id": "fnd_001",
-      "scene_number": 1,
-      "page": 1,
-      "raw_text": "a BILLBOARD for a national soda brand",
       "category": "INDUSTRIAL_PROPERTY",
-      "ner_label": "BRAND",
-      "risk_level": "MEDIUM",
-      "required_document": "Product placement release",
       "citations": [
         {
-          "uri": "https://example.com/trademark-registry/soda-brand",
-          "title": "National Soda Brand trademark registration",
-          "snippet": "Registered trademark covering beverage advertising."
+          "snippet": "El titular de una marca registrada puede oponerse a su uso por terceros sin su autorización.",
+          "title": "Ley de Marcas y Designaciones 22.362",
+          "uri": "https://servicios.infoleg.gob.ar/infolegInternet/anexos/0-4999/450/texact.htm"
         }
       ],
-      "contradicts": null
+      "contradicts": null,
+      "finding_id": "EVT-001",
+      "ner_label": "BRAND",
+      "page": 3,
+      "raw_text": "Ferrari Testarossa",
+      "required_document": "Trademark Clearance Form",
+      "risk_level": "MEDIUM",
+      "scene_number": 1
     },
     {
-      "finding_id": "fnd_002",
-      "scene_number": 2,
-      "page": 2,
-      "raw_text": "a busker playing a recognizable pop song",
       "category": "COPYRIGHT_WORKS",
-      "ner_label": "MUSIC_EXISTING",
-      "risk_level": "HIGH",
-      "required_document": "Synchronization license",
       "citations": [
         {
-          "uri": "https://example.com/ascap/song-title",
-          "title": "ASCAP repertory entry",
-          "snippet": "Performance rights held by the listed publisher."
+          "snippet": "El titular de una marca registrada puede oponerse a su uso por terceros sin su autorización.",
+          "title": "Ley de Marcas y Designaciones 22.362",
+          "uri": "https://servicios.infoleg.gob.ar/infolegInternet/anexos/0-4999/450/texact.htm"
         }
       ],
-      "contradicts": null
+      "contradicts": null,
+      "finding_id": "EVT-002",
+      "ner_label": "MUSIC_EXISTING",
+      "page": 5,
+      "raw_text": "Hotel California",
+      "required_document": "Synchronization License",
+      "risk_level": "HIGH",
+      "scene_number": 2
+    },
+    {
+      "category": "CONTINUITY",
+      "citations": [],
+      "contradicts": "FACT-001",
+      "finding_id": "EVT-003",
+      "ner_label": null,
+      "page": 8,
+      "raw_text": "Lola's father walks through the front door, alive and smiling.",
+      "required_document": "Continuity Revision",
+      "risk_level": "HIGH",
+      "scene_number": 3
     }
   ],
+  "gcs_uri": "gs://clearcut-demo/planted-script-v1.pdf",
+  "jurisdiction_code": "AR",
+  "project_id": "demo-project",
+  "scenes": [
+    {
+      "content_hash": "6c0567170324754fcde2ed6413811c9594b1c2c6d3ca3ad21937b4956189d5dc",
+      "heading": "INT. GARAGE - NIGHT",
+      "number": 1,
+      "page_end": 3,
+      "page_start": 3,
+      "text": "INT. GARAGE - NIGHT\nMARCO wipes down his cherry-red Ferrari Testarossa, the chrome prancing-horse badge catching the light."
+    },
+    {
+      "content_hash": "7a6e3003688df1bc05467fe1ead3676b6eb6c8120fae7a3f87b69322cf0c3753",
+      "heading": "INT. ROADSIDE BAR - NIGHT",
+      "number": 2,
+      "page_end": 5,
+      "page_start": 5,
+      "text": "INT. ROADSIDE BAR - NIGHT\nThe jukebox kicks into the opening riff of \"Hotel California\" and the regulars sing along."
+    },
+    {
+      "content_hash": "583f0577d50790ff81b0df979257b624ee1ce7103a95e58583db16df0896310e",
+      "heading": "INT. LOLA'S HOUSE - DAY",
+      "number": 3,
+      "page_end": 8,
+      "page_start": 8,
+      "text": "INT. LOLA'S HOUSE - DAY\nLOLA's father walks through the front door, alive and smiling, home from work."
+    }
+  ],
+  "script_id": "244dde330c504a04ad7bb7813f0d7991",
   "tracker_items": [
     {
-      "item_id": "item_001",
-      "project_id": "proj_demo_001",
-      "finding_id": "fnd_001",
-      "scene_numbers": [1],
-      "state": "BLOCKED",
-      "needs_review": false,
-      "required_document": "Product placement release",
       "contact": "legal@ferrari.example",
-      "litigation_posture": "cease-and-desist letters on file for unlicensed film placements",
       "draft_email": null,
+      "finding_id": "EVT-001",
+      "item_id": "EVT-001",
+      "litigation_posture": "cease-and-desist letters on file for unlicensed film placements",
+      "needs_review": false,
       "note": "",
-      "updated_at": "2026-08-20T09:00:00Z",
+      "project_id": "demo-project",
+      "required_document": "Trademark Clearance Form",
+      "scene_numbers": [
+        1
+      ],
+      "state": "BLOCKED",
+      "updated_at": "2026-09-04T12:10:57Z",
       "version": 1
     },
     {
-      "item_id": "item_002",
-      "project_id": "proj_demo_001",
-      "finding_id": "fnd_002",
-      "scene_numbers": [2],
-      "state": "IN_PROGRESS",
-      "needs_review": false,
-      "required_document": "Synchronization license",
       "contact": "sync@warnerchappell.example",
-      "litigation_posture": "standard sync licensing process, no litigation on record",
       "draft_email": null,
-      "note": "Awaiting quote from publisher.",
-      "updated_at": "2026-08-22T14:30:00Z",
-      "version": 2
+      "finding_id": "EVT-002",
+      "item_id": "EVT-002",
+      "litigation_posture": "standard sync licensing process, no litigation on record",
+      "needs_review": false,
+      "note": "",
+      "project_id": "demo-project",
+      "required_document": "Synchronization License",
+      "scene_numbers": [
+        2
+      ],
+      "state": "BLOCKED",
+      "updated_at": "2026-09-04T12:10:57Z",
+      "version": 1
     },
     {
-      "item_id": "item_003",
-      "project_id": "proj_demo_001",
-      "finding_id": "fnd_003",
-      "scene_numbers": [3, 4],
-      "state": "CLEARED",
-      "needs_review": false,
-      "required_document": "Location permit",
       "contact": "",
-      "litigation_posture": "",
       "draft_email": null,
-      "note": "Permit approved through end of shoot week.",
-      "updated_at": "2026-08-18T11:15:00Z",
-      "version": 3
+      "finding_id": "EVT-003",
+      "item_id": "EVT-003",
+      "litigation_posture": "",
+      "needs_review": false,
+      "note": "",
+      "project_id": "demo-project",
+      "required_document": "Continuity Revision",
+      "scene_numbers": [
+        3
+      ],
+      "state": "BLOCKED",
+      "updated_at": "2026-09-04T12:10:57Z",
+      "version": 1
     }
-  ]
+  ],
+  "version": 1
 }

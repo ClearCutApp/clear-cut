@@ -55,7 +55,7 @@ describe("ScriptView", () => {
       />,
     );
 
-    expect(screen.getByText("INT. DINER - DAY")).toBeInTheDocument();
-    expect(screen.getByText("EXT. CITY PARK - CONTINUOUS")).toBeInTheDocument();
+    expect(screen.getByText("INT. GARAGE - NIGHT")).toBeInTheDocument();
+    expect(screen.getByText("INT. ROADSIDE BAR - NIGHT")).toBeInTheDocument();
   });
 });

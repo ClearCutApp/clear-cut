@@ -10,24 +10,9 @@ const ferrariItem = trackerFixture[0] as TrackerItem;
 // The verified wire truth (CHECKPOINTS.md CP-054, D53's "Active" section):
 // the seeded continuity tracker item -- the one with no rights claim behind
 // it -- carries `contact`, `litigation_posture` and `note` all as empty
-// strings, never null. Built as a literal here rather than read from
-// `tracker.json`'s third row because that committed fixture's `note` field
-// predates this scenario and still carries non-empty text (see Notes).
-const emptyValueItem: TrackerItem = {
-  item_id: "item_continuity",
-  project_id: "demo-project",
-  finding_id: "SEED-CONTINUITY",
-  scene_numbers: [3],
-  state: "BLOCKED",
-  needs_review: false,
-  required_document: "Continuity Revision",
-  contact: "",
-  litigation_posture: "",
-  draft_email: null,
-  note: "",
-  updated_at: "2026-08-20T09:00:00Z",
-  version: 1,
-};
+// strings, never null. Since D60 the committed fixture is the captured mock
+// body itself, so its third row is that item.
+const emptyValueItem = trackerFixture[2] as TrackerItem;
 
 function noop(): void {
   // unused callback slot for props this test does not exercise
@@ -47,7 +32,7 @@ describe("TrackerRow", () => {
     expect(screen.getByTestId("state-badge")).toHaveTextContent("BLOCKED");
     expect(screen.getByText(/legal@ferrari\.example/)).toBeInTheDocument();
     expect(
-      screen.getByText(/Product placement release/),
+      screen.getByText(/Trademark Clearance Form/),
     ).toBeInTheDocument();
     expect(
       screen.getByText(/cease-and-desist letters on file/),
@@ -89,7 +74,7 @@ describe("TrackerRow", () => {
       target: { value: "IN_PROGRESS" },
     });
 
-    expect(onStateChange).toHaveBeenCalledWith("item_001", "IN_PROGRESS");
+    expect(onStateChange).toHaveBeenCalledWith("EVT-001", "IN_PROGRESS");
   });
 
   it("calls onDraftEmail and onNotify with the item id when their buttons are clicked", () => {
@@ -107,8 +92,8 @@ describe("TrackerRow", () => {
     fireEvent.click(screen.getByRole("button", { name: /draft email/i }));
     fireEvent.click(screen.getByRole("button", { name: /notify/i }));
 
-    expect(onDraftEmail).toHaveBeenCalledWith("item_001");
-    expect(onNotify).toHaveBeenCalledWith("item_001");
+    expect(onDraftEmail).toHaveBeenCalledWith("EVT-001");
+    expect(onNotify).toHaveBeenCalledWith("EVT-001");
   });
 
   it("shows only the two implemented actions, no menu entry for the other two", () => {

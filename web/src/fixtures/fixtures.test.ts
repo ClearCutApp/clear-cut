@@ -9,15 +9,22 @@ import analyzeData from "./analyze.json";
 import trackerData from "./tracker.json";
 
 /**
+ * Both files are the bodies the mock server returned, captured in-process
+ * from `clearcut.composition.create_app()` (D60): the POST that plants the
+ * demo script, then the GET that lists its tracker. They are the wire, not
+ * a hand-written approximation of it, which is why every row starts BLOCKED
+ * and the continuity item carries empty strings.
+ *
  * These two casts are the acceptance criterion, not the assertions below
  * them: they type-check the fixture JSON against the exact response shapes
- * `client.ts` declares. `as`, not `:`, on purpose — `resolveJsonModule`
+ * `client.ts` declares. `as`, not `:`, on purpose -- `resolveJsonModule`
  * widens every JSON string literal to `string`, so a direct `:` annotation
  * never structurally matches a field typed as a literal union (RiskLevel,
- * Category, TrackerState, ...) even when the fixture is correct. `as` still
- * requires the two shapes to "sufficiently overlap", which does catch a
- * renamed or missing field at any depth — verified directly against this
- * project's own tsc (see this checkpoint's Notes in CHECKPOINTS.md).
+ * Category, TrackerState, ...) even when the fixture is correct. `as` only
+ * requires the two shapes to "sufficiently overlap": a renamed field breaks
+ * the overlap in both directions and stops compiling, but a field that
+ * merely goes missing from one side does not, because the wider shape still
+ * accepts the narrower one. The key pins below exist to close that gap.
  */
 const analyzeFixture = analyzeData as AnalyzeResponse;
 const trackerFixture = trackerData as TrackerResponse;
@@ -25,9 +32,9 @@ const trackerFixture = trackerData as TrackerResponse;
 // Compile-visible pin (CP-053): the server emits `contact`,
 // `litigation_posture` and `note` as bare strings -- `""` when absent,
 // never `null` and never an object (`_tracker_item_json`,
-// adapters/http/routes.py:181-196; `TrackerItem`, domain/tracker.py:26,
-// 31-33). If any of these three fields ever regresses to an optional or
-// object type, this block stops compiling.
+// adapters/http/routes.py; `TrackerItem`, domain/tracker.py). If any of
+// these three fields ever regresses to an optional or object type, this
+// block stops compiling.
 const contact: string = trackerFixture[0].contact;
 const litigationPosture: string = trackerFixture[0].litigation_posture;
 const note: string = trackerFixture[2].note;
@@ -36,11 +43,9 @@ void litigationPosture;
 void note;
 
 // Compile-visible pin (CP-053 review attempt 1, finding 1): `project_id` is
-// this checkpoint's headline addition to `TrackerItem`. The eight-key test
-// below only pins `AnalyzeResponse`'s own keys, and the `as` cast performs no
-// excess-property check, so nothing else stops this field from silently
-// disappearing. If `project_id` is removed from `TrackerItem`, this line
-// stops compiling.
+// that checkpoint's headline addition to `TrackerItem`. The `as` cast above
+// lets a field go missing silently, so this line stops compiling if
+// `project_id` is removed from `TrackerItem`.
 const projectId: string = trackerFixture[0].project_id;
 void projectId;
 
@@ -57,6 +62,23 @@ void gcsUri;
 // deliberate too, and to the exact declared element type.
 const items: TrackerItem[] = analyzeFixture.tracker_items;
 void items;
+
+/** Every key `_tracker_item_json` writes, and nothing else (D58). */
+const TRACKER_ITEM_KEYS = [
+  "item_id",
+  "project_id",
+  "finding_id",
+  "scene_numbers",
+  "state",
+  "needs_review",
+  "required_document",
+  "contact",
+  "litigation_posture",
+  "draft_email",
+  "note",
+  "updated_at",
+  "version",
+];
 
 describe("analyze fixture", () => {
   it("carries at least one scene and one finding", () => {
@@ -79,13 +101,41 @@ describe("analyze fixture", () => {
     );
     expect(analyzeFixture.tracker_items.length).toBeGreaterThan(0);
   });
+
+  it("is the planted scenario: three scenes with text and three EVT findings", () => {
+    expect(analyzeFixture.scenes.map((scene) => scene.number)).toEqual([
+      1, 2, 3,
+    ]);
+    expect(analyzeFixture.scenes.every((scene) => scene.text.length > 0)).toBe(
+      true,
+    );
+    expect(analyzeFixture.findings.map((finding) => finding.finding_id)).toEqual(
+      ["EVT-001", "EVT-002", "EVT-003"],
+    );
+  });
+
+  it("carries the continuity finding with its contradicted fact and no citations", () => {
+    const continuity = analyzeFixture.findings[2];
+
+    expect(continuity.category).toBe("CONTINUITY");
+    expect(continuity.contradicts).toBe("FACT-001");
+    expect(continuity.citations).toEqual([]);
+  });
 });
 
 describe("tracker fixture", () => {
-  it("covers all three tracker states", () => {
-    const states = new Set(trackerFixture.map((item) => item.state));
+  it("starts every row BLOCKED, as the server does right after an analysis", () => {
+    expect(trackerFixture.map((item) => item.state)).toEqual([
+      "BLOCKED",
+      "BLOCKED",
+      "BLOCKED",
+    ]);
+  });
 
-    expect(states).toEqual(new Set(["BLOCKED", "IN_PROGRESS", "CLEARED"]));
+  it("carries exactly the thirteen TrackerItem keys on every row", () => {
+    for (const item of trackerFixture) {
+      expect(Object.keys(item).sort()).toEqual([...TRACKER_ITEM_KEYS].sort());
+    }
   });
 
   it("carries the scenario's real contact strings, empty string when absent", () => {
@@ -96,5 +146,11 @@ describe("tracker fixture", () => {
       "sync@warnerchappell.example",
       "",
     ]);
+  });
+
+  it("lists the same items the analyze response carried", () => {
+    expect(trackerFixture.map((item) => item.item_id)).toEqual(
+      analyzeFixture.tracker_items.map((item) => item.item_id),
+    );
   });
 });
