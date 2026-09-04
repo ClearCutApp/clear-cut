@@ -55,6 +55,7 @@ from clearcut.adapters.gcp.document_ai import DocumentAIIngestion
 from clearcut.adapters.gcp.vertex_search import VertexSearchGrounding
 from clearcut.adapters.gemini.continuity import GeminiContinuityCheck
 from clearcut.adapters.gemini.extractor import GeminiSceneExtractor
+from clearcut.adapters.http.docs import create_docs_blueprint
 from clearcut.adapters.http.health import create_health_blueprint
 from clearcut.adapters.http.routes import create_blueprint
 from clearcut.adapters.http.spa import create_spa_blueprint
@@ -341,6 +342,7 @@ def create_app(build_dir: Path | None = None) -> Flask:
     # Before the SPA blueprint, which answers every unmatched path: registered
     # after it, `/api/health` would resolve to the SPA's JSON 404 instead.
     app.register_blueprint(create_health_blueprint(mode))
+    app.register_blueprint(create_docs_blueprint())
     app.register_blueprint(
         create_spa_blueprint(build_dir if build_dir is not None else _default_build_dir())
     )
