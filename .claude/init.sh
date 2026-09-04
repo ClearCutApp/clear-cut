@@ -4,7 +4,8 @@
 #
 #   ./.claude/init.sh            bootstrap, then verify
 #   ./.claude/init.sh verify     static checks on the loop configuration
-#   ./.claude/init.sh check      run the project quality gates (ruff, pytest)
+#   ./.claude/init.sh check      run the project quality gates (ruff, mypy, pytest,
+#                                web lint:css, typecheck, vitest)
 #   ./.claude/init.sh live       run the tests that reach real services
 #
 set -euo pipefail
@@ -260,6 +261,7 @@ check() {
     no "pytest not installed or no tests/ — run ./.claude/init.sh first"
   fi
   if [ -d "$ROOT/web/node_modules" ]; then
+    (cd "$ROOT/web" && npm run lint:css) && ok "web lint:css" || no "web lint:css"
     (cd "$ROOT/web" && npm run typecheck) && ok "web typecheck" || no "web typecheck"
     (cd "$ROOT/web" && npm test) && ok "web test" || no "web test"
   else

@@ -1,0 +1,32 @@
+{
+  "extends": [
+    "stylelint-config-standard"
+  ],
+  "rules": {
+    "selector-class-pattern": [
+      "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?:__[a-z][a-z0-9]*(?:-[a-z0-9]+)*)?(?:--[a-z][a-z0-9]*(?:-[a-z0-9]+)*)?$",
+      {
+        "message": "Class names follow BEM in kebab-case: block, block__element, block--modifier, block__element--modifier"
+      }
+    ],
+    "selector-attribute-name-disallowed-list": [
+      [
+        "data-testid"
+      ],
+      {
+        "message": "Test ids are reserved for tests; style a class instead"
+      }
+    ],
+    "selector-max-id": 0
+  },
+  "overrides": [
+    {
+      "files": [
+        "src/index.css"
+      ],
+      "rules": {
+        "no-descending-specificity": null
+      }
+    }
+  ]
+}

@@ -6,39 +6,32 @@
 
 :root {
   --font-sans:
-    "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    "Geist", -apple-system, blinkmacsystemfont, "Segoe UI", sans-serif;
   --font-mono:
     "Geist Mono", ui-monospace, "SF Mono", "Cascadia Code", monospace;
-
   --color-ground: #fafafa;
-  --color-surface: #ffffff;
+  --color-surface: #fff;
   --color-border: #eaeaea;
   --color-border-hover: #d4d4d4;
   --color-text: #171717;
-  --color-text-secondary: #666666;
-  --color-text-tertiary: #999999;
-
+  --color-text-secondary: #666;
+  --color-text-tertiary: #999;
   --color-accent: #0070f3;
-
   --color-button-primary-bg: #171717;
   --color-button-primary-bg-hover: #383838;
-  --color-button-primary-text: #ffffff;
-
+  --color-button-primary-text: #fff;
   --color-blocked-text: #e5484d;
   --color-blocked-bg: #ffe9e9;
   --color-in-progress-text: #ad5700;
   --color-in-progress-bg: #fff4d6;
   --color-cleared-text: #18794e;
   --color-cleared-bg: #ddf3e4;
-
   --color-error-text: #e5484d;
   --color-error-bg: #ffe9e9;
   --color-error-border: #f3c6c6;
-
   --radius-container: 8px;
   --radius-control: 6px;
   --radius-badge: 4px;
-
   --transition-fast: 150ms ease;
 }
 
@@ -333,7 +326,7 @@ a:hover {
 }
 
 .citation-list {
-  margin: 6px 0 0 0;
+  margin: 6px 0 0;
   padding-left: 16px;
   border-left: 2px solid var(--color-border);
 }
