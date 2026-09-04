@@ -1,6 +1,7 @@
 """The project bible: cited facts an analysis checks continuity and policy against."""
 
 import enum
+import re
 from dataclasses import dataclass
 
 
@@ -37,3 +38,21 @@ class ProjectBible:
 
     def facts_of(self, kind: FactKind) -> tuple[BibleFact, ...]:
         return tuple(fact for fact in self.facts if fact.kind == kind)
+
+
+_FACT_PATTERN = re.compile(r"^FACT-(\d+)$")
+
+
+def next_fact_number(facts: list[BibleFact]) -> int:
+    """The next `FACT-NNN` sequence number, one past the highest seen.
+
+    Mirrors `_next_evt_number` (`application/evaluate_delta.py:97-103`)
+    without importing it: an id that does not match `FACT-NNN` is ignored
+    rather than raising, and an empty list starts the sequence at 1.
+    """
+    numbers = [
+        int(match.group(1))
+        for fact in facts
+        if (match := _FACT_PATTERN.match(fact.fact_id)) is not None
+    ]
+    return max(numbers, default=0) + 1

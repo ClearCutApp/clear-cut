@@ -3028,42 +3028,48 @@ and CP-077 last.
   `live`, the secret is set there even though `.env` is not.
 
 ### CP-061 — Add the three domain values the API partition needs
-- Status: TODO
+- Status: IN_REVIEW
 - Attempts: 0/3
 - Depth: 0
 - Layer: domain
 - Depends on: -
 - Acceptance:
-  - [ ] `tests/unit/domain/test_project.py`: a frozen `Project(project_id,
+  - [x] `tests/unit/domain/test_project.py`: a frozen `Project(project_id,
         title, jurisdiction_code, created_at)` keeps the four values it was
         given, and two `Project`s with equal fields compare equal.
-  - [ ] Failure paths in the same file: a blank `project_id` raises
+  - [x] Failure paths in the same file: a blank `project_id` raises
         `ValueError`, a blank `title` raises `ValueError`, and an unknown
         jurisdiction code raises the error `jurisdiction_for` already raises —
         validation happens in the constructor, so no caller can hold an invalid
         `Project`.
-  - [ ] `tests/unit/domain/test_bible.py`: `next_fact_number([])` is 1;
+  - [x] `tests/unit/domain/test_bible.py`: `next_fact_number([])` is 1;
         `FACT-001` and `FACT-002` give 3; a gap (`FACT-001`, `FACT-003`) gives
         4; an id that does not match `^FACT-(\d+)$` is ignored rather than
         crashing. It mirrors `_next_evt_number`
         (`application/evaluate_delta.py:97-103`) without importing it.
-  - [ ] `tests/unit/domain/test_tracker.py`: `clearance_rollup(items)` returns
+  - [x] `tests/unit/domain/test_tracker.py`: `clearance_rollup(items)` returns
         a `ClearanceRollup(blocked, in_progress, cleared, needs_review)` whose
         counts sum to `total`, and whose `clearance_percent` weights each state
         0 / 50 / 100. Boundaries, each its own test: empty → 0; all BLOCKED →
         0; all CLEARED → 100; one item in each of the four states → 50;
         `[BLOCKED, IN_PROGRESS]` → 25; a halved percentage rounds up and the
         result is an `int`.
-  - [ ] `tests/unit/test_layer_boundaries.py` still passes: all three modules
+  - [x] `tests/unit/test_layer_boundaries.py` still passes: all three modules
         import stdlib and `clearcut.domain` only.
-  - [ ] Gate: `./.claude/init.sh check`.
+  - [x] Gate: `./.claude/init.sh check`.
 - Files: `src/clearcut/domain/project.py`, `src/clearcut/domain/bible.py`,
   `src/clearcut/domain/tracker.py`, `tests/unit/domain/test_project.py`,
   `tests/unit/domain/test_bible.py`, `tests/unit/domain/test_tracker.py`
 - Notes: No live test — this is the domain layer and touches no adapter (§5).
   `ProjectBible` gets its first consumer in CP-074; `ClearanceRollup` gets one
   in CP-071. Both are collected here so those two checkpoints stay inside one
-  layer each.
+  layer each. `clearance_rollup` buckets an item by `needs_review` ahead of
+  `state` (weight 50, same as `IN_PROGRESS`) so the four buckets stay disjoint
+  and sum to `total`; this worktree's `.venv` had to be rebuilt from
+  `python@3.13` because the pre-existing one was an empty shell on a broken
+  `python@3.14` (`pyexpat` ABI mismatch against the system `libexpat`, so
+  `pip` itself could not bootstrap) — a machine-level defect unrelated to this
+  checkpoint, fixed by using a working interpreter rather than the system one.
 
 ### CP-062 — Split the ClickHouse adapter into a package, changing no behaviour
 - Status: IN_REVIEW

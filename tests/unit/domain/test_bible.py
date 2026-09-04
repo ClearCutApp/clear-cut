@@ -1,8 +1,8 @@
-"""Tests for `clearcut.domain.bible` (CP-004)."""
+"""Tests for `clearcut.domain.bible` (CP-004, CP-061)."""
 
 import pytest
 
-from clearcut.domain.bible import BibleFact, FactKind, ProjectBible
+from clearcut.domain.bible import BibleFact, FactKind, ProjectBible, next_fact_number
 
 
 def test_facts_of_returns_only_matching_kind_in_insertion_order() -> None:
@@ -60,3 +60,28 @@ def test_duplicate_fact_id_raises_value_error() -> None:
 
     with pytest.raises(ValueError, match="F-1"):
         ProjectBible(project_id="proj-1", facts=(first, second))
+
+
+def _fact(fact_id: str) -> BibleFact:
+    return BibleFact(
+        fact_id=fact_id, kind=FactKind.LORE, text="Ana lost an eye.", source="Bible p. 12"
+    )
+
+
+def test_next_fact_number_of_no_facts_is_one():
+    assert next_fact_number([]) == 1
+
+
+def test_next_fact_number_of_two_consecutive_facts_is_three():
+    facts = [_fact("FACT-001"), _fact("FACT-002")]
+    assert next_fact_number(facts) == 3
+
+
+def test_next_fact_number_of_a_gap_is_one_past_the_highest_number():
+    facts = [_fact("FACT-001"), _fact("FACT-003")]
+    assert next_fact_number(facts) == 4
+
+
+def test_next_fact_number_ignores_a_fact_id_that_does_not_match_the_pattern():
+    facts = [_fact("FACT-001"), _fact("LEGACY-9")]
+    assert next_fact_number(facts) == 2

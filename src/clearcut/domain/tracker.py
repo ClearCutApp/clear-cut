@@ -7,6 +7,7 @@ transition is recorded at arrives as an argument.
 """
 
 import enum
+from collections.abc import Iterable
 from dataclasses import dataclass, replace
 
 
@@ -100,3 +101,57 @@ class TrackerItem:
         if not text.strip():
             raise ValueError("draft_email text must not be blank")
         return replace(self, draft_email=text, updated_at=at, version=self.version + 1)
+
+
+_NEEDS_REVIEW_WEIGHT = 50
+
+
+@dataclass(frozen=True, slots=True)
+class ClearanceRollup:
+    """A count of tracker items per bucket, and the clearance percent they imply.
+
+    An item flagged `needs_review` counts in `needs_review` regardless of its
+    `state`: it is the bucket a producer must look at next, not a fifth
+    dimension layered on top of the other three.
+    """
+
+    blocked: int
+    in_progress: int
+    cleared: int
+    needs_review: int
+
+    @property
+    def total(self) -> int:
+        return self.blocked + self.in_progress + self.cleared + self.needs_review
+
+    @property
+    def clearance_percent(self) -> int:
+        """The weighted average of BLOCKED=0, IN_PROGRESS=50, CLEARED=100 and
+        NEEDS_REVIEW=50, rounded half up to an int. 0 when there are no items.
+        """
+        if self.total == 0:
+            return 0
+        weighted = (
+            self.in_progress * 50 + self.cleared * 100 + self.needs_review * _NEEDS_REVIEW_WEIGHT
+        )
+        return (2 * weighted + self.total) // (2 * self.total)
+
+
+def clearance_rollup(items: Iterable[TrackerItem]) -> ClearanceRollup:
+    """Bucket `items` into blocked / in_progress / cleared / needs_review counts.
+
+    An item flagged `needs_review` is counted there ahead of its `state`.
+    """
+    blocked = in_progress = cleared = needs_review = 0
+    for item in items:
+        if item.needs_review:
+            needs_review += 1
+        elif item.state is TrackerState.BLOCKED:
+            blocked += 1
+        elif item.state is TrackerState.IN_PROGRESS:
+            in_progress += 1
+        else:
+            cleared += 1
+    return ClearanceRollup(
+        blocked=blocked, in_progress=in_progress, cleared=cleared, needs_review=needs_review
+    )
