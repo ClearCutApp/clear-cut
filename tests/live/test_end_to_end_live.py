@@ -29,6 +29,7 @@ from clearcut.adapters.demo import scenario
 from clearcut.composition import _build_live_use_cases
 from clearcut.domain.finding import Category, NerLabel
 from clearcut.domain.jurisdiction import jurisdiction_for
+from clearcut.domain.script import content_hash
 from clearcut.domain.tracker import TrackerState
 from tests.live.conftest import env, requires
 from tests.unit.conftest import install_in_memory_telemetry, metric_attributes_by_name
@@ -79,7 +80,13 @@ def test_the_planted_script_analyzes_end_to_end(isolated_otel: None) -> None:
     assert song.ner_label is NerLabel.MUSIC_EXISTING
     # A bible finding carries no NER tag, and names the fact it contradicts.
     assert contradiction.ner_label is None
-    assert contradiction.contradicts == scenario.BIBLE_FACT.fact_id
+    # By content hash, not by "FACT-001". The same round trip that
+    # `seed_project_bible.seed` guards against: `BigQueryLoreStore` rebuilds a
+    # retrieved fact's `fact_id` from the stored `content_hash` column, so the
+    # continuity check cites the id it was actually handed. This assertion said
+    # `FACT-001` and failed against the real store, which is the product being
+    # right and the test being wrong.
+    assert contradiction.contradicts == content_hash(scenario.BIBLE_FACT.text)
 
     # --- the page numbers, which is the half a mocked run cannot prove ---
     # `build_planted_script.py` put the scenes on the pages `scenario.py`
