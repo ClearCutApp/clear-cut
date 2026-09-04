@@ -1,0 +1,7 @@
+/* Projects landing: the open form and the per-browser recent list. Owned
+   by the projects feature; this file starts with the root rule only. */
+
+.projects {
+  display: grid;
+  gap: var(--space-5);
+}

@@ -1,8 +1,15 @@
 /* Entry point: the ordered partials and nothing else. Order is meaning:
    tokens before anything that reads them, base before the components that
-   build on it, and the shell before the features it frames. */
+   build on it, the shell before the features it frames, and the features
+   in the order a reader meets them. */
 
 @import url("./styles/tokens.css");
 @import url("./styles/base.css");
 @import url("./styles/shell.css");
 @import url("./styles/components.css");
+@import url("./styles/projects.css");
+@import url("./styles/analyze.css");
+@import url("./styles/tracker.css");
+@import url("./styles/script.css");
+@import url("./styles/item.css");
+@import url("./styles/ask.css");

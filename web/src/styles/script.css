@@ -1,0 +1,9 @@
+/* Script review: scenes with inline highlights and the findings rail, two
+   columns from `@container (width >= 56rem)` so an open panel collapses
+   it honestly. Owned by the script feature; this file starts with the root
+   rule only. */
+
+.script {
+  display: grid;
+  gap: var(--space-5);
+}

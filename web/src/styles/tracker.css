@@ -1,0 +1,8 @@
+/* Overview: stats, filters and the tracker grouped by state. Rows stack
+   below `@container (width >= 40rem)` and become a grid above it. Owned by
+   the tracker feature; this file starts with the root rule only. */
+
+.tracker {
+  display: grid;
+  gap: var(--space-5);
+}

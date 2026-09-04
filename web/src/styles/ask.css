@@ -1,0 +1,7 @@
+/* Ask: the question form with example chips and the cited answer. Owned by
+   the ask feature; this file starts with the root rule only. */
+
+.ask {
+  display: grid;
+  gap: var(--space-5);
+}

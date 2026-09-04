@@ -1,66 +1,33 @@
-import { useEffect, useState, type ReactElement } from "react";
+import type { ReactElement } from "react";
+import { Route, Routes } from "react-router";
 
-import { fetchHealth, type AnalyzeResponse, type ServerMode } from "./api/client";
-import { DEMO_PROJECT } from "./app/demo";
-import { ModeBanner } from "./components/atoms/ModeBanner";
-import { ProjectQA } from "./components/organisms/ProjectQA";
-import { ScriptView } from "./components/organisms/ScriptView";
-import { TrackerDashboard } from "./components/organisms/TrackerDashboard";
+import { AppShell } from "./shell/AppShell";
+import { ProjectLayout } from "./shell/ProjectLayout";
+import { AnalyzeView } from "./views/AnalyzeView";
+import { AskView } from "./views/AskView";
+import { NotFoundView } from "./views/NotFoundView";
+import { OverviewView } from "./views/OverviewView";
+import { ProjectsView } from "./views/ProjectsView";
+import { ScriptView } from "./views/ScriptView";
 
 /**
- * Application shell: holds the `analysis` a successful `postAnalyze` call
- * returned, and a `trackerRefresh` counter bumped on every such success so
- * `TrackerDashboard` re-reads without a page reload.
+ * The route table, one destination per file, and nothing else. The shell
+ * frames every route; a project route adds `ProjectLayout`, which mounts
+ * the project's data layer for the views under it.
  */
 export function App(): ReactElement {
-  const [analysis, setAnalysis] = useState<AnalyzeResponse | null>(null);
-  const [trackerRefresh, setTrackerRefresh] = useState(0);
-  const [mode, setMode] = useState<ServerMode | null>(null);
-
-  // Asked once, on mount. The mode cannot change under a running server, and
-  // a failed check leaves `mode` null so the banner stays hidden -- claiming
-  // real data is planted would be its own kind of lie.
-  useEffect(() => {
-    let cancelled = false;
-    fetchHealth()
-      .then((health) => {
-        if (!cancelled) {
-          setMode(health.mode);
-        }
-      })
-      .catch(() => {
-        // Deliberately silent: an unreachable health endpoint is not evidence
-        // about the data, so it changes nothing on the page.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  function handleAnalyzed(response: AnalyzeResponse): void {
-    setAnalysis(response);
-    setTrackerRefresh((count) => count + 1);
-  }
-
   return (
-    <main className="app">
-      <header className="app__header">
-        <h1>ClearCut</h1>
-      </header>
-      <ModeBanner mode={mode} />
-      <ScriptView
-        analysis={analysis}
-        onAnalyzed={handleAnalyzed}
-        projectId={DEMO_PROJECT.projectId}
-        gcsUri={DEMO_PROJECT.gcsUri}
-        jurisdictionCode={DEMO_PROJECT.jurisdictionCode}
-        version={DEMO_PROJECT.version}
-      />
-      <TrackerDashboard projectId={DEMO_PROJECT.projectId} refreshKey={trackerRefresh} />
-      <ProjectQA
-        projectId={DEMO_PROJECT.projectId}
-        jurisdictionCode={DEMO_PROJECT.jurisdictionCode}
-      />
-    </main>
+    <Routes>
+      <Route element={<AppShell />}>
+        <Route index element={<ProjectsView />} />
+        <Route path="projects/:projectId" element={<ProjectLayout />}>
+          <Route index element={<OverviewView />} />
+          <Route path="analyze" element={<AnalyzeView />} />
+          <Route path="script" element={<ScriptView />} />
+          <Route path="ask" element={<AskView />} />
+        </Route>
+        <Route path="*" element={<NotFoundView />} />
+      </Route>
+    </Routes>
   );
 }

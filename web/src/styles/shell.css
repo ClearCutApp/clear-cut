@@ -1,18 +1,19 @@
 /* The application frame: sidebar, top bar with the drawer toggle, the main
-   column and the mode banner. Root rules only until the routed shell lands;
-   the responsive rules arrive with it. */
+   column, the mode banner, and the project layout with its header and the
+   panel column. The sidebar is a permanent column from 1024px up and a
+   drawer below it; the body scrolls, nothing locks to the viewport. */
 
 .shell {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
 }
 
-.sidebar {
-  background: var(--color-sidebar);
-  border-right: 1px solid var(--color-border);
-}
+/* -------------------------------------------------------------- topbar */
 
 .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: flex;
   gap: var(--space-3);
   align-items: center;
@@ -21,9 +22,115 @@
   border-bottom: 1px solid var(--color-border);
 }
 
-.drawer {
-  display: contents;
+.topbar__menu {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  color: var(--color-text);
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
 }
+
+.topbar__menu:hover {
+  background: var(--color-card-hover);
+  border-color: var(--color-border-focus);
+}
+
+.topbar__brand {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+/* ------------------------------------------------------------- sidebar */
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  background: var(--color-sidebar);
+  border-right: 1px solid var(--color-border);
+}
+
+.sidebar__brand {
+  padding: var(--space-2) var(--space-3);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.sidebar__link {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  border-radius: var(--radius-control);
+  transition:
+    color var(--transition-fast),
+    background var(--transition-fast);
+}
+
+.sidebar__link:hover {
+  color: var(--color-text);
+  text-decoration: none;
+  background: var(--color-card-hover);
+}
+
+.sidebar__link--active {
+  color: var(--color-accent);
+  background: var(--color-green-glow);
+}
+
+.sidebar__footer {
+  margin-top: auto;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+/* Below the breakpoint the sidebar lives in a drawer: a fixed overlay the
+   menu button opens, with a backdrop that closes it. */
+.drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  display: none;
+}
+
+.drawer--open {
+  display: block;
+}
+
+.drawer__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgb(0 0 0 / 55%);
+}
+
+.drawer .sidebar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: var(--sidebar-width);
+  max-width: 85%;
+  overflow-y: auto;
+}
+
+/* ---------------------------------------------------------------- main */
 
 .shell__main {
   max-width: var(--content-max);
@@ -57,16 +164,88 @@
   color: var(--color-text);
 }
 
-/* ------------------------------------------------------------ legacy --- */
+/* ------------------------------------------------------ project layout */
 
-/* The pre-router root. Its viewport-height lock is gone: the body scrolls.
-   Removed with the routed shell. */
-.app {
-  max-width: 760px;
-  margin: 0 auto;
-  padding: 0 24px 64px;
+.project-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-5);
 }
 
-.app__header {
-  padding: 32px 0 24px;
+/* The content column is a container so feature layouts (tracker rows,
+   script columns) answer to the width they actually have, panel open or
+   not, rather than to the viewport. */
+.project-layout__content {
+  min-width: 0;
+  container-type: inline-size;
+}
+
+.project-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: var(--space-5);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.project-header__identity {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.project-header__title {
+  overflow-wrap: anywhere;
+}
+
+.project-header__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+/* --------------------------------------------------------- wide layout */
+
+@media (width >= 1024px) {
+  .shell {
+    grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  }
+
+  .topbar {
+    display: none;
+  }
+
+  .drawer {
+    display: contents;
+  }
+
+  .drawer__backdrop {
+    display: none;
+  }
+
+  .drawer .sidebar {
+    position: sticky;
+    top: 0;
+    bottom: auto;
+    left: auto;
+    align-self: start;
+    width: auto;
+    max-width: none;
+    max-height: 100dvh;
+  }
+
+  .shell__main {
+    padding: var(--space-6) var(--space-6) var(--space-8);
+  }
+
+  .project-layout--panel-open {
+    grid-template-columns: minmax(0, 1fr) var(--panel-width);
+  }
 }

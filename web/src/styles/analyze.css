@@ -1,0 +1,8 @@
+/* Run analysis: the form and the pipeline note side by side when there is
+   room (`repeat(auto-fit, minmax(20rem, 1fr))`). Owned by the analyze
+   feature; this file starts with the root rule only. */
+
+.analyze {
+  display: grid;
+  gap: var(--space-5);
+}

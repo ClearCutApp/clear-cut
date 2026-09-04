@@ -1,0 +1,11 @@
+/* Item detail panel: the second grid column from 1024px up (sticky), a
+   fixed bottom sheet with a backdrop below it (`max-height: 85dvh` with
+   internal scroll, never a height lock). Owned by the item feature; this
+   file starts with the root rule only. */
+
+.item-panel {
+  padding: var(--space-5);
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-container);
+}
