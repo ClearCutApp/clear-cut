@@ -1,0 +1,122 @@
+/* Design tokens. Dark by default, after the mockup; light when the reader
+   prefers it. Every color the app paints is named here and nowhere else:
+   components carry a token or a class modifier, never a hex value, so this
+   file is the single color map. Comments separate the groups because the
+   standard config forbids blank lines between custom properties. */
+
+:root {
+  color-scheme: dark light;
+
+  /* Type */
+  --font-sans: "Geist", -apple-system, blinkmacsystemfont, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", "Cascadia Code", monospace;
+
+  /* Surfaces */
+  --color-ground: #090d14;
+  --color-sidebar: #0d121d;
+  --color-card: #121824;
+  --color-card-hover: #182030;
+
+  /* Lines */
+  --color-border: #1e2838;
+  --color-border-focus: #2c3a50;
+
+  /* Text */
+  --color-text: #f3f4f6;
+  --color-text-muted: #8c98a8;
+  --color-text-dim: #5a6676;
+
+  /* Tones, each with a translucent glow for badges and notices */
+  --color-green: #10b981;
+  --color-green-glow: rgb(16 185 129 / 15%);
+  --color-amber: #f59e0b;
+  --color-amber-glow: rgb(245 158 11 / 15%);
+  --color-red: #ef4444;
+  --color-red-glow: rgb(239 68 68 / 15%);
+  --color-blue: #3b82f6;
+  --color-blue-glow: rgb(59 130 246 / 15%);
+
+  /* Accent */
+  --color-accent: var(--color-green);
+  --color-accent-contrast: #041a10;
+
+  /* Tracker states */
+  --color-state-blocked: var(--color-red);
+  --color-state-blocked-glow: var(--color-red-glow);
+  --color-state-in-progress: var(--color-amber);
+  --color-state-in-progress-glow: var(--color-amber-glow);
+  --color-state-cleared: var(--color-green);
+  --color-state-cleared-glow: var(--color-green-glow);
+
+  /* Risk levels */
+  --color-risk-low: var(--color-green);
+  --color-risk-low-glow: var(--color-green-glow);
+  --color-risk-medium: var(--color-amber);
+  --color-risk-medium-glow: var(--color-amber-glow);
+  --color-risk-high: var(--color-red);
+  --color-risk-high-glow: var(--color-red-glow);
+  --color-risk-critical: var(--color-red);
+  --color-risk-critical-glow: var(--color-red-glow);
+
+  /* Errors */
+  --color-error: var(--color-red);
+  --color-error-glow: var(--color-red-glow);
+
+  /* Spacing */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+
+  /* Radii */
+  --radius-container: 8px;
+  --radius-control: 6px;
+  --radius-badge: 4px;
+
+  /* Motion */
+  --transition-fast: 150ms ease;
+
+  /* Layout */
+  --sidebar-width: 15rem;
+  --panel-width: 22.5rem;
+  --content-max: 80rem;
+}
+
+/* The light theme is the same vocabulary remapped to the Geist values the
+   app shipped with before the dark default (D63). Accent text flips to
+   white because the light green is dark enough to carry it. */
+@media (prefers-color-scheme: light) {
+  :root {
+    /* Surfaces */
+    --color-ground: #fafafa;
+    --color-sidebar: #fff;
+    --color-card: #fff;
+    --color-card-hover: #fafafa;
+
+    /* Lines */
+    --color-border: #eaeaea;
+    --color-border-focus: #d4d4d4;
+
+    /* Text */
+    --color-text: #171717;
+    --color-text-muted: #666;
+    --color-text-dim: #999;
+
+    /* Tones */
+    --color-green: #18794e;
+    --color-green-glow: #ddf3e4;
+    --color-amber: #ad5700;
+    --color-amber-glow: #fff4d6;
+    --color-red: #e5484d;
+    --color-red-glow: #ffe9e9;
+    --color-blue: #0070f3;
+    --color-blue-glow: #e1efff;
+
+    /* Accent */
+    --color-accent-contrast: #fff;
+  }
+}

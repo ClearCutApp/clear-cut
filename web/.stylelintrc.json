@@ -1,7 +1,5 @@
 {
-  "extends": [
-    "stylelint-config-standard"
-  ],
+  "extends": ["stylelint-config-standard"],
   "rules": {
     "selector-class-pattern": [
       "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?:__[a-z][a-z0-9]*(?:-[a-z0-9]+)*)?(?:--[a-z][a-z0-9]*(?:-[a-z0-9]+)*)?$",
@@ -10,23 +8,19 @@
       }
     ],
     "selector-attribute-name-disallowed-list": [
-      [
-        "data-testid"
-      ],
+      ["data-testid"],
       {
         "message": "Test ids are reserved for tests; style a class instead"
       }
     ],
-    "selector-max-id": 0
-  },
-  "overrides": [
-    {
-      "files": [
-        "src/index.css"
-      ],
-      "rules": {
-        "no-descending-specificity": null
+    "selector-max-id": 0,
+    "declaration-property-value-disallowed-list": [
+      {
+        "/^(height|min-height)$/": ["/100[dsl]?vh/"]
+      },
+      {
+        "message": "The body scrolls: nothing locks itself to the viewport height (a sheet uses max-height with internal scroll)"
       }
-    }
-  ]
+    ]
+  }
 }
