@@ -34,6 +34,7 @@ from typing import Any, NoReturn, cast
 import pytest
 from flask import Flask
 
+from clearcut import composition
 from clearcut.adapters.bigquery.lore_store import BigQueryLoreStore
 from clearcut.adapters.clickhouse.tracker import ClickHouseTrackerStore
 from clearcut.adapters.demo.in_memory import (
@@ -58,6 +59,7 @@ from clearcut.composition import (
     _build_live_use_cases,
     _build_mock_use_cases,
     _clickhouse_host,
+    _default_build_dir,
     create_app,
 )
 
@@ -578,3 +580,40 @@ def test_a_host_with_no_scheme_or_port_is_left_alone() -> None:
     documented format into two, and only one of them is tested.
     """
     assert _clickhouse_host("localhost") == "localhost"
+
+
+# ---------------------------------------------------------------------------
+# CP-060: the SPA path has to survive being installed, not just imported.
+#
+# `_default_build_dir` walked three parents up from `composition.py`. In the
+# repo that lands on the root and finds `web/dist`. Installed into
+# site-packages it lands on `/usr/local/lib/python3.12`, and the deployed
+# container served `{"error": "SPA build not found at
+# /usr/local/lib/python3.12/web/dist"}`. Local runs never caught it because
+# `pip install -e` leaves the package inside the repo.
+# ---------------------------------------------------------------------------
+
+
+def test_the_build_dir_is_found_from_the_working_directory(tmp_path: Path) -> None:
+    """What the container has: sources at /app, package in site-packages."""
+    (tmp_path / "web" / "dist").mkdir(parents=True)
+    cwd = Path.cwd()
+    os.chdir(tmp_path)
+    try:
+        assert _default_build_dir() == tmp_path / "web" / "dist"
+    finally:
+        os.chdir(cwd)
+
+
+def test_the_build_dir_falls_back_to_the_package_layout(tmp_path: Path) -> None:
+    """With no web/dist beside the process, the repo-relative path is still
+    named -- so the error message points somewhere a developer recognises
+    rather than at an empty temp directory."""
+    cwd = Path.cwd()
+    os.chdir(tmp_path)
+    try:
+        assert (
+            _default_build_dir() == Path(composition.__file__).resolve().parents[2] / "web" / "dist"
+        )
+    finally:
+        os.chdir(cwd)

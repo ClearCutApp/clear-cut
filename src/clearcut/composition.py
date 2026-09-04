@@ -287,7 +287,23 @@ def _default_build_dir() -> Path:
     -- computed here, inside the function, on every call, rather than as a
     module-level constant: importing this module must never touch the
     filesystem, and a test must be free to point `create_app` at any
-    directory it likes instead."""
+    directory it likes instead.
+
+    The working directory comes first because that is where the container has
+    it: the Dockerfile copies the Vite output to `/app/web/dist` and `pip
+    install` puts the package under site-packages, so walking up from
+    `__file__` lands on `/usr/local/lib/python3.12` instead. The deployed
+    revision served `SPA build not found at /usr/local/lib/python3.12/web/dist`
+    until this looked at the process first (CP-060). Local runs never showed it,
+    because `pip install -e` leaves the package inside the repo and both paths
+    agree.
+
+    The package-relative path stays as the fallback so the error message names
+    somewhere a developer recognises rather than whatever directory the process
+    happened to start in."""
+    from_cwd = Path.cwd() / "web" / "dist"
+    if from_cwd.is_dir():
+        return from_cwd
     return Path(__file__).resolve().parent.parent.parent / "web" / "dist"
 
 
