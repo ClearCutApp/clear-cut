@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  API_DOCS_PATH,
   ApiError,
   fetchTracker,
   patchTrackerState,
@@ -170,5 +171,11 @@ describe("postQuestion", () => {
 
     await expect(failure).resolves.toBeInstanceOf(ApiError);
     await expect(failure).resolves.toMatchObject({ status: 502 });
+  });
+});
+
+describe("API_DOCS_PATH", () => {
+  it("points at the docs resource without any caller spelling the path", () => {
+    expect(API_DOCS_PATH.endsWith("docs")).toBe(true);
   });
 });

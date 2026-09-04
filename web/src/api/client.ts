@@ -126,6 +126,10 @@ export interface HealthResponse {
   mode: ServerMode;
 }
 
+/** The Swagger UI the server mounts (built routes only). Exported so the
+ * sidebar can link to it without spelling a path of its own. */
+export const API_DOCS_PATH = "/api/docs";
+
 export class ApiError extends Error {
   readonly status: number;
 

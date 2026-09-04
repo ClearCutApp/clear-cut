@@ -1,18 +1,11 @@
 import { useEffect, useState, type ReactElement } from "react";
 
 import { fetchHealth, type AnalyzeResponse, type ServerMode } from "./api/client";
+import { DEMO_PROJECT } from "./app/demo";
 import { ModeBanner } from "./components/atoms/ModeBanner";
 import { ProjectQA } from "./components/organisms/ProjectQA";
 import { ScriptView } from "./components/organisms/ScriptView";
 import { TrackerDashboard } from "./components/organisms/TrackerDashboard";
-
-// The seeded demo project (`adapters/demo/scenario.py`, D36/CP-043) --
-// plain literals here, never inside a component, so nothing under
-// `components/` hardcodes a demo value itself.
-const DEMO_PROJECT_ID = "demo-project";
-const DEMO_GCS_URI = "gs://clearcut-demo/planted-script-v1.pdf";
-const DEMO_JURISDICTION_CODE = "AR";
-const DEMO_VERSION = 1;
 
 /**
  * Application shell: holds the `analysis` a successful `postAnalyze` call
@@ -58,15 +51,15 @@ export function App(): ReactElement {
       <ScriptView
         analysis={analysis}
         onAnalyzed={handleAnalyzed}
-        projectId={DEMO_PROJECT_ID}
-        gcsUri={DEMO_GCS_URI}
-        jurisdictionCode={DEMO_JURISDICTION_CODE}
-        version={DEMO_VERSION}
+        projectId={DEMO_PROJECT.projectId}
+        gcsUri={DEMO_PROJECT.gcsUri}
+        jurisdictionCode={DEMO_PROJECT.jurisdictionCode}
+        version={DEMO_PROJECT.version}
       />
-      <TrackerDashboard projectId={DEMO_PROJECT_ID} refreshKey={trackerRefresh} />
+      <TrackerDashboard projectId={DEMO_PROJECT.projectId} refreshKey={trackerRefresh} />
       <ProjectQA
-        projectId={DEMO_PROJECT_ID}
-        jurisdictionCode={DEMO_JURISDICTION_CODE}
+        projectId={DEMO_PROJECT.projectId}
+        jurisdictionCode={DEMO_PROJECT.jurisdictionCode}
       />
     </main>
   );
