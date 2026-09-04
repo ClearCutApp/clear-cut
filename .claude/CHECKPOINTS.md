@@ -3133,6 +3133,73 @@ and CP-077 last.
   check` (7/7, including `pytest -q` at 558 passed) is the gate this turn
   actually cleared.
 
+  **Reviewer 2026-09-04 — unit review passed, live run still pending.** Status
+  stays `IN_REVIEW` and `Attempts` stays `0/3`: every criterion except the live
+  box is met, and the live box cannot be judged in this worktree, which carries
+  no `.env` by design. Zero blocking findings. Evidence, re-run rather than
+  taken from the turn above: `./.claude/init.sh check` 7 passed / 0 failed
+  (`ruff check`, `ruff format`, `mypy`, `pytest -q` 558 passed / 11 deselected,
+  `web lint:css`, `web typecheck`, `web test` 64 passed);
+  `./.claude/init.sh live` 1 passed with 11 live cases skipped, three of them
+  `test_clickhouse_tracker_live.py`, each naming the credentials it lacks — the
+  honest outcome for a live test without credentials, and not a pass.
+
+  The no-behaviour-change invariant holds mechanically. Both DDL strings are
+  byte-identical to `974c5b1`'s. The old 308-line module's def/class set is
+  preserved across the new 42 + 60 + 246 lines, the only differences being the
+  `TrackerUnavailable` → `ClickHouseUnavailable` rename and
+  `schema.ensure_schema` as a module-level function beside the store method that
+  now delegates to it. `git diff 974c5b1 1dc252d --
+  tests/unit/adapters/test_clickhouse_tracker.py` is import lines plus five
+  `pytest.raises` type names carrying that rename; no arranged input, no
+  expected value and no other assertion is touched.
+  `tests/unit/test_error_boundaries.py` still walks the package with
+  `pkgutil.walk_packages`, so `client.py` is inspected automatically and
+  `ClickHouseUnavailable` would fail that walk if it did not subclass exactly
+  one domain error.
+
+  Both implementer judgment calls are accepted, on the record:
+
+  1. **The rename, and the file outside `Files`.** The acceptance text's own
+     first clause names `ClickHouseUnavailable` as what `client.py` holds, and
+     CP-063 and CP-064 both assert a client error becomes that type. "Every name
+     keeps its spelling" is qualified by the parenthetical naming
+     `TrackerItemNotFound`, which is the name `test_error_boundaries.py` pins.
+     Keeping `TrackerUnavailable` would have contradicted the criterion it sits
+     in and pushed the rename into CP-063, where it would land inside a DDL and
+     key change — the exact mixing this checkpoint's Notes exist to prevent. The
+     reach into `tests/unit/adapters/test_error_translation.py` is one import
+     line and one `raise` argument; its assertion,
+     `pytest.raises(SourceUnavailable)`, is unchanged. Declaring it in Notes was
+     the right handling.
+  2. **Module-shaped sibling imports.** Verified against the gate rather than
+     accepted on assertion: `_adapter_import_violations` allows an adapters
+     import only when the imported name equals the module's own package, so
+     `from clearcut.adapters.clickhouse.client import X` inside the package
+     would be reported as `clearcut.adapters.clickhouse.client` and fail, while
+     `from clearcut.adapters.clickhouse import client as ch_client` matches the
+     package exactly and passes. The chosen shape is the only one the existing
+     gate permits, and it adds no indirection of its own.
+
+  No Section 4 finding. `schema.ensure_schema` and the `DDL` tuple are named by
+  the acceptance criteria and consumed by CP-063, which depends on this
+  checkpoint, so they are a move under a stated requirement rather than a
+  speculative abstraction. No secrets in the diff; no `.env` was created or
+  copied. `rg "clickhouse.tracker"` returns only live references to the module
+  that still exists.
+
+  One non-blocking observation, deliberately not filed as its own checkpoint
+  because CP-063 already edits the file: five test functions in
+  `tests/unit/adapters/test_clickhouse_tracker.py` still read
+  `..._wraps_a_client_error_as_tracker_unavailable` while raising
+  `ClickHouseUnavailable`. Renaming them here would have widened the diff past
+  the invariant this checkpoint is built on; CP-063 can refresh them in passing.
+
+  What remains before `DONE`: one `./.claude/init.sh live` run with
+  `CLICKHOUSE_HOST`, `CLICKHOUSE_USER` and `CLICKHOUSE_PASSWORD` present, so the
+  three tracker cases execute against ClickHouse Cloud and the `[~]` box is
+  earned. The conductor runs it where those credentials exist.
+
 ### CP-063 — Give the script aggregate its own store, keyed so versions survive
 - Status: TODO
 - Attempts: 0/3
