@@ -12,10 +12,11 @@ The fact is not restated here. It comes from `adapters/demo/scenario.py`, the
 one place it is defined, so what this seeds and what mock mode serves cannot
 disagree about which fact scene 3 contradicts.
 
-Additive only. `LoreStore` exposes `index` and `search` and nothing that
-removes a row, which SDD section 4.3 already records as a known gap. Running
-this twice indexes the fact twice; BigQuery holds both rows and a search
-returns the same text either way.
+Additive only, and idempotent. `LoreStore` exposes `index` and `search` and
+nothing that removes a row, which SDD section 4.3 already records as a known
+gap -- so a second run that wrote again would leave two copies of the fact in
+the corpus permanently, with no way to undo it. `seed` searches first and
+writes nothing when the fact is already there.
 
 Usage:
     .venv/bin/python infra/seed_project_bible.py [--dry-run]
@@ -38,6 +39,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 try:
     from clearcut.adapters.bigquery.lore_store import BigQueryLoreStore
     from clearcut.adapters.demo import scenario
+    from clearcut.domain.script import content_hash
 except ModuleNotFoundError as exc:  # pragma: no cover - depends on the interpreter
     print(
         f"seed_project_bible.py: {exc.name} is not importable.\n"
@@ -56,15 +58,37 @@ _LOCATION = "us-central1"
 _DATASET = "clearcut"
 _TABLE = "lore_vectors"
 _EMBEDDING_MODEL = "text-embedding-005"
+# Enough neighbours that an already-seeded fact is found even once the corpus
+# holds other facts for the same project.
+_SEARCH_LIMIT = 20
 
 
-def seed(store: Any) -> None:
-    """Index the scenario's bible fact against the scenario's project.
+def seed(store: Any) -> bool:
+    """Index the scenario's bible fact, unless it is already there.
+
+    Returns whether anything was written.
+
+    Idempotent because every other provisioning script in `infra/` is, and
+    because `LoreStore` offers no way to take a row back: without this, a
+    second run leaves two copies of the fact in the corpus permanently, and
+    duplicates crowd the continuity check's top-k retrieval.
+
+    **Matched on the content hash, not on `fact_id`.** What comes back from
+    BigQuery is not what went in. `_bible_fact_from` rebuilds `fact_id` from
+    the stored `content_hash` column, so the fact indexed as `FACT-001`
+    answers to a hex digest afterwards. A guard comparing `fact_id` would
+    never match and would re-index on every run while looking correct.
 
     Takes the store rather than building one, which is the seam that lets a
     test assert what was indexed without a BigQuery dataset.
     """
-    store.index(scenario.PROJECT_ID, [scenario.BIBLE_FACT])
+    fact = scenario.BIBLE_FACT
+    wanted = content_hash(fact.text)
+    existing = store.search(scenario.PROJECT_ID, fact.text, _SEARCH_LIMIT)
+    if any(found.fact_id == wanted for found in existing):
+        return False
+    store.index(scenario.PROJECT_ID, [fact])
+    return True
 
 
 def _missing_credentials() -> list[str]:
@@ -117,8 +141,10 @@ def main(argv: list[str] | None = None) -> int:
         embeddings=embeddings,
     )
 
-    seed(store)
-    print("indexed:")
+    if seed(store):
+        print("indexed:")
+    else:
+        print("already present, nothing written:")
     print(_describe())
     return 0
 

@@ -23,6 +23,8 @@ from typing import Any
 import pytest
 
 from clearcut.adapters.demo import scenario
+from clearcut.domain.bible import BibleFact, FactKind
+from clearcut.domain.script import content_hash
 
 SCRIPT = Path(__file__).resolve().parents[3] / "infra" / "seed_project_bible.py"
 
@@ -37,17 +39,39 @@ def load_script() -> ModuleType:
 
 
 class RecordingLoreStore:
-    """Records what was indexed. The seam `seed` takes, so this test needs no
-    BigQuery dataset and no credentials."""
+    """Records what was indexed, and answers `search` the way BigQuery does.
 
-    def __init__(self) -> None:
+    The round trip is the point. `BigQueryLoreStore._bible_fact_from` rebuilds
+    `fact_id` from the stored `content_hash` column, so a fact that went in as
+    `FACT-001` comes back as a hex digest, with `source` flattened to
+    "episode - p.0". A guard that recognised an already-seeded fact by its
+    `fact_id` would therefore never match, and would re-index on every run
+    while looking correct.
+
+    This fake reproduces that faithfully so the guard is tested against what
+    BigQuery actually returns rather than against what was handed to it.
+    """
+
+    def __init__(self, already_holding: list[BibleFact] | None = None) -> None:
         self.indexed: list[tuple[str, list[Any]]] = []
+        self._stored = list(already_holding or [])
 
     def index(self, project_id: str, records: list[Any]) -> None:
         self.indexed.append((project_id, records))
+        self._stored.extend(records)
 
-    def search(self, project_id: str, query: str, limit: int) -> list[Any]:
-        raise AssertionError("seeding must not read")
+    def search(self, project_id: str, query: str, limit: int) -> list[BibleFact]:
+        if project_id != scenario.PROJECT_ID:
+            return []
+        return [
+            BibleFact(
+                fact_id=content_hash(fact.text),
+                kind=FactKind.LORE,
+                text=fact.text,
+                source="episode - p.0",
+            )
+            for fact in self._stored
+        ][:limit]
 
 
 def test_seeds_the_scenario_bible_fact_into_the_demo_project() -> None:
@@ -129,3 +153,43 @@ def test_the_script_never_removes_anything(forbidden: str) -> None:
     can do.
     """
     assert forbidden not in SCRIPT.read_text().lower()
+
+
+# --- Idempotence: every other provisioning script here already has it --------
+
+
+def test_seeding_a_store_that_already_holds_the_fact_indexes_nothing() -> None:
+    """`LoreStore` has no way to remove a row, so a second run without this
+    guard leaves two copies of FACT-001 in the corpus for good."""
+    store = RecordingLoreStore(already_holding=[scenario.BIBLE_FACT])
+
+    load_script().seed(store)
+
+    assert store.indexed == []
+
+
+def test_the_guard_survives_the_fact_id_round_trip() -> None:
+    """The trap this guard has to avoid.
+
+    What comes back from BigQuery is not what went in: `fact_id` is rebuilt
+    from the `content_hash` column, so the stored fact answers to a hex digest
+    rather than to `FACT-001`. Matching on `fact_id` would silently never
+    match. This asserts the fake really does return a different id, so the
+    passing test above cannot be passing for the wrong reason.
+    """
+    store = RecordingLoreStore(already_holding=[scenario.BIBLE_FACT])
+
+    stored = store.search(scenario.PROJECT_ID, "anything", 5)
+
+    assert stored[0].fact_id != scenario.BIBLE_FACT.fact_id
+    assert stored[0].fact_id == content_hash(scenario.BIBLE_FACT.text)
+
+
+def test_a_different_project_is_not_mistaken_for_this_one() -> None:
+    """The guard reads the demo project, not whatever the store holds."""
+    store = RecordingLoreStore(already_holding=[scenario.BIBLE_FACT])
+    store._stored = []
+
+    load_script().seed(store)
+
+    assert store.indexed, "an empty project must still be seeded"
