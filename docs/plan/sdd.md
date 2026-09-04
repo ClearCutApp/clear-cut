@@ -594,8 +594,15 @@ d. **End to end (Phase 4).** Analyze a planted script containing a Ferrari
    correct page numbers, the tracker reads exactly 3 open items at BLOCKED,
    and the run produced a visible trace with the five stage spans and
    non-zero token metrics in the Grafana dashboard.
-   **WIP as of 2026-09-04**, and the first live run corrected this check's own
-   wording. `tests/live/test_end_to_end_live.py` drives the real
+   **DONE as of 2026-09-04.** `1 passed in 870.64s` — fourteen and a half
+   minutes, driven through `POST /api/projects/{id}/scripts` so the five stage
+   spans share the trace the route roots. All three planted findings surfaced,
+   their pages read back as 3, 5 and 8 off the real PDF, every tracker item was
+   `BLOCKED`, and `clearcut_gemini_tokens_total` was non-zero. This is the
+   first assertion in the project's history that could only pass against real
+   services.
+
+   Getting there took four runs, and each failure was worth keeping. `tests/live/test_end_to_end_live.py` drives the real
    `_build_live_use_cases` graph, so it proves the wiring as well as the
    services. The Ferrari and "Hotel California" surfaced on the first attempt;
    the contradiction did not, because `infra/seed_project_bible.py` had been
@@ -610,8 +617,16 @@ d. **End to end (Phase 4).** Analyze a planted script containing a Ferrari
    instead of the pipeline, and a finding the model was right to make would
    fail a check about wiring.
 
-   One number worth carrying into the demo: a full live run takes **twenty
-   minutes**, not the "first minute" `proposal.md` promises.
+   **A third correction: the trace root lives in the route.** Run three reached
+   the trace assertion with all five stage spans present and fifteen distinct
+   trace ids. Driving `AnalyzeScript` directly leaves the stage spans with no
+   parent, because the root `analyze` span is opened by the HTTP route. Run
+   four goes through `create_app().test_client()` and gets one trace. That is a
+   real constraint rather than a fact about this test: a batch job or a
+   scheduled re-analysis would fragment the same way.
+
+   One number worth carrying into the demo: a full live run takes **twelve to
+   twenty minutes**, not the "first minute" `proposal.md` promises.
 
 ## 9. Status summary
 
