@@ -12,6 +12,7 @@ their own request.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from flask import Flask
@@ -76,8 +77,10 @@ def test_the_spec_describes_every_route_the_app_actually_serves() -> None:
     app.register_blueprint(create_health_blueprint("live"))
     app.register_blueprint(create_docs_blueprint())
 
+    # Flask writes path parameters as <name>, OpenAPI as {name}. Converted
+    # generically rather than per-parameter, so a new one cannot slip past.
     served = {
-        str(rule).replace("<item_id>", "{item_id}")
+        re.sub(r"<([^>]+)>", r"{\1}", str(rule))
         for rule in app.url_map.iter_rules()
         if str(rule).startswith("/api/")
     }

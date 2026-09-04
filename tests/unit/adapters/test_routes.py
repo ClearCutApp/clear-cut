@@ -313,8 +313,12 @@ def _client(
     return app.test_client()
 
 
+# `project_id` is a path segment since the REST rename, so it is no longer a
+# field of the body. `_SCRIPTS` is the collection it names.
+_SCRIPTS = "/api/projects/proj-1/scripts"
+_QUESTIONS = "/api/projects/proj-1/questions"
+
 _ANALYZE_BODY: dict[str, Any] = {
-    "project_id": "proj-1",
     "jurisdiction_code": "MX",
     "gcs_uri": "gs://bucket/v1.pdf",
     "version": 1,
@@ -358,11 +362,11 @@ def test_blueprint_registers_exactly_the_five_demo_routes() -> None:
         if method not in {"HEAD", "OPTIONS"}
     }
     assert routes == {
-        ("/api/analyze", "POST"),
-        ("/api/tracker", "GET"),
-        ("/api/tracker/<item_id>", "PATCH"),
-        ("/api/tracker/<item_id>/actions", "POST"),
-        ("/api/question", "POST"),
+        ("/api/projects/<project_id>/scripts", "POST"),
+        ("/api/projects/<project_id>/tracker-items", "GET"),
+        ("/api/tracker-items/<item_id>", "PATCH"),
+        ("/api/tracker-items/<item_id>/actions", "POST"),
+        ("/api/projects/<project_id>/questions", "POST"),
     }
 
 
@@ -393,7 +397,7 @@ def test_routes_module_imports_nothing_from_clearcut_adapters() -> None:
 def test_analyze_happy_path_returns_the_full_report_body() -> None:
     client = _client()
 
-    response = client.post("/api/analyze", json=_ANALYZE_BODY)
+    response = client.post(_SCRIPTS, json=_ANALYZE_BODY)
 
     assert response.status_code == 200
     assert response.content_type == "application/json"
@@ -415,7 +419,7 @@ def test_analyze_response_version_is_the_one_the_use_case_reports() -> None:
     than about which branch a given request number selects."""
     client = _client(analyze_script=_RecordingUseCase(_report(version=3)))
 
-    response = client.post("/api/analyze", json={**_ANALYZE_BODY, "version": 1})
+    response = client.post(_SCRIPTS, json={**_ANALYZE_BODY, "version": 1})
 
     assert response.get_json()["version"] == 3
 
@@ -423,8 +427,8 @@ def test_analyze_response_version_is_the_one_the_use_case_reports() -> None:
 def test_analyze_mints_a_different_script_id_on_each_call() -> None:
     client = _client()
 
-    first = client.post("/api/analyze", json=_ANALYZE_BODY).get_json()
-    second = client.post("/api/analyze", json=_ANALYZE_BODY).get_json()
+    first = client.post(_SCRIPTS, json=_ANALYZE_BODY).get_json()
+    second = client.post(_SCRIPTS, json=_ANALYZE_BODY).get_json()
 
     assert first["script_id"] != second["script_id"]
 
@@ -432,7 +436,7 @@ def test_analyze_mints_a_different_script_id_on_each_call() -> None:
 def test_analyze_ignores_a_client_supplied_script_id() -> None:
     client = _client()
 
-    response = client.post("/api/analyze", json={**_ANALYZE_BODY, "script_id": "hacker-supplied"})
+    response = client.post(_SCRIPTS, json={**_ANALYZE_BODY, "script_id": "hacker-supplied"})
 
     assert response.get_json()["script_id"] != "hacker-supplied"
 
@@ -442,7 +446,7 @@ def test_analyze_ignores_a_client_supplied_clock_value() -> None:
     tracker item's `updated_at` must not echo a client-supplied one."""
     client = _client()
 
-    response = client.post("/api/analyze", json={**_ANALYZE_BODY, "at": "1999-01-01T00:00:00Z"})
+    response = client.post(_SCRIPTS, json={**_ANALYZE_BODY, "at": "1999-01-01T00:00:00Z"})
 
     assert response.get_json()["tracker_items"][0]["updated_at"] != "1999-01-01T00:00:00Z"
 
@@ -452,7 +456,7 @@ def test_analyze_without_gcs_uri_returns_400_and_calls_no_adapter() -> None:
     client = _client(analyze_script=_analyze_script(ingestion=ingestion))
     body = {k: v for k, v in _ANALYZE_BODY.items() if k != "gcs_uri"}
 
-    response = client.post("/api/analyze", json=body)
+    response = client.post(_SCRIPTS, json=body)
 
     assert response.status_code == 400
     assert "gcs_uri" in response.get_json()["error"]
@@ -469,7 +473,7 @@ def test_analyze_with_an_invalid_version_returns_400_and_calls_no_adapter(bad_ve
     else:
         body["version"] = bad_version
 
-    response = client.post("/api/analyze", json=body)
+    response = client.post(_SCRIPTS, json=body)
 
     assert response.status_code == 400
     assert "version" in response.get_json()["error"]
@@ -479,7 +483,7 @@ def test_analyze_with_an_invalid_version_returns_400_and_calls_no_adapter(bad_ve
 def test_analyze_with_an_unknown_jurisdiction_code_returns_400_naming_it() -> None:
     client = _client()
 
-    response = client.post("/api/analyze", json={**_ANALYZE_BODY, "jurisdiction_code": "ZZ"})
+    response = client.post(_SCRIPTS, json={**_ANALYZE_BODY, "jurisdiction_code": "ZZ"})
 
     assert response.status_code == 400
     assert "ZZ" in response.get_json()["error"]
@@ -488,7 +492,7 @@ def test_analyze_with_an_unknown_jurisdiction_code_returns_400_naming_it() -> No
 def test_analyze_maps_record_not_found_to_404() -> None:
     client = _client(analyze_script=_RaisingUseCase(RecordNotFound("no such record")))
 
-    response = client.post("/api/analyze", json=_ANALYZE_BODY)
+    response = client.post(_SCRIPTS, json=_ANALYZE_BODY)
 
     assert response.status_code == 404
     assert response.content_type == "application/json"
@@ -498,7 +502,7 @@ def test_analyze_maps_record_not_found_to_404() -> None:
 def test_analyze_maps_source_unavailable_to_502() -> None:
     client = _client(analyze_script=_RaisingUseCase(SourceUnavailable("upstream down")))
 
-    response = client.post("/api/analyze", json=_ANALYZE_BODY)
+    response = client.post(_SCRIPTS, json=_ANALYZE_BODY)
 
     assert response.status_code == 502
     assert "upstream down" in response.get_json()["error"]
@@ -507,7 +511,7 @@ def test_analyze_maps_source_unavailable_to_502() -> None:
 def test_analyze_maps_an_unmapped_type_error_to_500_with_no_internals_leaked() -> None:
     client = _client(analyze_script=_RaisingUseCase(TypeError("boom: secret internals")))
 
-    response = client.post("/api/analyze", json=_ANALYZE_BODY)
+    response = client.post(_SCRIPTS, json=_ANALYZE_BODY)
 
     assert response.status_code == 500
     assert response.content_type == "application/json"
@@ -522,7 +526,7 @@ def test_analyze_maps_a_bare_value_error_to_500() -> None:
     answer rather than a Flask traceback."""
     client = _client(analyze_script=_RaisingUseCase(ValueError("blank corpus_prefix")))
 
-    response = client.post("/api/analyze", json=_ANALYZE_BODY)
+    response = client.post(_SCRIPTS, json=_ANALYZE_BODY)
 
     assert response.status_code == 500
     assert "blank corpus_prefix" not in response.get_json()["error"]
@@ -538,7 +542,7 @@ def test_analyze_with_version_1_calls_analyze_script_and_not_evaluate_delta() ->
     evaluate_delta = _RecordingUseCase(_report(version=1))
     client = _client(analyze_script=analyze_script, evaluate_delta=evaluate_delta)
 
-    response = client.post("/api/analyze", json={**_ANALYZE_BODY, "version": 1})
+    response = client.post(_SCRIPTS, json={**_ANALYZE_BODY, "version": 1})
 
     assert response.status_code == 200
     assert len(analyze_script.calls) == 1
@@ -551,7 +555,7 @@ def test_analyze_with_version_greater_than_1_calls_evaluate_delta_and_not_analyz
     evaluate_delta = _RecordingUseCase(_report(version=2))
     client = _client(analyze_script=analyze_script, evaluate_delta=evaluate_delta)
 
-    response = client.post("/api/analyze", json={**_ANALYZE_BODY, "version": 2})
+    response = client.post(_SCRIPTS, json={**_ANALYZE_BODY, "version": 2})
 
     assert response.status_code == 200
     assert len(evaluate_delta.calls) == 1
@@ -577,8 +581,8 @@ def test_delta_response_carries_the_same_keys_as_the_analyze_response() -> None:
         evaluate_delta=_evaluate_delta(tracker=_TrackerStore(previous_script=previous))
     )
 
-    analyze_response = client.post("/api/analyze", json=_ANALYZE_BODY)
-    delta_response = client.post("/api/analyze", json={**_ANALYZE_BODY, "version": 2})
+    analyze_response = client.post(_SCRIPTS, json=_ANALYZE_BODY)
+    delta_response = client.post(_SCRIPTS, json={**_ANALYZE_BODY, "version": 2})
 
     assert analyze_response.status_code == 200
     assert delta_response.status_code == 200
@@ -588,7 +592,7 @@ def test_delta_response_carries_the_same_keys_as_the_analyze_response() -> None:
 def test_analyze_version_2_with_no_previous_version_returns_404_naming_the_project() -> None:
     client = _client(evaluate_delta=_evaluate_delta())
 
-    response = client.post("/api/analyze", json={**_ANALYZE_BODY, "version": 2})
+    response = client.post(_SCRIPTS, json={**_ANALYZE_BODY, "version": 2})
 
     assert response.status_code == 404
     assert response.content_type == "application/json"
@@ -606,7 +610,7 @@ def test_analyze_with_an_invalid_version_calls_neither_use_case(bad_version: Any
     else:
         body["version"] = bad_version
 
-    response = client.post("/api/analyze", json=body)
+    response = client.post(_SCRIPTS, json=body)
 
     assert response.status_code == 400
     assert analyze_script.calls == []
@@ -660,7 +664,7 @@ def test_analyze_response_scenes_match_the_report_field_for_field_in_order() -> 
     )
     client = _client(analyze_script=_RecordingUseCase(report))
 
-    response = client.post("/api/analyze", json=_ANALYZE_BODY)
+    response = client.post(_SCRIPTS, json=_ANALYZE_BODY)
 
     assert response.get_json()["scenes"] == [_expected_scene_json(scene) for scene in scenes]
 
@@ -683,7 +687,7 @@ def test_analyze_response_scene_content_hash_is_the_domains_own_hash() -> None:
     )
     client = _client(analyze_script=_RecordingUseCase(report))
 
-    response = client.post("/api/analyze", json=_ANALYZE_BODY)
+    response = client.post(_SCRIPTS, json=_ANALYZE_BODY)
 
     returned_hash = response.get_json()["scenes"][0]["content_hash"]
     assert returned_hash == scene.content_hash
@@ -710,7 +714,7 @@ def test_delta_response_scenes_are_the_newly_parsed_version_not_the_previous_one
         )
     )
 
-    response = client.post("/api/analyze", json={**_ANALYZE_BODY, "version": 2})
+    response = client.post(_SCRIPTS, json={**_ANALYZE_BODY, "version": 2})
 
     assert [scene["number"] for scene in response.get_json()["scenes"]] == [1, 2]
 
@@ -718,7 +722,7 @@ def test_delta_response_scenes_are_the_newly_parsed_version_not_the_previous_one
 def test_analyze_response_key_set_is_exactly_eight_keys() -> None:
     client = _client()
 
-    response = client.post("/api/analyze", json=_ANALYZE_BODY)
+    response = client.post(_SCRIPTS, json=_ANALYZE_BODY)
 
     assert set(response.get_json().keys()) == {
         "script_id",
@@ -735,7 +739,7 @@ def test_analyze_response_key_set_is_exactly_eight_keys() -> None:
 def test_analyze_response_scenes_is_an_empty_list_never_null_for_a_script_with_no_scenes() -> None:
     client = _client(analyze_script=_RecordingUseCase(_report()))
 
-    response = client.post("/api/analyze", json=_ANALYZE_BODY)
+    response = client.post(_SCRIPTS, json=_ANALYZE_BODY)
 
     assert response.get_json()["scenes"] == []
 
@@ -749,7 +753,7 @@ def test_tracker_list_happy_path_returns_only_the_named_projects_items() -> None
     tracker = _TrackerStore([_item("itm-1", "proj-1"), _item("itm-2", "proj-2")])
     client = _client(list_tracker_items=ListTrackerItems(tracker))
 
-    response = client.get("/api/tracker?project_id=proj-1")
+    response = client.get("/api/projects/proj-1/tracker-items")
 
     assert response.status_code == 200
     body = response.get_json()
@@ -757,21 +761,24 @@ def test_tracker_list_happy_path_returns_only_the_named_projects_items() -> None
     assert body[0]["item_id"] == "itm-1"
 
 
-def test_tracker_list_without_project_id_returns_400_and_calls_no_adapter() -> None:
+def test_tracker_list_without_a_project_in_the_path_is_not_routed() -> None:
     tracker = _TrackerStore()
     client = _client(list_tracker_items=ListTrackerItems(tracker))
 
-    response = client.get("/api/tracker")
+    # The check moved into routing rather than disappearing. `project_id` is a
+    # path segment now, so a URL that names no project matches no rule and
+    # Flask answers 404 before any handler runs -- which is still "no adapter
+    # was called", proved the same way below.
+    response = client.get("/api/projects//tracker-items")
 
-    assert response.status_code == 400
-    assert "project_id" in response.get_json()["error"]
+    assert response.status_code == 404
     assert tracker.latest_for_project_calls == []
 
 
 def test_tracker_list_maps_source_unavailable_to_502() -> None:
     client = _client(list_tracker_items=_RaisingUseCase(SourceUnavailable("clickhouse down")))
 
-    response = client.get("/api/tracker?project_id=proj-1")
+    response = client.get("/api/projects/proj-1/tracker-items")
 
     assert response.status_code == 502
 
@@ -785,7 +792,7 @@ def test_tracker_patch_happy_path_transitions_the_item() -> None:
     tracker = _TrackerStore([_item("itm-1")])
     client = _client(resolve_finding=ResolveFinding(tracker, _Notifier()))
 
-    response = client.patch("/api/tracker/itm-1", json={"state": "IN_PROGRESS"})
+    response = client.patch("/api/tracker-items/itm-1", json={"state": "IN_PROGRESS"})
 
     assert response.status_code == 200
     body = response.get_json()
@@ -797,7 +804,7 @@ def test_tracker_patch_with_an_invalid_state_returns_400_naming_accepted_values(
     tracker = _TrackerStore([_item("itm-1")])
     client = _client(resolve_finding=ResolveFinding(tracker, _Notifier()))
 
-    response = client.patch("/api/tracker/itm-1", json={"state": "DELETED"})
+    response = client.patch("/api/tracker-items/itm-1", json={"state": "DELETED"})
 
     assert response.status_code == 400
     error = response.get_json()["error"]
@@ -809,7 +816,7 @@ def test_tracker_patch_maps_record_not_found_to_404() -> None:
     tracker = _TrackerStore([])
     client = _client(resolve_finding=ResolveFinding(tracker, _Notifier()))
 
-    response = client.patch("/api/tracker/missing-item", json={"state": "IN_PROGRESS"})
+    response = client.patch("/api/tracker-items/missing-item", json={"state": "IN_PROGRESS"})
 
     assert response.status_code == 404
 
@@ -823,7 +830,7 @@ def test_tracker_actions_draft_email_happy_path() -> None:
     tracker = _TrackerStore([_item("itm-1")])
     client = _client(resolve_finding=ResolveFinding(tracker, _Notifier()))
 
-    response = client.post("/api/tracker/itm-1/actions", json={"action": "draft_email"})
+    response = client.post("/api/tracker-items/itm-1/actions", json={"action": "draft_email"})
 
     assert response.status_code == 200
     body = response.get_json()
@@ -837,7 +844,7 @@ def test_tracker_actions_notify_happy_path_calls_notifier_and_leaves_item_unchan
     client = _client(resolve_finding=ResolveFinding(tracker, notifier))
 
     response = client.post(
-        "/api/tracker/itm-1/actions", json={"action": "notify", "reason": "please respond"}
+        "/api/tracker-items/itm-1/actions", json={"action": "notify", "reason": "please respond"}
     )
 
     assert response.status_code == 200
@@ -853,7 +860,7 @@ def test_tracker_actions_notify_failure_maps_notification_failed_to_502() -> Non
     tracker = _TrackerStore([_item("itm-1")])
     client = _client(resolve_finding=_RaisingUseCase(SourceUnavailable("webhook unreachable")))
 
-    response = client.post("/api/tracker/itm-1/actions", json={"action": "notify"})
+    response = client.post("/api/tracker-items/itm-1/actions", json={"action": "notify"})
 
     assert response.status_code == 502
     assert tracker.saved == []
@@ -863,7 +870,7 @@ def test_tracker_actions_with_an_unsupported_action_returns_500_with_no_internal
     tracker = _TrackerStore([_item("itm-1")])
     client = _client(resolve_finding=ResolveFinding(tracker, _Notifier()))
 
-    response = client.post("/api/tracker/itm-1/actions", json={"action": "stakeholder_link"})
+    response = client.post("/api/tracker-items/itm-1/actions", json={"action": "stakeholder_link"})
 
     assert response.status_code == 500
     assert response.content_type == "application/json"
@@ -891,7 +898,7 @@ def test_question_happy_path_returns_an_answer_body() -> None:
     question_text = "does this need a music license?"
 
     response = client.post(
-        "/api/question",
+        _QUESTIONS,
         json={"project_id": "proj-1", "question": question_text, "jurisdiction_code": "MX"},
     )
 
@@ -907,18 +914,22 @@ def test_question_happy_path_returns_an_answer_body() -> None:
     assert body["citations"] == []
 
 
-def test_question_with_a_blank_project_id_returns_400_and_calls_no_adapter() -> None:
+def test_a_question_with_no_project_in_the_path_is_not_routed() -> None:
+    """The blank-project_id 400 became a routing concern.
+
+    `project_id` used to be a body field this handler validated. It is a path
+    segment now, so a URL naming no project matches no rule and never reaches
+    the handler -- the guarantee that mattered, that no adapter is called, is
+    unchanged and still asserted.
+    """
     lore = _LoreStore()
     client = _client(
         answer_project_question=AnswerProjectQuestion(lore, _Grounding(), _TrackerStore())
     )
 
-    response = client.post(
-        "/api/question", json={"project_id": "  ", "question": "what is blocked?"}
-    )
+    response = client.post("/api/projects//questions", json={"question": "what is blocked?"})
 
-    assert response.status_code == 400
-    assert "project_id" in response.get_json()["error"]
+    assert response.status_code == 404
     assert lore.searched == []
 
 
@@ -926,7 +937,7 @@ def test_question_with_an_unknown_jurisdiction_code_returns_400_naming_it() -> N
     client = _client()
 
     response = client.post(
-        "/api/question",
+        _QUESTIONS,
         json={"project_id": "proj-1", "question": "what is blocked?", "jurisdiction_code": "ZZ"},
     )
 
@@ -940,7 +951,7 @@ def test_question_maps_source_unavailable_to_502() -> None:
     )
 
     response = client.post(
-        "/api/question",
+        _QUESTIONS,
         json={"project_id": "proj-1", "question": "what is blocked?", "jurisdiction_code": "MX"},
     )
 

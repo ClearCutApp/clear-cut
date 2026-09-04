@@ -195,7 +195,7 @@ def test_create_app_works_and_opens_no_socket_with_endpoint_unset(
     monkeypatch.setattr(socket.socket, "connect", _blocked)
 
     client = create_app().test_client()
-    response = client.post("/api/analyze", json=_ANALYZE_BODY)
+    response = client.post("/api/projects/demo-project/scripts", json=_ANALYZE_BODY)
 
     assert response.status_code == 200
 
@@ -214,7 +214,7 @@ def test_five_pipeline_stage_spans_appear_and_share_one_trace_id(
     _clear_env(monkeypatch, CLEARCUT_MODE="mock")
 
     client = create_app().test_client()
-    response = client.post("/api/analyze", json=_ANALYZE_BODY)
+    response = client.post("/api/projects/demo-project/scripts", json=_ANALYZE_BODY)
     assert response.status_code == 200
 
     spans = span_exporter.get_finished_spans()
@@ -230,7 +230,7 @@ def test_root_span_carries_script_id(monkeypatch: pytest.MonkeyPatch, isolated_o
     _clear_env(monkeypatch, CLEARCUT_MODE="mock")
 
     client = create_app().test_client()
-    response = client.post("/api/analyze", json=_ANALYZE_BODY)
+    response = client.post("/api/projects/demo-project/scripts", json=_ANALYZE_BODY)
     script_id = response.get_json()["script_id"]
 
     root_spans = [
@@ -275,7 +275,7 @@ def test_four_metrics_record_one_point_each_with_labels_in_mock_mode(
     _clear_env(monkeypatch, CLEARCUT_MODE="mock")
 
     client = create_app().test_client()
-    response = client.post("/api/analyze", json=_ANALYZE_BODY)
+    response = client.post("/api/projects/demo-project/scripts", json=_ANALYZE_BODY)
     assert response.status_code == 200
 
     points_by_name = _data_points_by_metric_name(metric_reader)
@@ -302,7 +302,7 @@ def test_gemini_tokens_total_has_no_points_in_mock_mode(
     _clear_env(monkeypatch, CLEARCUT_MODE="mock")
 
     client = create_app().test_client()
-    client.post("/api/analyze", json=_ANALYZE_BODY)
+    client.post("/api/projects/demo-project/scripts", json=_ANALYZE_BODY)
 
     points_by_name = _data_points_by_metric_name(metric_reader)
     assert points_by_name.get("clearcut_gemini_tokens_total", []) == []
@@ -325,7 +325,7 @@ def test_a_raising_span_exporter_never_breaks_the_analyze_call(
     _clear_env(monkeypatch, CLEARCUT_MODE="mock")
     client = create_app().test_client()
 
-    response = client.post("/api/analyze", json=_ANALYZE_BODY)
+    response = client.post("/api/projects/demo-project/scripts", json=_ANALYZE_BODY)
 
     assert response.status_code == 200
     assert raising_exporter.calls  # proves the exporter really was invoked and really did raise

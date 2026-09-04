@@ -38,8 +38,9 @@ export function AnalyzeForm({
 
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
+    // `project_id` is not a body field since the REST rename; `ScriptView`
+    // passes it to `postAnalyze` as the collection being written to.
     onSubmit({
-      project_id: projectId,
       gcs_uri: gcsUri,
       version,
       jurisdiction_code: jurisdictionCode,

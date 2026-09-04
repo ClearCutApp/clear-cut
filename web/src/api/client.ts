@@ -95,8 +95,10 @@ export interface AnalyzeResponse {
   tracker_items: TrackerItem[];
 }
 
+/** `project_id` is absent on purpose: it is a path segment since the REST
+ * rename, so it names the collection being written to rather than a field of
+ * the thing written. `postAnalyze` takes it as its own argument. */
 export interface AnalyzeRequest {
-  project_id: string;
   gcs_uri: string;
   version: number;
   jurisdiction_code: string;
@@ -156,15 +158,16 @@ function jsonRequest(method: string, body: unknown): RequestInit {
 
 export function fetchTracker(projectId: string): Promise<TrackerResponse> {
   return requestJson<TrackerResponse>(
-    `/api/tracker?project_id=${projectId}`,
+    `/api/projects/${projectId}/tracker-items`,
   );
 }
 
 export function postAnalyze(
+  projectId: string,
   request: AnalyzeRequest,
 ): Promise<AnalyzeResponse> {
   return requestJson<AnalyzeResponse>(
-    "/api/analyze",
+    `/api/projects/${projectId}/scripts`,
     jsonRequest("POST", request),
   );
 }
@@ -174,7 +177,7 @@ export function patchTrackerState(
   state: TrackerState,
 ): Promise<TrackerItem> {
   return requestJson<TrackerItem>(
-    `/api/tracker/${itemId}`,
+    `/api/tracker-items/${itemId}`,
     jsonRequest("PATCH", { state }),
   );
 }
@@ -186,7 +189,7 @@ export function postTrackerAction(
 ): Promise<TrackerItem> {
   const body = reason === undefined ? { action } : { action, reason };
   return requestJson<TrackerItem>(
-    `/api/tracker/${itemId}/actions`,
+    `/api/tracker-items/${itemId}/actions`,
     jsonRequest("POST", body),
   );
 }
@@ -197,9 +200,8 @@ export function postQuestion(
   question: string,
 ): Promise<QuestionResponse> {
   return requestJson<QuestionResponse>(
-    "/api/question",
+    `/api/projects/${projectId}/questions`,
     jsonRequest("POST", {
-      project_id: projectId,
       jurisdiction_code: jurisdictionCode,
       question,
     }),

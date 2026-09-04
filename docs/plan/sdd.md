@@ -252,17 +252,22 @@ nothing deploys as a separate orchestrator agent. The project Q&A agent is
 the one component hosted on Google Cloud Agent Builder, with the Vertex AI
 Search data store attached as its grounding source.
 
-**Status: eight routes specified, five built.** `routes.py` carries five
+**Status: eight routes specified, five built, and every path is now a
+resource.** `POST /api/analyze` and `POST /api/question` were RPC verbs; they
+and the tracker collection were renamed on 2026-09-03 so that every path names
+a noun and every collection nests under its owner. `project_id` moved from the
+body and query string into the path, which is the substantive half of the
+change: a blank project is now a routing concern that never reaches a handler. `routes.py` carries five
 `@bp.route` decorators. A sixth route, `GET /api/health`, exists and is
 described below; it was added after this section was first written.
 
 | Route | State | Evidence |
 |---|---|---|
-| `POST /api/analyze` | WIP | Built. 39 tests in `test_routes.py`, the largest test file at 947 lines. Never called against live adapters |
-| `GET /api/tracker` | WIP | Built and tested, including the 400 and 502 paths |
-| `PATCH /api/tracker/{item_id}` | WIP | Built and tested, including an invalid state naming the accepted values |
-| `POST /api/tracker/{item_id}/actions` | WIP | Built for `draft_email` and `notify`. `generate_document` and `stakeholder_link` return 500 by decision, not by defect |
-| `POST /api/question` | WIP | Built and tested, including blank project id and unknown jurisdiction |
+| `POST /api/projects/{id}/scripts` | WIP | Built. 39 tests in `test_routes.py`, the largest test file at 947 lines. Never called against live adapters |
+| `GET /api/projects/{id}/tracker-items` | WIP | Built and tested, including the 400 and 502 paths |
+| `PATCH /api/tracker-items/{item_id}` | WIP | Built and tested, including an invalid state naming the accepted values |
+| `POST /api/tracker-items/{item_id}/actions` | WIP | Built for `draft_email` and `notify`. `generate_document` and `stakeholder_link` return 500 by decision, not by defect |
+| `POST /api/projects/{id}/questions` | WIP | Built and tested, including blank project id and unknown jurisdiction |
 | `GET /api/health` | WIP | Built. Reports the wired `CLEARCUT_MODE` so the SPA can say when it is serving planted data. 3 tests, one covering the SPA catch-all shadowing it |
 | `POST /api/projects` | MISSING | No route, no test |
 | `POST /api/projects/{id}/bible` | MISSING | No route, no test. Nothing else populates the LoreStore through the API |
@@ -277,7 +282,7 @@ Route-level error mapping is complete and tested: `RecordNotFound` to 404,
 `SourceUnavailable` to 502, everything else to a 500 that leaks no internals.
 Ten tests cover the three classes.
 
-### 4.1 POST /api/analyze (the pipeline)
+### 4.1 POST /api/projects/{id}/scripts (the pipeline)
 
 **Status: WIP.** All eight steps are built and covered by unit tests over fake
 ports. None has run against a real service.
@@ -340,11 +345,11 @@ Status for each appears in the table at the head of section 4.
   splits them into BibleFacts and indexes them in the LoreStore. **MISSING.**
 - `GET /api/scripts/{script_id}`: scenes plus findings, the ScriptView
   payload. **MISSING.**
-- `GET /api/tracker?project_id=`: tracker items with current state, the
+- `GET /api/projects/{id}/tracker-items`: tracker items with current state, the
   TrackerDashboard payload. **WIP**, built.
-- `PATCH /api/tracker/{item_id}`: state transition; writes a new versioned
+- `PATCH /api/tracker-items/{item_id}`: state transition; writes a new versioned
   row. **WIP**, built.
-- `POST /api/tracker/{item_id}/actions`: body `{"action": "draft_email" |
+- `POST /api/tracker-items/{item_id}/actions`: body `{"action": "draft_email" |
   "generate_document" | "stakeholder_link" | "notify"}`. Draft email fills
   the outreach template from the rights-mapping document with the finding's
   data and stores it on the item for the producer to copy and send; the
@@ -354,7 +359,7 @@ Status for each appears in the table at the head of section 4.
   tracker item; the dashboard opens it. `notify` calls the Notifier.
   **WIP** for `draft_email` and `notify`; the other two are ruled to the
   Backlog and return 500 on purpose.
-- `POST /api/question`: body `{project_id, question}`; AnswerProjectQuestion
+- `POST /api/projects/{id}/questions`: body `{project_id, question}`; AnswerProjectQuestion
   retrieves bible facts and scene history from the LoreStore, adds
   LegalGrounding context when the question names a legal topic, and answers
   with citations. **WIP**, built.
@@ -365,10 +370,10 @@ Status for each appears in the table at the head of section 4.
 ### 4.3 EvaluateDelta (incremental re-analysis)
 
 **Status: WIP, with one MISSING inside it.** The path is built and routed:
-`POST /api/analyze` sends `version` greater than 1 here. Sixteen tests cover
+`POST /api/projects/{id}/scripts` sends `version` greater than 1 here. Sixteen tests cover
 it, and none of them makes a port raise.
 
-Triggered when `POST /api/analyze` receives a project that already has a
+Triggered when `POST /api/projects/{id}/scripts` receives a project that already has a
 script version. After step 2 (parse plus hash), the use case runs
 `diff_scenes` against the stored previous version:
 
@@ -427,15 +432,15 @@ Three surfaces:
 
 - **ScriptView** renders the screenplay text with findings overlaid inline at
   their scenes, each finding showing category, risk, and citations. It reads
-  the `POST /api/analyze` response, because the `GET /api/scripts/{id}` this
+  the `POST /api/projects/{id}/scripts` response, because the `GET /api/scripts/{id}` this
   section originally specified is MISSING.
-- **TrackerDashboard** consumes `GET /api/tracker`, renders items grouped by
+- **TrackerDashboard** consumes `GET /api/projects/{id}/tracker-items`, renders items grouped by
   state (BLOCKED, IN_PROGRESS, CLEARED), and issues `PATCH` for transitions
   and `POST .../actions` for draft-email and notify triggers. The
   generate-document and stakeholder-link triggers are deliberately absent
   from the client's action type, so a component cannot compile its way into a
   guaranteed server error.
-- **ProjectQA** consumes `POST /api/question` and renders the conversational
+- **ProjectQA** consumes `POST /api/projects/{id}/questions` and renders the conversational
   panel with the answer's citations linked.
 
 **On honesty.** The SPA contains no hardcoded findings; `web/src/fixtures/`
@@ -456,7 +461,7 @@ exporter with the Grafana Cloud endpoint and token from environment
 variables). Adapters create the spans around their outbound calls. `domain/`
 and `application/` import nothing from OpenTelemetry.
 
-One trace per `/api/analyze` request, with one span per pipeline stage:
+One trace per script-creation request, with one span per pipeline stage:
 `ingest`, `extract`, `ground`, `research`, `track`. Span attributes carry
 `script_id`, `scene_number` where applicable, the Gemini model name, and token
 counts read from each response's usage metadata.

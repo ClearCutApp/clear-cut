@@ -59,17 +59,16 @@ describe("fetchTracker", () => {
 
 describe("postAnalyze", () => {
   const request: AnalyzeRequest = {
-    project_id: "proj_1",
     gcs_uri: "gs://bucket/script.pdf",
     version: 1,
     jurisdiction_code: "US",
   };
 
-  it("posts the request body to /api/analyze", async () => {
+  it("posts the request body to the project scripts collection", async () => {
     const { fetchStub, captured } = captureRequest({});
     globalThis.fetch = fetchStub;
 
-    await postAnalyze(request);
+    await postAnalyze("proj_1", request);
 
     expect(captured[0].init?.method).toBe("POST");
     expect(JSON.parse(String(captured[0].init?.body))).toEqual(request);
@@ -78,7 +77,7 @@ describe("postAnalyze", () => {
   it("maps a non-2xx response to a typed ApiError carrying the status", async () => {
     globalThis.fetch = respondWith(400, "bad request");
 
-    const failure = postAnalyze(request).catch((error: unknown) => error);
+    const failure = postAnalyze("proj_1", request).catch((error: unknown) => error);
 
     await expect(failure).resolves.toBeInstanceOf(ApiError);
     await expect(failure).resolves.toMatchObject({ status: 400 });
@@ -148,15 +147,15 @@ describe("postTrackerAction", () => {
 });
 
 describe("postQuestion", () => {
-  it("posts the project id, jurisdiction and question to /api/question", async () => {
+  it("posts jurisdiction and question to the project questions collection", async () => {
     const { fetchStub, captured } = captureRequest({});
     globalThis.fetch = fetchStub;
 
     await postQuestion("proj_1", "US", "Can we use this song?");
 
     expect(captured[0].init?.method).toBe("POST");
+    // No project_id in the body: it is the collection in the path now.
     expect(JSON.parse(String(captured[0].init?.body))).toEqual({
-      project_id: "proj_1",
       jurisdiction_code: "US",
       question: "Can we use this song?",
     });

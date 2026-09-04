@@ -116,7 +116,7 @@ def test_existing_api_route_is_not_shadowed_by_the_spa_catch_all(
     _clear_env(monkeypatch)
     client = create_app(build_dir=build_dir).test_client()
 
-    response = client.post("/api/analyze", json=_ANALYZE_BODY)
+    response = client.post("/api/projects/demo-project/scripts", json=_ANALYZE_BODY)
 
     assert response.status_code == 200
     assert response.content_type.startswith("application/json")
@@ -175,7 +175,7 @@ def test_missing_build_dir_still_serves_every_api_route(
     _clear_env(monkeypatch)
     client = create_app(build_dir=missing).test_client()
 
-    response = client.post("/api/analyze", json=_ANALYZE_BODY)
+    response = client.post("/api/projects/demo-project/scripts", json=_ANALYZE_BODY)
 
     assert response.status_code == 200
 

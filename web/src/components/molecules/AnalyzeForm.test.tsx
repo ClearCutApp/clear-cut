@@ -33,7 +33,6 @@ describe("AnalyzeForm", () => {
     fireEvent.click(screen.getByRole("button", { name: /analyze/i }));
 
     expect(onSubmit).toHaveBeenCalledWith({
-      project_id: "demo-project",
       gcs_uri: "gs://clearcut-demo/planted-script-v1.pdf",
       version: 1,
       jurisdiction_code: "AR",

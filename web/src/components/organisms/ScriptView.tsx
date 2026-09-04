@@ -41,7 +41,7 @@ export function ScriptView({
     setSubmitting(true);
     setError(null);
     try {
-      const response = await postAnalyze(request);
+      const response = await postAnalyze(projectId, request);
       onAnalyzed(response);
     } catch (thrown) {
       setError(thrown instanceof ApiError ? thrown.message : GENERIC_ANALYZE_ERROR);

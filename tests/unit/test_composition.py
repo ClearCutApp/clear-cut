@@ -91,8 +91,8 @@ def test_create_app_returns_a_flask_app_with_the_demo_routes_mounted(
     app = create_app()
     assert isinstance(app, Flask)
     rules = {rule.rule for rule in app.url_map.iter_rules()}
-    assert "/api/analyze" in rules
-    assert "/api/tracker" in rules
+    assert "/api/projects/<project_id>/scripts" in rules
+    assert "/api/projects/<project_id>/tracker-items" in rules
 
 
 # ---------------------------------------------------------------------------
@@ -137,7 +137,7 @@ def test_mock_mode_needs_no_credentials_and_drives_the_sdd_8d_scenario(
     _clear_env(monkeypatch, CLEARCUT_MODE="mock")
     client = create_app().test_client()
 
-    analyze_response = client.post("/api/analyze", json=_ANALYZE_BODY)
+    analyze_response = client.post("/api/projects/demo-project/scripts", json=_ANALYZE_BODY)
     assert analyze_response.status_code == 200
     report = analyze_response.get_json()
 
@@ -147,7 +147,7 @@ def test_mock_mode_needs_no_credentials_and_drives_the_sdd_8d_scenario(
     assert findings_by_category["COPYRIGHT_WORKS"]["page"] == 5
     assert findings_by_category["CONTINUITY"]["page"] == 8
 
-    tracker_response = client.get("/api/tracker?project_id=demo-project")
+    tracker_response = client.get("/api/projects/demo-project/tracker-items")
     assert tracker_response.status_code == 200
     items = tracker_response.get_json()
     assert len(items) == 3
@@ -240,8 +240,8 @@ def test_two_create_app_calls_produce_independent_instances(
     _clear_env(monkeypatch, CLEARCUT_MODE="mock")
     second_client = create_app().test_client()
 
-    first_client.post("/api/analyze", json=_ANALYZE_BODY)
-    second_tracker = second_client.get("/api/tracker?project_id=demo-project")
+    first_client.post("/api/projects/demo-project/scripts", json=_ANALYZE_BODY)
+    second_tracker = second_client.get("/api/projects/demo-project/tracker-items")
 
     assert second_tracker.get_json() == []
 

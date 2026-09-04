@@ -82,9 +82,17 @@ def _spec() -> dict[str, Any]:
                     "responses": {"200": {"description": "mock or live", "content": _JSON}},
                 }
             },
-            "/api/analyze": {
+            "/api/projects/{project_id}/scripts": {
                 "post": {
-                    "summary": "Analyze a screenplay version",
+                    "summary": "Create a script version, which returns its analysis",
+                    "parameters": [
+                        {
+                            "name": "project_id",
+                            "in": "path",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        }
+                    ],
                     "description": (
                         "`version` of 1 runs the full pipeline; greater than 1 runs the "
                         "delta path, re-analyzing only scenes whose content hash changed."
@@ -97,7 +105,6 @@ def _spec() -> dict[str, Any]:
                                     "type": "object",
                                     "required": ["gcs_uri", "version", "jurisdiction_code"],
                                     "properties": {
-                                        "project_id": {"type": "string"},
                                         "gcs_uri": {"type": "string"},
                                         "version": {"type": "integer", "minimum": 1},
                                         "jurisdiction_code": {"type": "string", "example": "AR"},
@@ -114,24 +121,24 @@ def _spec() -> dict[str, Any]:
                     },
                 }
             },
-            "/api/tracker": {
+            "/api/projects/{project_id}/tracker-items": {
                 "get": {
                     "summary": "Tracker items for a project",
                     "parameters": [
                         {
                             "name": "project_id",
-                            "in": "query",
+                            "in": "path",
                             "required": True,
                             "schema": {"type": "string"},
                         }
                     ],
                     "responses": {
                         "200": {"description": "items, newest version per id", "content": _JSON},
-                        "400": {"description": "project_id missing or blank"},
+                        "404": {"description": "no such project in the path"},
                     },
                 }
             },
-            "/api/tracker/{item_id}": {
+            "/api/tracker-items/{item_id}": {
                 "patch": {
                     "summary": "Move one item between states",
                     "parameters": [
@@ -166,7 +173,7 @@ def _spec() -> dict[str, Any]:
                     },
                 }
             },
-            "/api/tracker/{item_id}/actions": {
+            "/api/tracker-items/{item_id}/actions": {
                 "post": {
                     "summary": "Draft an outreach email, or notify a stakeholder",
                     "description": (
@@ -207,18 +214,25 @@ def _spec() -> dict[str, Any]:
                     },
                 }
             },
-            "/api/question": {
+            "/api/projects/{project_id}/questions": {
                 "post": {
                     "summary": "Ask about the project's clearance state",
+                    "parameters": [
+                        {
+                            "name": "project_id",
+                            "in": "path",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        }
+                    ],
                     "requestBody": {
                         "required": True,
                         "content": {
                             "application/json": {
                                 "schema": {
                                     "type": "object",
-                                    "required": ["project_id", "jurisdiction_code"],
+                                    "required": ["jurisdiction_code"],
                                     "properties": {
-                                        "project_id": {"type": "string"},
                                         "jurisdiction_code": {"type": "string", "example": "AR"},
                                         "question": {"type": "string"},
                                     },

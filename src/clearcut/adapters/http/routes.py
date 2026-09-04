@@ -250,8 +250,12 @@ def create_blueprint(
     the five use-case instances the caller (`composition.py`) built."""
     bp = Blueprint("clearcut_api", __name__)
 
-    @bp.route("/api/analyze", methods=["POST"])
-    def analyze() -> ResponseReturnValue:
+    @bp.route("/api/projects/<project_id>/scripts", methods=["POST"])
+    def create_script(project_id: str) -> ResponseReturnValue:
+        # Creating a script version returns its analysis, which is why this is
+        # a POST to a collection rather than the `/api/analyze` verb it used to
+        # be. `project_id` is a path segment now: it identifies the collection
+        # being written to, not a field of the thing written.
         body = _json_body()
         gcs_uri = _require_field(body, "gcs_uri")
         if not isinstance(gcs_uri, str):
@@ -262,7 +266,6 @@ def create_blueprint(
         jurisdiction = _resolve_jurisdiction(str(body.get("jurisdiction_code", "")))
         if not isinstance(jurisdiction, Jurisdiction):
             return jurisdiction
-        project_id = str(body.get("project_id", ""))
         script_id = _new_script_id()
         at = _now()
 
@@ -281,19 +284,19 @@ def create_blueprint(
 
         return _run_use_case(build)
 
-    @bp.route("/api/tracker", methods=["GET"])
-    def tracker_list() -> ResponseReturnValue:
-        project_id = request.args.get("project_id")
-        if not project_id or not project_id.strip():
-            return _error_response(400, "project_id is required")
-
+    @bp.route("/api/projects/<project_id>/tracker-items", methods=["GET"])
+    def tracker_list(project_id: str) -> ResponseReturnValue:
+        # Nested under the project that owns the items. Flask will not route a
+        # blank segment at all, so the "project_id is required" 400 this used to
+        # return for `?project_id=` has become a 404 on a path that names no
+        # project -- the check moved into routing rather than disappearing.
         def build() -> list[JsonDict]:
             items = list_tracker_items.execute(project_id)
             return [_tracker_item_json(item) for item in items]
 
         return _run_use_case(build)
 
-    @bp.route("/api/tracker/<item_id>", methods=["PATCH"])
+    @bp.route("/api/tracker-items/<item_id>", methods=["PATCH"])
     def tracker_patch(item_id: str) -> ResponseReturnValue:
         body = _json_body()
         state = _require_state(body)
@@ -307,7 +310,7 @@ def create_blueprint(
 
         return _run_use_case(build)
 
-    @bp.route("/api/tracker/<item_id>/actions", methods=["POST"])
+    @bp.route("/api/tracker-items/<item_id>/actions", methods=["POST"])
     def tracker_actions(item_id: str) -> ResponseReturnValue:
         body = _json_body()
         at = _now()
@@ -319,12 +322,9 @@ def create_blueprint(
 
         return _run_use_case(build)
 
-    @bp.route("/api/question", methods=["POST"])
-    def question() -> ResponseReturnValue:
+    @bp.route("/api/projects/<project_id>/questions", methods=["POST"])
+    def ask_question(project_id: str) -> ResponseReturnValue:
         body = _json_body()
-        project_id = _require_field(body, "project_id")
-        if not isinstance(project_id, str):
-            return project_id
         jurisdiction = _resolve_jurisdiction(str(body.get("jurisdiction_code", "")))
         if not isinstance(jurisdiction, Jurisdiction):
             return jurisdiction

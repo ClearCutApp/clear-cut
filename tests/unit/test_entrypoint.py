@@ -26,11 +26,11 @@ _ANALYZE_BODY = {
 }
 
 _DEMO_ROUTES = (
-    "/api/analyze",
-    "/api/tracker",
-    "/api/tracker/<item_id>",
-    "/api/tracker/<item_id>/actions",
-    "/api/question",
+    "/api/projects/<project_id>/scripts",
+    "/api/projects/<project_id>/tracker-items",
+    "/api/tracker-items/<item_id>",
+    "/api/tracker-items/<item_id>/actions",
+    "/api/projects/<project_id>/questions",
 )
 
 
@@ -80,7 +80,7 @@ def test_a_request_through_the_test_client_returns_200(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     main = _import_main(monkeypatch, CLEARCUT_MODE="mock")
-    response = main.app.test_client().post("/api/analyze", json=_ANALYZE_BODY)
+    response = main.app.test_client().post("/api/projects/demo-project/scripts", json=_ANALYZE_BODY)
     assert response.status_code == 200
 
 
