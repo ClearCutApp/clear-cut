@@ -3028,7 +3028,7 @@ and CP-077 last.
   `live`, the secret is set there even though `.env` is not.
 
 ### CP-061 — Add the three domain values the API partition needs
-- Status: IN_REVIEW
+- Status: DONE
 - Attempts: 0/3
 - Depth: 0
 - Layer: domain
