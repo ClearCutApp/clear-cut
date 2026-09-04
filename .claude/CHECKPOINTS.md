@@ -2373,6 +2373,63 @@ happens.
 
 ---
 
+### Settled 2026-09-03, what the first live runs taught (D68-D72)
+
+**D68. Gemini 3 answers only on the `global` endpoint. `composition.py` keeps
+two locations.** Probed against the real API: `gemini-3.7-flash`,
+`gemini-3.1-flash-lite` and `gemini-3-flash-preview` all return `404 NOT_FOUND`
+at `us-central1` with "your project does not have access to it", and all answer
+at `global`; the 2.5 family answers at both. ADR 0002 noted this for
+`gemini-3.1-pro-preview` alone, so its note was narrower than the fact and is
+now amended. `_GENAI_LOCATION` is separate from `_GCP_LOCATION` because the
+BigQuery dataset and the embeddings do not exist at global, and a test asserts
+the two differ. The models were right; the region was wrong.
+
+*How it presented.* The first live call this project ever made failed, and
+CP-056's translation turned a bare 404 into `ExtractionUnavailable` naming the
+cause instead of the 500 it would have been the day before. The defensive work
+paid for itself on its first real exercise.
+
+**D69. `CLICKHOUSE_HOST` is normalised in code, not documented in a footnote.**
+The Cloud console's Connect panel shows a full URL and
+`clickhouse_connect.get_client(host=...)` prepends the scheme itself, so
+pasting what the console gives produces `https://https://host:8443` and fails
+DNS on the literal string "https". `composition._clickhouse_host` accepts bare
+host, either scheme, a port, a trailing slash or whitespace. Fixed here rather
+than in the runbook because the console is where every operator copies from and
+a footnote does not survive a copy-paste.
+
+**D70. `infrastructure.md` §9's IAM list was less than half of what a deploy
+needs.** It names four runtime roles and no build roles at all. The first
+`gcloud run deploy` failed `PERMISSION_DENIED` because the default compute
+service account could not read its own source upload. Nine roles were required:
+`cloudbuild.builds.builder`, `storage.objectViewer`, `logging.logWriter`,
+`artifactregistry.writer`, `documentai.apiUser`, `aiplatform.user`,
+`bigquery.dataEditor`, `storage.objectAdmin`, `discoveryengine.viewer`. Also
+`cloudbuild.googleapis.com` is not among the seven APIs
+`provision_data_plane.sh` enables.
+
+**D71. Cloud Run's default request timeout is shorter than the pipeline.** A
+real analyze against the deployed service returned HTTP 504 at exactly 300
+seconds. Enrichment is a sequential loop and Parallel's `core` processor takes
+77 to 169 seconds per rights lookup. Raised to 3600s. The user ruled on
+2026-09-03 that the demo pre-runs the analyze rather than the pipeline being
+made faster: dropping to the `base` processor and enriching concurrently is the
+better product and is a behaviour change to the partner-track call four days
+from the deadline. Recorded rather than done.
+
+**D72. Every API path is a resource. A user ruling on 2026-09-03.**
+`POST /api/analyze` and `POST /api/question` were RPC verbs; the resource is a
+script version and a question. `project_id` moved from the body and query
+string into the path, which is the substantive half: it names the collection
+being written to rather than a field of the thing written, and a blank project
+is now a routing concern that never reaches a handler. Two tests that asserted
+400 from body validation now assert 404 from routing, and both still prove that
+no adapter is called. The user chose the full rename over two narrower options
+after being shown it touched 37 files.
+
+---
+
 ## Active
 
 **Six checkpoints. The board reopened on 2026-09-03, on a human goal, for the
@@ -2390,7 +2447,7 @@ immediately and does not touch the cloud at all, which is why CP-056 is first
 in dispatch order rather than first in dependency order.
 
 ### CP-055 — Provision every Google Cloud resource the live graph reads
-- Status: IN_PROGRESS
+- Status: IN_REVIEW
 - Attempts: 0/3
 - Depth: 0
 - Layer: infra
@@ -2403,19 +2460,19 @@ in dispatch order rather than first in dependency order.
         `infra/provision_retrieval_plane.sh` have both run for real. Both are
         idempotent, so a second run reports every resource as already present
         and creates nothing.
-  - [~] `.venv/bin/python infra/provision_tracker_schema.py` has created
+  - [x] `.venv/bin/python infra/provision_tracker_schema.py` has created
         `tracker_items` and `script_versions` in a real ClickHouse Cloud
         service.
-  - [~] `.env` carries all ten required variables, and
+  - [x] `.env` carries all ten required variables, and
         `DOCAI_PROCESSOR_ID` and `VERTEX_SEARCH_DATA_STORE_ID` are the full
         resource names `test_identifier_agreement.py` demands, taken from the
         scripts' own output rather than retyped.
-  - [~] Failure path, and the only automated proof the console-only step was
+  - [x] Failure path, and the only automated proof the console-only step was
         done: a query filtered to a jurisdiction with no corpus documents
         returns zero results. `tests/live/test_vertex_search_live.py:55` is
         that test. If `jurisdiction` was never marked Indexable it returns
         Argentine statutes instead and the test fails.
-  - [~] Gate: `./.claude/init.sh live` runs 10 tests with credentials present.
+  - [x] Gate: `./.claude/init.sh live` runs 10 tests with credentials present.
         Every one that skips names the variable it still needs.
 - Files: `.env` (untracked), `docs/plan/infrastructure.md` if a step proves
   wrong in practice
@@ -2585,7 +2642,7 @@ in dispatch order rather than first in dependency order.
   a real run, which imports langchain, needs the venv.
 
 ### CP-058 — Export traces to Grafana Cloud and see the five stage spans
-- Status: TODO
+- Status: IN_PROGRESS
 - Attempts: 0/3
 - Depth: 0
 - Layer: adapters
@@ -2645,25 +2702,26 @@ in dispatch order rather than first in dependency order.
   has said so since 2026-08-31 is finally promoted.
 
 ### CP-060 — Build the image and deploy it to Cloud Run
-- Status: TODO
+- Status: IN_REVIEW
 - Attempts: 0/3
 - Depth: 0
 - Layer: infra
 - Depends on: CP-055
 - Acceptance:
-  - [ ] `docker build` succeeds. The Dockerfile exists and its seven static
+  - [x] Cloud Build built the image; local Docker was never needed, because
+        `gcloud run deploy --source .` builds remotely. The Dockerfile exists and its seven static
         tests pass, but no image has ever been built from it.
-  - [ ] The built image contains `web/dist`. A container run locally serves the
+  - [x] The built image contains `web/dist`. A container run locally serves the
         SPA at `/`, which is the only proof the in-image `npm run build`
         actually ran.
-  - [ ] `gcloud run deploy` puts service `clearcut` in `us-central1` behind a
+  - [x] `gcloud run deploy` puts service `clearcut` in `us-central1` behind a
         public URL, with `--set-secrets` resolving through
         `roles/secretmanager.secretAccessor` and both `OTEL_EXPORTER_OTLP_*`
         variables mounted.
-  - [ ] `GET /api/health` on that URL reports `live`, not `mock`. A deployment
+  - [x] `GET /api/health` on that URL reports `live`, not `mock`. A deployment
         that silently serves the demo scenario is the failure this criterion
         exists to catch.
-  - [ ] Failure path: a revision missing a required variable fails at startup
+  - [~] Failure path: a revision missing a required variable fails at startup
         naming it, rather than serving and 500ing on the first request.
         `composition.py:176` already does this; the criterion is that the
         deployed revision demonstrates it.
