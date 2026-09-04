@@ -594,10 +594,24 @@ d. **End to end (Phase 4).** Analyze a planted script containing a Ferrari
    correct page numbers, the tracker reads exactly 3 open items at BLOCKED,
    and the run produced a visible trace with the five stage spans and
    non-zero token metrics in the Grafana dashboard.
-   **MISSING.** This is the submission's evidence. It needs every provider,
-   the Grafana stack, and the bible ingestion path that section 4.2 marks
-   MISSING. The same three assertions run today in mock mode, which proves
-   the wiring and nothing about the services.
+   **WIP as of 2026-09-04**, and the first live run corrected this check's own
+   wording. `tests/live/test_end_to_end_live.py` drives the real
+   `_build_live_use_cases` graph, so it proves the wiring as well as the
+   services. The Ferrari and "Hotel California" surfaced on the first attempt;
+   the contradiction did not, because `infra/seed_project_bible.py` had been
+   written and never run, so the continuity check had no fact to contradict.
+
+   **"Exactly 3 open items" does not survive a real model.** That run also
+   produced a fourth finding: a PERSONALITY_IMAGE location release on scene 8,
+   off "LOLA's father walks through the front door" -- a person and a private
+   house, which is exactly what a clearance extractor should notice. The live
+   test therefore asserts each planted finding reached the tracker at BLOCKED
+   rather than counting the total. Counting would test the model's restraint
+   instead of the pipeline, and a finding the model was right to make would
+   fail a check about wiring.
+
+   One number worth carrying into the demo: a full live run takes **twenty
+   minutes**, not the "first minute" `proposal.md` promises.
 
 ## 9. Status summary
 
