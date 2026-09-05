@@ -40,6 +40,27 @@ from clearcut.domain.script import Scene, content_hash
 _KIND_BIBLE_FACT = "bible_fact"
 _KIND_SCENE = "scene"
 
+# Every metadata column a row carries, facts and scenes alike. Named here
+# because `BigQueryVectorStore` fixes the table's schema on first write and
+# refuses a later insert that carries a column the table does not have, so
+# `infra/provision_lore_schema.py` has to widen a table provisioned before
+# ADR 0014 -- and it reads this list rather than repeating it.
+METADATA_COLUMNS = (
+    "project_id",
+    "kind",
+    "episode",
+    "scene_number",
+    "page",
+    "content_hash",
+    "fact_id",
+    "fact_kind",
+    "source",
+)
+
+# The three ADR 0014 added, all `STRING`. A table created before them has the
+# other six and nothing else.
+IDENTITY_COLUMNS = ("fact_id", "fact_kind", "source")
+
 
 class LoreUnavailable(SourceUnavailable):
     """The BigQuery vector store or the embedding call failed."""

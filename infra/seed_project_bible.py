@@ -12,11 +12,15 @@ The fact is not restated here. It comes from `adapters/demo/scenario.py`, the
 one place it is defined, so what this seeds and what mock mode serves cannot
 disagree about which fact scene 3 contradicts.
 
-Additive only, and idempotent. `LoreStore` exposes `index` and `search` and
-nothing that removes a row, which SDD section 4.3 already records as a known
-gap -- so a second run that wrote again would leave two copies of the fact in
-the corpus permanently, with no way to undo it. `seed` searches first and
-writes nothing when the fact is already there.
+Additive only, and idempotent. `LoreStore` offers no way to remove a row,
+which SDD section 4.3 already records as a known gap -- so a second run that
+wrote again would leave two copies of the fact in the corpus permanently, with
+no way to undo it. `seed` reads the project's facts first and writes nothing
+when the fact is already there.
+
+`clearcut.lore_vectors` must carry the identity columns before this runs:
+`infra/provision_lore_schema.py` adds them, and without them BigQuery rejects
+the write outright.
 
 Usage:
     .venv/bin/python infra/seed_project_bible.py [--dry-run]

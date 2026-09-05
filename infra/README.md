@@ -72,7 +72,20 @@ authenticated (`gcloud auth login`), and pointed at that project
    script prints what it would destroy and stops. The demo project comes back
    from `infra/seed_project_bible.py` and one analyze call.
 
-9. `.venv/bin/python infra/seed_project_bible.py --dry-run` — review the fact
+9. `.venv/bin/python infra/provision_lore_schema.py --dry-run` — review the
+   three `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` statements, then drop
+   `--dry-run` to widen `clearcut.lore_vectors` with `fact_id`, `fact_kind` and
+   `source`. It reads `GOOGLE_CLOUD_PROJECT` and exits naming it if absent.
+
+   `BigQueryVectorStore` fixes the table's schema the first time it writes and
+   rejects every later insert carrying a column the table lacks, so on a table
+   provisioned before ADR 0014 every `index` call answers `400 Cannot add
+   fields (field: fact_id)` and no bible fact can be written at all. The
+   statements are additive: rows already there keep their six columns and read
+   back through the adapter's fallback. Running it twice changes nothing, and a
+   table the vector store created fresh with all nine columns is left alone.
+
+10. `.venv/bin/python infra/seed_project_bible.py --dry-run` — review the fact
    it would index, then drop `--dry-run` to write it into the BigQuery lore
    table. It reads `GOOGLE_CLOUD_PROJECT` and exits naming it if absent.
 
@@ -82,7 +95,7 @@ authenticated (`gcloud auth login`), and pointed at that project
    facts first and matches on the hash of the text, which it has to, because
    `LoreStore` has no way to remove a row (SDD section 4.3).
 
-10. `.venv/bin/python infra/fetch_legal_corpus.py AR --dry-run` — review the
+11. `.venv/bin/python infra/fetch_legal_corpus.py AR --dry-run` — review the
     searches, then drop `--dry-run` to ask Parallel for each category's statute.
     It needs `PARALLEL_API_KEY` and prints candidate URLs rather than uploading
     them: it rejects anything not on a government or intergovernmental domain,
@@ -93,7 +106,7 @@ authenticated (`gcloud auth login`), and pointed at that project
     the eight clearance categories currently ground against nothing for
     Argentina, because no statute covering them has been loaded.
 
-11. `.venv/bin/python infra/provision_grafana_dashboard.py --dry-run` — review
+12. `.venv/bin/python infra/provision_grafana_dashboard.py --dry-run` — review
     the four panels, then drop `--dry-run` to POST `infra/grafana_dashboard.json`
     to Grafana Cloud. It reads `GRAFANA_URL` and `GRAFANA_TOKEN` and exits
     naming any that are missing. Those are a Grafana service account, not the

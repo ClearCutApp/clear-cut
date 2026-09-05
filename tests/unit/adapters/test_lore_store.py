@@ -157,6 +157,17 @@ _METADATA_KEYS = {
 }
 
 
+def test_the_declared_column_list_is_the_one_a_row_actually_writes() -> None:
+    """`infra/provision_lore_schema.py` widens the BigQuery table from
+    `METADATA_COLUMNS`. A name there that no row writes provisions a column
+    nothing fills; a name missing from it is a column the table will not have,
+    and BigQuery rejects the insert outright."""
+    from clearcut.adapters.bigquery.lore_store import IDENTITY_COLUMNS, METADATA_COLUMNS
+
+    assert set(METADATA_COLUMNS) == _METADATA_KEYS
+    assert set(IDENTITY_COLUMNS) <= set(METADATA_COLUMNS)
+
+
 def test_indexing_a_bible_fact_writes_exactly_the_nine_metadata_keys() -> None:
     vector_store = FakeVectorStore()
     adapter = BigQueryLoreStore(vector_store=vector_store, embeddings=FakeEmbedder())
