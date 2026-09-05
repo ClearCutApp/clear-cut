@@ -1,13 +1,18 @@
 """The DDL every store in this package reads and writes against, and the
 routine that issues it (CP-062, `.claude/CHECKPOINTS.md`).
 
-`tracker_items` is a `ReplacingMergeTree` keyed on `item_id` and versioned by
-each row's `version` column, matching `TrackerItem`'s own frozen, versioned
-design (`domain/tracker.py`): every state transition is a new row, never a
-mutation, so the table's latest-wins read always resolves to the last
-producer action. `script_versions` follows the same shape, keyed on
-`project_id`, so `latest_script` resolves to the newest uploaded version
-without a live schema read.
+Every `ORDER BY` here starts at `project_id`, because the ids below a project
+are unique only inside one. Item ids are `EVT-NNN`, minted per analysis, so
+two projects produce the same string; a key that omits the project makes
+those the same row and the next background merge keeps one and drops the
+other without erroring (ADR 0014).
+
+`tracker_items` stays a `ReplacingMergeTree(version)`: `TrackerItem` is
+frozen and versioned (`domain/tracker.py`), so a state transition writes a
+new row and latest-wins is the read a producer wants. `script_versions` drops
+the version argument, because a script version is a distinct row to keep
+rather than an older copy of one -- collapsing it left a single row per
+project and nothing for the delta path to diff against.
 
 `ensure_schema` is not repeated per store. It holds the only copy of the DDL,
 so `infra/provision_tracker_schema.py` and every store's own `ensure_schema`
@@ -34,7 +39,7 @@ CREATE TABLE IF NOT EXISTS tracker_items (
     updated_at String,
     version UInt32
 ) ENGINE = ReplacingMergeTree(version)
-ORDER BY item_id
+ORDER BY (project_id, item_id)
 """
 
 _SCRIPT_VERSIONS_DDL = """\
@@ -45,9 +50,11 @@ CREATE TABLE IF NOT EXISTS script_versions (
     gcs_uri String,
     jurisdiction_code String,
     scenes String
-) ENGINE = ReplacingMergeTree(version)
-ORDER BY project_id
+) ENGINE = ReplacingMergeTree
+ORDER BY (project_id, script_id)
 """
+
+TABLES = ("tracker_items", "script_versions")
 
 DDL = (_TRACKER_ITEMS_DDL, _SCRIPT_VERSIONS_DDL)
 

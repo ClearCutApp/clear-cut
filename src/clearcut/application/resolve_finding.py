@@ -26,7 +26,8 @@ from clearcut.domain.tracker import TrackerItem, TrackerState
 
 @dataclass(frozen=True)
 class Transition:
-    """Move the item to `state` (`PATCH /api/tracker/{item_id}`)."""
+    """Move the item to `state`
+    (`PATCH /api/projects/{project_id}/tracker-items/{item_id}`)."""
 
     state: TrackerState
 
@@ -71,8 +72,8 @@ class ResolveFinding:
         self._tracker = tracker
         self._notifier = notifier
 
-    def execute(self, item_id: str, action: Action, at: str) -> TrackerItem:
-        item = self._tracker.latest(item_id)
+    def execute(self, project_id: str, item_id: str, action: Action, at: str) -> TrackerItem:
+        item = self._tracker.latest(project_id, item_id)
         if isinstance(action, Notify):
             self._notifier.notify(item, action.reason)
             return item

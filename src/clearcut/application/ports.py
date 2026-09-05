@@ -114,11 +114,16 @@ class TrackerStore(Protocol):
     Both tables live behind one port: the versioned `TrackerItem` rows and
     the `script_versions` side EvaluateDelta reads (docs/plan/sdd.md
     Section 3).
+
+    `latest` takes the project as well as the item because an item id is
+    unique only inside its project: `EVT-001` exists in every project that
+    ran an analysis, so a read on the id alone answers with whichever row a
+    background merge happened to keep (ADR 0014).
     """
 
     def save(self, items: list[TrackerItem]) -> None: ...
 
-    def latest(self, item_id: str) -> TrackerItem: ...
+    def latest(self, project_id: str, item_id: str) -> TrackerItem: ...
 
     def latest_for_project(self, project_id: str) -> list[TrackerItem]: ...
 

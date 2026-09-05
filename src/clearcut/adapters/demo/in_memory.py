@@ -159,11 +159,13 @@ class InMemoryTrackerStore:
         _record_stage("track", start)
         _refresh_tracker_items_gauge(items)
 
-    def latest(self, item_id: str) -> TrackerItem:
-        try:
-            return self._items[item_id]
-        except KeyError:
-            raise RecordNotFound(f"no tracker item found for item_id={item_id!r}") from None
+    def latest(self, project_id: str, item_id: str) -> TrackerItem:
+        item = self._items.get(item_id)
+        if item is None or item.project_id != project_id:
+            raise RecordNotFound(
+                f"no tracker item found for project_id={project_id!r} item_id={item_id!r}"
+            )
+        return item
 
     def latest_for_project(self, project_id: str) -> list[TrackerItem]:
         return [item for item in self._items.values() if item.project_id == project_id]

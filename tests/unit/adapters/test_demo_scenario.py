@@ -148,7 +148,7 @@ def test_a_transition_written_through_save_survives_a_read_through_list_tracker_
     item_id = report.tracker_items[0].item_id
     resolve = ResolveFinding(tracker, InMemoryNotifier())
 
-    resolve.execute(item_id, Transition(TrackerState.IN_PROGRESS), _AT)
+    resolve.execute(scenario.PROJECT_ID, item_id, Transition(TrackerState.IN_PROGRESS), _AT)
 
     items = ListTrackerItems(tracker).execute(scenario.PROJECT_ID)
     moved = next(item for item in items if item.item_id == item_id)
@@ -162,7 +162,9 @@ def test_notify_records_the_call_in_memory_instead_of_reaching_a_webhook() -> No
     item_id = report.tracker_items[0].item_id
     resolve = ResolveFinding(tracker, notifier)
 
-    resolve.execute(item_id, Notify(reason="producer requested an update"), _AT)
+    resolve.execute(
+        scenario.PROJECT_ID, item_id, Notify(reason="producer requested an update"), _AT
+    )
 
     assert len(notifier.notifications) == 1
     notified_item, reason = notifier.notifications[0]
@@ -190,7 +192,7 @@ def test_latest_for_an_unknown_item_id_raises_record_not_found() -> None:
     tracker = InMemoryTrackerStore()
 
     with pytest.raises(RecordNotFound):
-        tracker.latest("no-such-item")
+        tracker.latest(scenario.PROJECT_ID, "no-such-item")
 
 
 def test_search_on_an_unindexed_project_returns_no_facts() -> None:

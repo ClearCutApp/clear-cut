@@ -180,7 +180,7 @@ class _Tracker:
         self.saved.append(list(items))
         self._items.extend(items)
 
-    def latest(self, item_id: str) -> TrackerItem:
+    def latest(self, project_id: str, item_id: str) -> TrackerItem:
         raise RecordNotFound(item_id)
 
     def latest_for_project(self, project_id: str) -> list[TrackerItem]:

@@ -195,7 +195,7 @@ class _Tracker:
             self._log.append("tracker.save")
         self.saved.append(list(items))
 
-    def latest(self, item_id: str) -> TrackerItem:
+    def latest(self, project_id: str, item_id: str) -> TrackerItem:
         raise KeyError(item_id)
 
     def latest_for_project(self, project_id: str) -> list[TrackerItem]:
@@ -671,7 +671,7 @@ class _PositionalOnlyTracker:
     def save(self, a: list[TrackerItem]) -> None:
         self.saved.append(list(a))
 
-    def latest(self, a: str) -> TrackerItem:
+    def latest(self, a: str, b: str) -> TrackerItem:
         raise KeyError(a)
 
     def latest_for_project(self, a: str) -> list[TrackerItem]:

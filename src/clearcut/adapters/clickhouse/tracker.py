@@ -78,10 +78,17 @@ _SCRIPT_COLUMNS = [
 
 
 class TrackerItemNotFound(RecordNotFound):
-    """No stored row exists for the requested `item_id`."""
+    """No stored row exists for the requested project and `item_id`.
 
-    def __init__(self, item_id: str) -> None:
-        super().__init__(f"no tracker item found for item_id={item_id!r}")
+    Both ids are in the message because either one alone is ambiguous: the
+    same `EVT-001` exists in every project that ran an analysis, so "no
+    tracker item EVT-001" reads as a bug in the id rather than a read against
+    the wrong project (ADR 0014).
+    """
+
+    def __init__(self, project_id: str, item_id: str) -> None:
+        super().__init__(f"no tracker item found for project_id={project_id!r} item_id={item_id!r}")
+        self.project_id = project_id
         self.item_id = item_id
 
 
@@ -107,12 +114,16 @@ class ClickHouseTrackerStore:
         _record_stage("track", stage_start)
         _refresh_tracker_items_gauge(items)
 
-    def latest(self, item_id: str) -> TrackerItem:
-        query = "SELECT * FROM tracker_items WHERE item_id = {item_id:String}"
-        rows = self._query_tracker_rows(query, {"item_id": item_id})
-        matching = [row for row in rows if row[0] == item_id]
+    def latest(self, project_id: str, item_id: str) -> TrackerItem:
+        query = (
+            "SELECT * FROM tracker_items "
+            "WHERE project_id = {project_id:String} AND item_id = {item_id:String}"
+        )
+        rows = self._query_tracker_rows(query, {"project_id": project_id, "item_id": item_id})
+        project_index = _TRACKER_COLUMNS.index("project_id")
+        matching = [row for row in rows if row[0] == item_id and row[project_index] == project_id]
         if not matching:
-            raise TrackerItemNotFound(item_id)
+            raise TrackerItemNotFound(project_id, item_id)
         latest_row = max(matching, key=lambda row: row[_TRACKER_COLUMNS.index("version")])
         return _row_to_tracker_item(latest_row)
 
