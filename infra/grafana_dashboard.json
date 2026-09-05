@@ -1,0 +1,94 @@
+{
+  "id": null,
+  "uid": "clearcut-pipeline",
+  "title": "ClearCut pipeline",
+  "tags": ["clearcut"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 0,
+  "refresh": "30s",
+  "time": {"from": "now-6h", "to": "now"},
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "hide": 0,
+        "refresh": 1,
+        "current": {},
+        "options": []
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Stage latency",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "fieldConfig": {"defaults": {"unit": "ms"}, "overrides": []},
+      "options": {"legend": {"displayMode": "list", "placement": "bottom", "showLegend": true}},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le, stage) (rate(clearcut_stage_latency_ms_bucket[5m])))",
+          "legendFormat": "{{stage}}",
+          "datasource": {"type": "prometheus", "uid": "${datasource}"}
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Tokens per model",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "options": {"legend": {"displayMode": "list", "placement": "bottom", "showLegend": true}},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (model, token_type) (increase(clearcut_gemini_tokens_total[1h]))",
+          "legendFormat": "{{model}} {{token_type}}",
+          "datasource": {"type": "prometheus", "uid": "${datasource}"}
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Findings by severity",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "options": {"legend": {"displayMode": "list", "placement": "bottom", "showLegend": true}},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (risk_level) (increase(clearcut_findings_total[1h]))",
+          "legendFormat": "{{risk_level}}",
+          "datasource": {"type": "prometheus", "uid": "${datasource}"}
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Tracker items by state",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "options": {"legend": {"displayMode": "list", "placement": "bottom", "showLegend": true}},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (state) (clearcut_tracker_items)",
+          "legendFormat": "{{state}}",
+          "datasource": {"type": "prometheus", "uid": "${datasource}"}
+        }
+      ]
+    }
+  ]
+}

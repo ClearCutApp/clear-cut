@@ -298,12 +298,19 @@ copy the OTLP endpoint and generate a token. These become
 (`Authorization=Basic <base64 instance:token>`).
 
 The Flask app initializes the OpenTelemetry SDK at startup and exports traces
-and metrics over OTLP. Build one dashboard with the pipeline metrics:
+and metrics over OTLP. The dashboard JSON is `infra/grafana_dashboard.json`.
+Four panels query the metric names the adapters emit:
 
-- per-stage latency (ingest, extract, ground, research, track)
-- tokens per Gemini call, split by model
-- findings by severity
-- tracker items by state (`BLOCKED` / `IN_PROGRESS` / `CLEARED`)
+- Stage latency: `clearcut_stage_latency_ms` (ingest, extract, ground, research, track)
+- Tokens per model: `clearcut_gemini_tokens_total`
+- Findings by severity: `clearcut_findings_total`
+- Tracker items by state: `clearcut_tracker_items` (`BLOCKED` / `IN_PROGRESS` / `CLEARED`)
+
+Publish it with `infra/provision_grafana_dashboard.py`. `--dry-run` prints the
+panels and connects to nothing. A real run needs `GRAFANA_URL` (the stack URL,
+`https://<slug>.grafana.net`) and `GRAFANA_TOKEN` (a Grafana service account
+token with dashboards:write). The OTLP variables authenticate the exporter;
+they do not authenticate the Grafana HTTP API.
 
 Screenshot this dashboard for the demo video; it is the fastest way to show
 judges a live multi-stage pipeline rather than a single prompt call.

@@ -83,6 +83,13 @@ authenticated (`gcloud auth login`), and pointed at that project
     the eight clearance categories currently ground against nothing for
     Argentina, because no statute covering them has been loaded.
 
+11. `.venv/bin/python infra/provision_grafana_dashboard.py --dry-run` — review
+    the four panels, then drop `--dry-run` to POST `infra/grafana_dashboard.json`
+    to Grafana Cloud. It reads `GRAFANA_URL` and `GRAFANA_TOKEN` and exits
+    naming any that are missing. Those are a Grafana service account, not the
+    OTLP write pair: the OTLP variables send traces, they do not create a
+    dashboard or query Tempo.
+
 ## The manual step inside Google Cloud
 
 Step 6 above cannot finish the retrieval plane by itself. One step has no
@@ -103,6 +110,8 @@ zero results, and confirm it does, before trusting any grounded answer.
 
 ClickHouse Cloud (`docs/plan/infrastructure.md` §6) and Grafana Cloud (§10) are
 external SaaS signups. No script here automates either: create both
-accounts by hand, then paste their connection details into `.env` yourself —
+accounts by hand, then paste their connection details into `.env` yourself:
 `CLICKHOUSE_HOST`, `CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD`,
-`OTEL_EXPORTER_OTLP_ENDPOINT`, and `OTEL_EXPORTER_OTLP_HEADERS`.
+`OTEL_EXPORTER_OTLP_ENDPOINT`, and `OTEL_EXPORTER_OTLP_HEADERS`. Step 11 also
+needs `GRAFANA_URL` (the stack URL) and `GRAFANA_TOKEN` (a Grafana service
+account). Those two are not the OTLP write pair.

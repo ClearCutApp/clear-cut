@@ -2428,6 +2428,32 @@ is now a routing concern that never reaches a handler. Two tests that asserted
 no adapter is called. The user chose the full rename over two narrower options
 after being shown it touched 37 files.
 
+**D73. CP-058 stays BLOCKED for a human. Not superseded.** Depth 0,
+Attempts 0/3. The implementer shipped the dashboard JSON, the `--dry-run`
+provision script, unit tests that pin the four real metric names, and a live
+receipt test that skips without `GRAFANA_URL` / `GRAFANA_TOKEN`. Criteria 2–4
+are Grafana-side: one live analyze's five stage spans under one trace id, a
+non-zero `clearcut_gemini_tokens_total`, and the four panels
+`infrastructure.md` §10 names. A JSON file is not those panels.
+
+The missing piece is not more code. `.env` and Secret Manager hold only the
+OTLP pair (`OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_HEADERS` →
+`otlp-gateway-prod-sa-east-1.grafana.net`). That Basic user is a numeric
+instance id and the token is `glc_`. It authenticates to
+`https://grafana.com/api/instances` and lists zero stacks; hosted-metrics by
+that instance id is 403. Grafana's dashboard and datasource-query APIs need
+`https://<slug>.grafana.net` and a `glsa_` service account token. D6 already
+said Grafana Cloud is a human signup; this is that signup's second half.
+
+Superseding would split a credential wait into smaller credential waits, which
+§6 B forbids. The human action: create a Grafana Cloud service account with
+dashboards:write and datasource query, set `GRAFANA_URL` and `GRAFANA_TOKEN`,
+run `infra/provision_grafana_dashboard.py` and
+`pytest -m live tests/live/test_grafana_receipt_live.py`. Do not reuse the
+OTLP pair as `GRAFANA_TOKEN`. Independent IN_REVIEW work (CP-055, CP-056,
+CP-057, CP-060) continues. CP-059 stays TODO until CP-058 is DONE; it also
+needs a human `NOTIFY_WEBHOOK_URL`.
+
 ---
 
 ## Active
@@ -2436,15 +2462,17 @@ after being shown it touched 37 files.
 second time in its history.**
 
 The goal is ADR 0011: run the analyze path live for the 2026-09-07 submission.
-It exists because the SDD now grades itself and the grade is unambiguous. One
-section is DONE, every port is WIP, three endpoints and all four verification
-checks are MISSING, and no phase has met the exit criterion it wrote for itself.
-The cause is single: `clearcut-hack` does not exist, so no adapter has ever
-called the service it wraps.
+`clearcut-hack` exists (number `813918777633`). The live adapter tier is 10/10
+against real services (`337bddd`). Four checkpoints sit IN_REVIEW (CP-055,
+CP-056, CP-057, CP-060) and may still close. CP-058 is BLOCKED waiting on a
+human Grafana Cloud service account (`GRAFANA_URL`, `GRAFANA_TOKEN`); the OTLP
+write pair cannot provision or query the dashboard (D73). Independent reviews
+continue while that waits. CP-059 stays TODO until CP-058 is DONE; it also
+needs `NOTIFY_WEBHOOK_URL` in `.env`.
 
-Five of the six below cannot start until that project exists. One can start
-immediately and does not touch the cloud at all, which is why CP-056 is first
-in dispatch order rather than first in dependency order.
+Do not widen CP-056 to ContinuityCheck instrumentation, EvaluateDelta failure
+paths, or a Notifier live test. Do not supersede CP-058: the obstacle is a
+credential, not mixed scope. The web-product-ui plan does not touch this board.
 
 ### CP-055 — Provision every Google Cloud resource the live graph reads
 - Status: IN_REVIEW
@@ -2527,6 +2555,17 @@ in dispatch order rather than first in dependency order.
   API key are external signups. The identifier fix from `3dca760` did validate
   against real API responses: `DOCAI_PROCESSOR_ID` and
   `VERTEX_SEARCH_DATA_STORE_ID` both resolved as full resource names.
+
+  **Reconciled 2026-09-03 (leader).** The four `[~]` above were ticked in
+  `f8c12d0` and the evidence still holds. ADC exists at
+  `~/.config/gcloud/application_default_credentials.json`. ClickHouse tables
+  exist (live tracker tests compiled at 21:04). The Indexable toggle is proven
+  by `tests/live/test_vertex_search_live.py`. `./.claude/init.sh live` was 10
+  passed, 0 skipped at `337bddd`. The paragraph above is the record of what
+  blocked this morning, not of what blocks now. Status stays IN_REVIEW; a
+  reviewer marks DONE. `.env` still has `NOTIFY_WEBHOOK_URL` empty — that is
+  CP-059's skip, not this gate (the ten adapter tests do not build the
+  notifier).
 
 ### CP-056 — Translate every SDK exception the three bare adapters can raise
 - Status: IN_REVIEW
@@ -2636,19 +2675,26 @@ in dispatch order rather than first in dependency order.
   recording fake and unproven against BigQuery, which is precisely the
   distinction D66 exists to keep visible.
 
+  **Reconciled 2026-09-03 (leader).** ADC exists now, so that is no longer why
+  the last criterion is `[~]`. `tests/live/test_bigquery_lore_store_live.py`
+  proves a scratch-id fact round-trips through `lore_vectors`; it does not
+  prove `infra/seed_project_bible.py` indexed `scenario.BIBLE_FACT` for
+  `demo-project`. The reviewer either runs the script and a project-scoped
+  search, or sends this back. Do not treat the scratch-id test as a substitute.
+
   A claim in the docstring was wrong and is corrected: the dry run does *not*
   need the project interpreter. `lore_store.py` and `scenario.py` reach no
   further than the stdlib-only domain layer, so a bare `python3` runs it. Only
   a real run, which imports langchain, needs the venv.
 
 ### CP-058 — Export traces to Grafana Cloud and see the five stage spans
-- Status: IN_PROGRESS
+- Status: BLOCKED
 - Attempts: 0/3
 - Depth: 0
 - Layer: adapters
 - Depends on: CP-055
 - Acceptance:
-  - [ ] A Grafana Cloud stack exists and `OTEL_EXPORTER_OTLP_ENDPOINT` and
+  - [x] A Grafana Cloud stack exists and `OTEL_EXPORTER_OTLP_ENDPOINT` and
         `OTEL_EXPORTER_OTLP_HEADERS` are set, so `composition.py`'s exporters
         are built rather than returning `None`.
   - [ ] One live analyze run produces a trace in Grafana carrying all five
@@ -2661,16 +2707,69 @@ in dispatch order rather than first in dependency order.
   - [ ] The four panels `infrastructure.md` section 10 names exist: stage
         latency, tokens per model, findings by severity, tracker items by
         state.
-  - [ ] Failure path: with the endpoint unset the app still starts and still
+  - [x] Failure path: with the endpoint unset the app still starts and still
         serves, exporting nowhere. `test_composition.py:187` already proves
         this and must stay green.
-- Files: `docs/plan/infrastructure.md` section 10 if the dashboard differs from
-  what it describes
+- Files: `infra/grafana_dashboard.json`,
+  `infra/provision_grafana_dashboard.py`,
+  `tests/unit/infra/test_provision_grafana_dashboard.py`,
+  `tests/live/test_grafana_receipt_live.py`,
+  `docs/plan/infrastructure.md`, `infra/README.md`
 - Notes: SDD section 8(d) asserts against this dashboard, so CP-059 cannot pass
   without it. The three uninstrumented adapters stay uninstrumented here:
   `ContinuityCheck`, `LoreStore` and `Notifier` emit neither span nor metric,
   so the waterfall will under-account for wall-clock latency. That is recorded
   in SDD section 6 and deferred by ADR 0011, not fixed in this checkpoint.
+
+  **Reconciled 2026-09-03 (leader).** Criterion 1 holds: `.env` has both OTLP
+  variables, pointing at `otlp-gateway-prod-sa-east-1.grafana.net`. Criterion 5
+  holds: `test_composition.py:187` still proves the unset-endpoint path.
+  Status stays IN_PROGRESS because the dashboard is still MISSING (SDD §6).
+
+  Remaining:
+  - the four panels `infrastructure.md` §10 names;
+  - one live analyze whose five stage spans share one trace id *in Grafana*,
+    not only in an in-memory exporter;
+  - `clearcut_gemini_tokens_total` non-zero on that dashboard.
+
+  `tests/live/test_end_to_end_live.py` already asserts the five spans and the
+  token counter in-process. Its docstring records that a successful OTLP flush
+  is not proof of receipt. Do not treat that test as this checkpoint. Do not
+  instrument ContinuityCheck, LoreStore, or Notifier.
+
+  **Implementer 2026-09-03.** Dashboard JSON and provision script are in
+  `infra/`. Unit tests prove the four panels query
+  `clearcut_stage_latency_ms`, `clearcut_gemini_tokens_total`,
+  `clearcut_findings_total`, `clearcut_tracker_items`, that `--dry-run`
+  prints them without connecting, and that a missing credential exits naming
+  that variable. The live tests skip without `GRAFANA_URL` and
+  `GRAFANA_TOKEN`. Criteria 2-4 stay unticked: a JSON file is not a Grafana
+  dashboard.
+
+  Tried, without printing secrets: `.env` and Secret Manager hold only the
+  OTLP pair; Cloud Run env is the same set. The OTLP header is Basic
+  `instanceId:glc_...`. That token authenticates to
+  `https://grafana.com/api/instances` and lists zero stacks.
+  `GET /api/hosted-metrics/<otlp-instance-id>` is 403. The OTLP gateway host
+  is regional (`otlp-gateway-prod-sa-east-1.grafana.net`); Prometheus and
+  Tempo query hosts are cluster-specific and not derivable from it. Grafana's
+  dashboard and datasource-proxy APIs need the stack URL
+  (`https://<slug>.grafana.net`) and a Grafana service account token
+  (`glsa_...`), not the OTLP write token.
+
+  Human action: in the Grafana Cloud stack, create a service account with
+  dashboards:write plus datasource query, then set `GRAFANA_URL` and
+  `GRAFANA_TOKEN`. Run
+  `.venv/bin/python infra/provision_grafana_dashboard.py` and
+  `pytest -m live tests/live/test_grafana_receipt_live.py`. Do not reuse the
+  OTLP pair as `GRAFANA_TOKEN`.
+
+  **Leader 2026-09-03 (D73).** Stop for a human (AGENT.md §6 B). Not
+  superseded: the checkpoint is not too large; the obstacle is an external
+  credential no agent can mint. Status stays BLOCKED. Needed: `GRAFANA_URL`
+  (`https://<slug>.grafana.net`) and `GRAFANA_TOKEN` (`glsa_`, dashboards:write
+  plus datasource query). The OTLP pair is the wrong credential. After those
+  two vars exist, run the provision script and the live receipt test above.
 
 ### CP-059 — Run SDD section 8(d) against live services
 - Status: TODO
@@ -2679,7 +2778,7 @@ in dispatch order rather than first in dependency order.
 - Layer: tests
 - Depends on: CP-055, CP-056, CP-057, CP-058
 - Acceptance:
-  - [ ] A planted screenplay PDF in `gs://clearcut-scripts-intake` contains a
+  - [x] A planted screenplay PDF in `gs://clearcut-scripts-intake` contains a
         Ferrari Testarossa (BRAND), "Hotel California" on a radio
         (MUSIC_EXISTING), and one contradiction of the fact CP-057 seeded
         (CONTINUITY).
@@ -2701,6 +2800,19 @@ in dispatch order rather than first in dependency order.
   That proved the wiring. This proves the services, and the Backlog entry that
   has said so since 2026-08-31 is finally promoted.
 
+  **Reconciled 2026-09-03 (leader).** The test file is committed at `f8c12d0`
+  and implements every criterion except Grafana receipt, which it puts out of
+  band ("OTLP failures over HTTP are silent"). It has no pycache: it has never
+  been collected. Status stays TODO because this block Depends on CP-058,
+  which is not DONE.
+
+  The planted PDF exists at `gs://clearcut-scripts-intake/demo-project/v1.pdf`
+  (listed, not re-parsed). Two env gaps will skip the test when CP-058 lands:
+  `NOTIFY_WEBHOOK_URL` is empty in `.env` (`composition._required_env` refuses
+  to start without it — a human picks the URL), and
+  `CLEARCUT_LIVE_SCRIPT_GCS_URI` is absent (a test input, not an app setting;
+  point it at that PDF).
+
 ### CP-060 — Build the image and deploy it to Cloud Run
 - Status: IN_REVIEW
 - Attempts: 0/3
@@ -2709,8 +2821,8 @@ in dispatch order rather than first in dependency order.
 - Depends on: CP-055
 - Acceptance:
   - [x] Cloud Build built the image; local Docker was never needed, because
-        `gcloud run deploy --source .` builds remotely. The Dockerfile exists and its seven static
-        tests pass, but no image has ever been built from it.
+        `gcloud run deploy --source .` builds remotely. The Dockerfile exists
+        and its seven static tests pass.
   - [x] The built image contains `web/dist`. A container run locally serves the
         SPA at `/`, which is the only proof the in-image `npm run build`
         actually ran.
@@ -2732,6 +2844,15 @@ in dispatch order rather than first in dependency order.
   the SPA at 200. What is unproven is the build itself, and the two most
   likely failures are the buildpack fallback and `.gcloudignore` excluding
   something the build needs.
+
+  **Reconciled 2026-09-03 (leader).** Service `clearcut` is live in
+  `us-central1` as revision `clearcut-00005-sqx` at
+  `https://clearcut-eflcclvn7a-uc.a.run.app`. The REST rename (D72) is that
+  revision. The Notes above about an unproven build are stale. Status stays
+  IN_REVIEW. The remaining `[~]` is the missing-variable startup path on a
+  *deployed* revision; do not widen into a second deploy unless the reviewer
+  requires it. `NOTIFY_WEBHOOK_URL` is empty locally; if that revision serves
+  `live`, the secret is set there even though `.env` is not.
 
 ---
 
