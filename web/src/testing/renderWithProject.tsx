@@ -24,6 +24,11 @@ function Preselect({ itemId }: { itemId: string }): null {
   return null;
 }
 
+/** The analysis poll's delays are the policy's, and
+ * `features/analysis/model` proves them. No test mounted this way spends
+ * them: it stubs the job's answers and asserts on what the view did. */
+const noWait = () => Promise.resolve();
+
 /** Renders the router's current path so a test can assert a navigation. */
 function LocationProbe(): ReactElement {
   const location = useLocation();
@@ -53,7 +58,11 @@ export function renderWithProject(
   } = options;
   return render(
     <MemoryRouter initialEntries={[path]}>
-      <ProjectProvider projectId={projectId} initialAnalysis={analysis}>
+      <ProjectProvider
+        projectId={projectId}
+        initialAnalysis={analysis}
+        pollWait={noWait}
+      >
         {selectedItemId !== null && <Preselect itemId={selectedItemId} />}
         {ui}
         <LocationProbe />

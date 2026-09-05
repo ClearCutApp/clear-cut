@@ -135,7 +135,7 @@ export function ItemDetailPanel({
         <FindingFacts finding={finding} jurisdictionName={jurisdictionName} />
       ) : (
         <p className="item-panel__note">
-          Finding details are available after an analysis runs in this session.{" "}
+          This item has no finding in the stored script, so there is nothing to show about what was detected.{" "}
           <Link to={analyzePath}>Run analysis</Link>
         </p>
       )}

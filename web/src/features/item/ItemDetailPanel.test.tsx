@@ -48,14 +48,14 @@ describe("ItemDetailPanel", () => {
     expect(screen.getByText("legal@ferrari.example")).toBeInTheDocument();
     expect(screen.getByLabelText("State")).toHaveValue("BLOCKED");
     expect(screen.getByText(/Version 1/)).toBeInTheDocument();
-    expect(screen.queryByText(/Finding details are available/)).toBeNull();
+    expect(screen.queryByText(/no finding in the stored script/)).toBeNull();
   });
 
-  it("explains the missing finding and links to the analysis when none is in session", () => {
+  it("explains the missing finding and links to the analysis when the script has none", () => {
     renderPanel({ finding: null });
 
     expect(
-      screen.getByText(/Finding details are available after an analysis runs in this session\./),
+      screen.getByText(/This item has no finding in the stored script/),
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Run analysis" })).toHaveAttribute(
       "href",

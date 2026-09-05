@@ -52,12 +52,12 @@ describe("ItemDetailPanelHost", () => {
     ).toBeInTheDocument();
   });
 
-  it("says the finding is unavailable without an analysis in session", async () => {
+  it("says the finding is unavailable when no script is loaded", async () => {
     stubFetch({ tracker: ok(TRACKER_FIXTURE) });
 
     renderWithProject(<ItemDetailPanelHost />, { selectedItemId: "EVT-001" });
 
-    expect(await screen.findByText(/Finding details are available/)).toBeInTheDocument();
+    expect(await screen.findByText(/no finding in the stored script/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Run analysis" })).toHaveAttribute(
       "href",
       "/projects/demo-project/analyze",
