@@ -7,22 +7,32 @@ check.
 """
 
 from clearcut.application.ports import (
+    AnalysisJobStore,
+    FindingStore,
     LegalGrounding,
     LoreStore,
     Notifier,
+    ProjectStore,
     RightsResearch,
     SceneExtractor,
     ScriptIngestion,
+    ScriptStorage,
+    ScriptStore,
     TrackerStore,
 )
 from clearcut.domain.script import Script
 from clearcut.domain.tracker import TrackerItem
 from tests.unit.fakes import (
+    FakeAnalysisJobStore,
+    FakeFindingStore,
     FakeLegalGrounding,
     FakeLoreStore,
+    FakeProjectStore,
     FakeRightsResearch,
     FakeSceneExtractor,
     FakeScriptIngestion,
+    FakeScriptStorage,
+    FakeScriptStore,
 )
 
 
@@ -68,6 +78,11 @@ _FAKES_BY_PORT = {
     LoreStore: FakeLoreStore(),
     TrackerStore: FakeTrackerStore(),
     Notifier: FakeNotifier(),
+    ProjectStore: FakeProjectStore(),
+    ScriptStore: FakeScriptStore(),
+    FindingStore: FakeFindingStore(),
+    AnalysisJobStore: FakeAnalysisJobStore(),
+    ScriptStorage: FakeScriptStorage(),
 }
 
 
@@ -105,3 +120,20 @@ class _TrackerStoreMissingLatest:
 
 def test_a_trackerstore_stub_missing_one_required_method_fails_isinstance() -> None:
     assert not isinstance(_TrackerStoreMissingLatest(), TrackerStore)
+
+
+class _ScriptStoreMissingLatest:
+    """A stub implementing only three of `ScriptStore`'s four methods."""
+
+    def save(self, script: Script) -> None:
+        return None
+
+    def get(self, project_id: str, script_id: str) -> Script:
+        raise KeyError(script_id)
+
+    def for_project(self, project_id: str) -> list[Script]:
+        return []
+
+
+def test_a_scriptstore_stub_missing_one_required_method_fails_isinstance() -> None:
+    assert not isinstance(_ScriptStoreMissingLatest(), ScriptStore)
