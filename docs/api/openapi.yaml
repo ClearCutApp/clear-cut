@@ -1,0 +1,1257 @@
+openapi: 3.1.0
+
+info:
+  title: ClearCut API
+  version: 1.0.0
+  summary: Agentic script clearance for independent film production.
+  description: |
+    Upload a screenplay version and every rights event that could stop the film
+    comes back with the law it triggers, who holds the rights, and an action to
+    resolve it.
+
+    This document is the contract, not a description of what is deployed today.
+    Four verticals build against it in parallel, so a field named here is the
+    field they each implement.
+
+    Two rules hold everywhere:
+
+    - Analysis is asynchronous. `POST /api/projects/{project_id}/scripts`
+      answers 202 with an analysis id and a `Location` header. Document AI and
+      Gemini take minutes on a feature-length script, which outlives the Cloud
+      Run request timeout. The browser polls
+      `GET /api/projects/{project_id}/analyses/{analysis_id}` instead.
+    - Every path is scoped to its project. There is no top-level
+      `/api/tracker-items/...`: an item id alone leaves the server unable to
+      answer "may this caller read it" without a second lookup.
+
+    `GET /api/health` reports whether this instance serves real analysis or the
+    fixed demo sample. Check it before trusting a finding.
+
+servers:
+  - url: /
+    description: The service serving this document.
+
+tags:
+  - name: System
+    description: Liveness and the machine-readable description of this API.
+  - name: Projects
+    description: Projects and the jurisdictions they can be cleared against.
+  - name: Scripts
+    description: Script uploads, script versions, and the analyses they queue.
+  - name: Tracker
+    description: The actionable side of a finding, and the actions taken on it.
+  - name: Bible
+    description: Project bible facts that continuity and policy audits run against.
+  - name: Questions
+    description: Grounded questions about one project's clearance state.
+
+paths:
+  /api/health:
+    get:
+      tags: [System]
+      operationId: getHealth
+      summary: Whether this instance runs live or serves the demo sample
+      description: |
+        `mock` means every scene, finding and tracker item came from the planted
+        scenario rather than from a real analysis.
+      responses:
+        '200':
+          description: The mode this instance runs under.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/openapi.json:
+    get:
+      tags: [System]
+      operationId: getOpenApiDocument
+      summary: This document, as JSON, from the running service
+      responses:
+        '200':
+          description: An OpenAPI document describing the routes this instance serves.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/docs:
+    get:
+      tags: [System]
+      operationId: getApiDocs
+      summary: Swagger UI over the document above
+      responses:
+        '200':
+          description: An HTML page.
+          content:
+            text/html:
+              schema:
+                type: string
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/jurisdictions:
+    get:
+      tags: [Projects]
+      operationId: listJurisdictions
+      summary: The jurisdictions a project can be cleared against
+      description: |
+        The ten codes `jurisdiction_code` accepts anywhere in this API. A
+        jurisdiction's legal corpus prefix is deliberately absent: it names a
+        bucket layout, which is the server's business.
+      responses:
+        '200':
+          description: Every supported jurisdiction, in display order.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Jurisdiction'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/projects:
+    get:
+      tags: [Projects]
+      operationId: listProjects
+      summary: Every project
+      responses:
+        '200':
+          description: The projects this instance holds. An empty array when there are none.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Project'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Projects]
+      operationId: createProject
+      summary: Create a project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectCreate'
+      responses:
+        '201':
+          description: The project as stored. `Location` carries its canonical path.
+          headers:
+            Location:
+              description: The path of the created project.
+              required: true
+              schema:
+                type: string
+                examples: ['/api/projects/prj-4f2a']
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/projects/{project_id}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      tags: [Projects]
+      operationId: getProject
+      summary: One project
+      responses:
+        '200':
+          description: The project.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/projects/{project_id}/script-files:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      tags: [Scripts]
+      operationId: uploadScriptFile
+      summary: Upload a screenplay PDF and get back the URI to analyze
+      description: |
+        Writes the PDF to Cloud Storage and returns its `gs://` URI. Nothing is
+        parsed here: pass the returned `gcs_uri` to
+        `POST /api/projects/{project_id}/scripts` to queue an analysis. The two
+        steps are separate so a re-analysis of the same upload costs no second
+        transfer.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: A PDF, at most 25 MiB.
+            encoding:
+              file:
+                contentType: application/pdf
+      responses:
+        '201':
+          description: The stored object.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScriptFile'
+        '400':
+          description: |
+            No file part, or a file that is not a PDF. ClearCut reads screenplays
+            through Document AI, which is configured for PDF alone.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: The file is over 25 MiB.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '502':
+          description: Cloud Storage rejected the write. Nothing was stored.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/projects/{project_id}/scripts:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      tags: [Scripts]
+      operationId: listScripts
+      summary: Every version of this project's script
+      responses:
+        '200':
+          description: |
+            One entry per version, newest first. Scenes and findings are absent
+            here; read one version to get them.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ScriptSummary'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Scripts]
+      operationId: createScript
+      summary: Queue an analysis of one script version
+      description: |
+        Answers 202 and returns immediately. `version` of 1 runs the full
+        pipeline; greater than 1 runs the delta path, re-analyzing only the
+        scenes whose content hash changed against the stored previous version.
+
+        Poll the `Location` path until `state` leaves `QUEUED` and `RUNNING`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScriptCreate'
+      responses:
+        '202':
+          description: |
+            The analysis was queued. The script itself does not exist yet, so
+            `Location` points at the analysis rather than at the script.
+          headers:
+            Location:
+              description: The path to poll for this analysis.
+              required: true
+              schema:
+                type: string
+                examples: ['/api/projects/prj-4f2a/analyses/ana-91c3']
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisJob'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: No such project, or `version` above 1 with no stored previous version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/projects/{project_id}/scripts/{script_id}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/ScriptId'
+    get:
+      tags: [Scripts]
+      operationId: getScript
+      summary: One script version, with its scenes, spans and findings
+      description: |
+        Each scene carries a `spans` array: the character offsets in that
+        scene's `text` that a finding was raised against. The server computes
+        them while it reads the script, so a highlight is an offset the browser
+        renders rather than a substring it searches for -- the same phrase can
+        appear twice in a scene and only one occurrence be the finding.
+      responses:
+        '200':
+          description: The script version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Script'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/projects/{project_id}/analyses/{analysis_id}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/AnalysisId'
+    get:
+      tags: [Scripts]
+      operationId: getAnalysis
+      summary: The state of one queued analysis
+      description: |
+        `SUCCEEDED` carries the `script_id` to read. `FAILED` carries a
+        non-empty `error`. A run whose instance was reclaimed mid-run is
+        reported as `FAILED` by the read that finds it stale, so a job never
+        sits in `RUNNING` forever.
+      responses:
+        '200':
+          description: The analysis job at its newest version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisJob'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/projects/{project_id}/tracker-items:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      tags: [Tracker]
+      operationId: listTrackerItems
+      summary: This project's tracker items
+      responses:
+        '200':
+          description: |
+            One entry per item, at its newest version. An empty array when the
+            project has no items.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TrackerItem'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/projects/{project_id}/tracker-items/{item_id}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/ItemId'
+    get:
+      tags: [Tracker]
+      operationId: getTrackerItem
+      summary: One tracker item
+      responses:
+        '200':
+          description: The item at its newest version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrackerItem'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    patch:
+      tags: [Tracker]
+      operationId: updateTrackerItemState
+      summary: Move one item between states
+      description: |
+        Every ordered pair of states is legal, including back out of `CLEARED`
+        and into the state the item already holds. A transition is an audit
+        record of what a producer did, not a cache of where the item stands, so
+        each one writes a new version.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrackerItemStateUpdate'
+      responses:
+        '200':
+          description: The item at its new version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrackerItem'
+        '400':
+          description: Missing or unrecognized `state`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/projects/{project_id}/tracker-items/{item_id}/email-drafts:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/ItemId'
+    post:
+      tags: [Tracker]
+      operationId: createTrackerItemEmailDraft
+      summary: Draft the outreach email for one item
+      description: |
+        Fills the outreach template from the item's rights holder, contact and
+        required document, and stores it on the item as `draft_email`. The
+        system never sends it: a producer copies the draft and sends it
+        themselves.
+      responses:
+        '201':
+          description: The item at its new version, carrying the draft.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrackerItem'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/projects/{project_id}/tracker-items/{item_id}/notifications:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/ItemId'
+    post:
+      tags: [Tracker]
+      operationId: createTrackerItemNotification
+      summary: Notify the producer about one item
+      description: Posts the item and the reason to the configured outbound webhook.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationCreate'
+      responses:
+        '201':
+          description: The item at its new version. The webhook accepted the notification.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrackerItem'
+        '400':
+          description: |
+            `reason` is missing, blank, or whitespace only. A notification with
+            no reason tells the producer nothing an unsent one would not.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          description: The webhook rejected the notification. Nothing was recorded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/projects/{project_id}/bible:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      tags: [Bible]
+      operationId: getProjectBible
+      summary: This project's bible
+      responses:
+        '200':
+          description: The bible, with an empty `facts` array when nothing has been recorded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectBible'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/projects/{project_id}/bible/facts:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      tags: [Bible]
+      operationId: createBibleFact
+      summary: Record one bible fact
+      description: |
+        The server assigns `fact_id` as the next `FACT-NNN` in the project's
+        sequence. A `LORE` fact feeds the continuity audit; a `POLICY` fact
+        feeds the policy audit.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BibleFactCreate'
+      responses:
+        '201':
+          description: The fact as stored, carrying the id the server assigned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BibleFact'
+        '400':
+          description: |
+            `text` or `source` is missing, blank, or whitespace only. A fact
+            with no source cannot be cited, and a citation is what makes an
+            audit finding answerable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/projects/{project_id}/questions:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      tags: [Questions]
+      operationId: askProjectQuestion
+      summary: Ask about this project's clearance state
+      description: |
+        Answers from the project's own bible facts and the jurisdiction's legal
+        corpus, and returns the citations the answer rests on. An answer with
+        no citation is an answer this API does not give.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuestionCreate'
+      responses:
+        '200':
+          description: The answer, the bible facts behind it, and its citations.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuestionAnswer'
+        '400':
+          description: |
+            `question` is missing, blank, or whitespace only, or
+            `jurisdiction_code` names no supported jurisdiction.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          description: The grounding service could not answer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  parameters:
+    ProjectId:
+      name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+        examples: ['prj-4f2a']
+
+    ScriptId:
+      name: script_id
+      in: path
+      required: true
+      description: One script version.
+      schema:
+        type: string
+        minLength: 1
+        examples: ['scr-77b1']
+
+    AnalysisId:
+      name: analysis_id
+      in: path
+      required: true
+      description: One queued analysis, as returned by the 202 that created it.
+      schema:
+        type: string
+        minLength: 1
+        examples: ['ana-91c3']
+
+    ItemId:
+      name: item_id
+      in: path
+      required: true
+      description: One tracker item.
+      schema:
+        type: string
+        minLength: 1
+        examples: ['itm-0031']
+
+  responses:
+    BadRequest:
+      description: A required field is missing or invalid. Nothing was written.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    NotFound:
+      description: No record at this path.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    InternalError:
+      description: |
+        The server failed for a reason it does not attribute. The body carries a
+        message and never a stack trace.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    Error:
+      type: object
+      description: The one error shape every failing response returns.
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: What went wrong, in one sentence, safe to show a producer.
+          examples: ['gcs_uri is required']
+      additionalProperties: false
+
+    Health:
+      type: object
+      required: [mode]
+      properties:
+        mode:
+          type: string
+          enum: [mock, live]
+          description: |
+            `mock` serves the planted demo scenario; `live` runs real analysis.
+      additionalProperties: false
+
+    Jurisdiction:
+      type: object
+      required: [code, display_name]
+      properties:
+        code:
+          type: string
+          description: The ISO 3166-1 alpha-2 code every `jurisdiction_code` field takes.
+          examples: ['AR']
+        display_name:
+          type: string
+          examples: ['Argentina']
+      additionalProperties: false
+
+    ProjectCreate:
+      type: object
+      required: [title, jurisdiction_code]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          examples: ['El Ultimo Verano']
+        jurisdiction_code:
+          type: string
+          description: One of the codes `GET /api/jurisdictions` returns.
+          examples: ['AR']
+      additionalProperties: false
+
+    Project:
+      type: object
+      required: [project_id, title, jurisdiction_code, created_at]
+      properties:
+        project_id:
+          type: string
+          examples: ['prj-4f2a']
+        title:
+          type: string
+          examples: ['El Ultimo Verano']
+        jurisdiction_code:
+          type: string
+          examples: ['AR']
+        created_at:
+          type: string
+          format: date-time
+          description: UTC, seconds precision.
+          examples: ['2026-09-05T12:00:00Z']
+      additionalProperties: false
+
+    ScriptFile:
+      type: object
+      description: One uploaded screenplay in Cloud Storage.
+      required: [gcs_uri, filename, size_bytes, content_type]
+      properties:
+        gcs_uri:
+          type: string
+          description: Pass this to `POST /api/projects/{project_id}/scripts`.
+          examples: ['gs://clearcut-scripts/prj-4f2a/el-ultimo-verano-v2.pdf']
+        filename:
+          type: string
+          examples: ['el-ultimo-verano-v2.pdf']
+        size_bytes:
+          type: integer
+          minimum: 1
+          examples: [2411553]
+        content_type:
+          type: string
+          enum: [application/pdf]
+      additionalProperties: false
+
+    ScriptCreate:
+      type: object
+      required: [gcs_uri, version, jurisdiction_code]
+      properties:
+        gcs_uri:
+          type: string
+          description: The URI `POST /api/projects/{project_id}/script-files` returned.
+          examples: ['gs://clearcut-scripts/prj-4f2a/el-ultimo-verano-v2.pdf']
+        version:
+          type: integer
+          minimum: 1
+          description: |
+            1 runs the full pipeline. Above 1 diffs against the stored previous
+            version and re-analyzes only the scenes whose content hash changed.
+          examples: [2]
+        jurisdiction_code:
+          type: string
+          examples: ['AR']
+      additionalProperties: false
+
+    AnalysisState:
+      type: string
+      enum: [QUEUED, RUNNING, SUCCEEDED, FAILED]
+      description: |
+        `SUCCEEDED` and `FAILED` are terminal: a job in either never moves
+        again, and a later run of the same script is a new analysis.
+
+    AnalysisJob:
+      type: object
+      required:
+        [analysis_id, project_id, script_id, state, created_at, updated_at, error, version]
+      properties:
+        analysis_id:
+          type: string
+          examples: ['ana-91c3']
+        project_id:
+          type: string
+          examples: ['prj-4f2a']
+        script_id:
+          type: string
+          description: |
+            The script version this analysis produces. Assigned when the job is
+            queued, readable at
+            `/api/projects/{project_id}/scripts/{script_id}` once `state` is
+            `SUCCEEDED`.
+          examples: ['scr-77b1']
+        state:
+          $ref: '#/components/schemas/AnalysisState'
+        created_at:
+          type: string
+          format: date-time
+          examples: ['2026-09-05T12:00:00Z']
+        updated_at:
+          type: string
+          format: date-time
+          description: When this version was written. Polling compares it to spot a stalled run.
+          examples: ['2026-09-05T12:04:11Z']
+        error:
+          type: string
+          description: |
+            Why the run failed. Empty in every state but `FAILED`, and never
+            empty in `FAILED`.
+          examples: ['Document AI returned no pages']
+        version:
+          type: integer
+          minimum: 1
+          description: Each transition writes a new version rather than mutating this row.
+          examples: [3]
+      additionalProperties: false
+
+    ScriptSummary:
+      type: object
+      description: One script version without its scenes or findings.
+      required:
+        [script_id, project_id, version, gcs_uri, jurisdiction_code, scene_count, finding_count]
+      properties:
+        script_id:
+          type: string
+          examples: ['scr-77b1']
+        project_id:
+          type: string
+          examples: ['prj-4f2a']
+        version:
+          type: integer
+          minimum: 1
+          examples: [2]
+        gcs_uri:
+          type: string
+          examples: ['gs://clearcut-scripts/prj-4f2a/el-ultimo-verano-v2.pdf']
+        jurisdiction_code:
+          type: string
+          examples: ['AR']
+        scene_count:
+          type: integer
+          minimum: 0
+          examples: [84]
+        finding_count:
+          type: integer
+          minimum: 0
+          examples: [31]
+      additionalProperties: false
+
+    Script:
+      type: object
+      description: One script version, with every scene and every finding raised against it.
+      required: [script_id, project_id, version, gcs_uri, jurisdiction_code, scenes, findings]
+      properties:
+        script_id:
+          type: string
+          examples: ['scr-77b1']
+        project_id:
+          type: string
+          examples: ['prj-4f2a']
+        version:
+          type: integer
+          minimum: 1
+          examples: [2]
+        gcs_uri:
+          type: string
+          examples: ['gs://clearcut-scripts/prj-4f2a/el-ultimo-verano-v2.pdf']
+        jurisdiction_code:
+          type: string
+          examples: ['AR']
+        scenes:
+          type: array
+          description: Ordered by `number`, which strictly increases.
+          items:
+            $ref: '#/components/schemas/Scene'
+        findings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Finding'
+      additionalProperties: false
+
+    Scene:
+      type: object
+      required: [number, heading, page_start, page_end, text, content_hash, spans]
+      properties:
+        number:
+          type: integer
+          minimum: 1
+          examples: [12]
+        heading:
+          type: string
+          examples: ['INT. BAR NOTTURNO - NIGHT']
+        page_start:
+          type: integer
+          minimum: 1
+          examples: [14]
+        page_end:
+          type: integer
+          minimum: 1
+          examples: [15]
+        text:
+          type: string
+          description: The scene as written. `spans` offsets index into this string.
+        content_hash:
+          type: string
+          description: |
+            SHA-256 of the normalized text. Two versions share a hash when the
+            scene did not change, which is what the delta path joins on.
+          examples: ['9f2b1c4e5a6d7f80912a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f80']
+        spans:
+          type: array
+          description: |
+            Where in `text` this scene's findings were raised, ordered by
+            `start` and never overlapping. Empty when the scene raised none, and
+            shorter than the scene's finding count when a finding's `raw_text`
+            does not appear verbatim.
+          items:
+            $ref: '#/components/schemas/Span'
+      additionalProperties: false
+
+    Span:
+      type: object
+      description: |
+        One finding's position in one scene's text, computed server-side on
+        read (ADR 0015). The browser highlights these offsets and never searches
+        the text itself.
+
+        A phrase that appears three times in a scene produces three spans, one
+        per occurrence. Where two findings claim the same characters, the
+        higher-risk one wins the range and the other has no span here; it is
+        still listed among the scene's findings.
+      required: [scene_number, start, end, finding_id, risk]
+      properties:
+        scene_number:
+          type: integer
+          minimum: 1
+          description: The scene this span belongs to, repeated so a span survives being moved.
+          examples: [12]
+        start:
+          type: integer
+          minimum: 0
+          description: Offset of the first character, counted in Unicode code points.
+          examples: [412]
+        end:
+          type: integer
+          minimum: 0
+          description: Offset one past the last character. Always greater than `start`.
+          examples: [431]
+        finding_id:
+          type: string
+          description: The finding this span belongs to.
+          examples: ['EVT-014']
+        risk:
+          $ref: '#/components/schemas/RiskLevel'
+      additionalProperties: false
+
+    RiskLevel:
+      type: string
+      enum: [LOW, MEDIUM, HIGH, CRITICAL]
+      description: How urgently a finding needs clearance action.
+
+    Category:
+      type: string
+      enum:
+        - INDUSTRIAL_PROPERTY
+        - COPYRIGHT_WORKS
+        - PERSONALITY_IMAGE
+        - INTEGRATED_VISUAL
+        - LOCATIONS_PERMITS
+        - SPECIAL_SYMBOLS
+        - CONTINUITY
+        - POLICY
+      description: The eight IP categories a finding falls under.
+
+    NerLabel:
+      type: string
+      enum:
+        - BRAND
+        - MUSIC_EXISTING
+        - MUSIC_ORIGINAL
+        - ART_LIT
+        - MEDIA_AV
+        - TALENT_CHARACTER
+        - REAL_PERSON
+        - PROPS_DESIGN
+        - LOCATION_PRIV
+        - LOCATION_PUB
+        - SPECIAL_SYMBOL
+      description: The eleven tags the extractor emits.
+
+    Citation:
+      type: object
+      description: One source backing a finding or an answer.
+      required: [uri, title, snippet]
+      properties:
+        uri:
+          type: string
+          examples: ['https://servicios.infoleg.gob.ar/infolegInternet/anexos/40000-44999/42755/texact.htm']
+        title:
+          type: string
+          examples: ['Ley 11.723, Regimen Legal de la Propiedad Intelectual']
+        snippet:
+          type: string
+      additionalProperties: false
+
+    Finding:
+      type: object
+      description: One detected clearance event.
+      required:
+        - finding_id
+        - scene_number
+        - page
+        - raw_text
+        - category
+        - ner_label
+        - risk_level
+        - required_document
+        - citations
+        - contradicts
+      properties:
+        finding_id:
+          type: string
+          examples: ['EVT-014']
+        scene_number:
+          type: integer
+          minimum: 1
+          examples: [12]
+        page:
+          type: integer
+          minimum: 1
+          examples: [14]
+        raw_text:
+          type: string
+          description: The script fragment the finding was raised against.
+          examples: ['a Coca-Cola sign flickers above the bar']
+        category:
+          $ref: '#/components/schemas/Category'
+        ner_label:
+          description: |
+            Null for `CONTINUITY` and `POLICY` findings: those come from the
+            bible audit, so nothing in the script text was extracted for them.
+          oneOf:
+            - $ref: '#/components/schemas/NerLabel'
+            - type: 'null'
+        risk_level:
+          $ref: '#/components/schemas/RiskLevel'
+        required_document:
+          type: string
+          description: What must be obtained to clear this finding.
+          examples: ['Trademark Use Authorization']
+        citations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Citation'
+        contradicts:
+          description: |
+            The `fact_id` of the bible fact this finding contradicts, on a
+            continuity finding. Null on every other kind.
+          type: [string, 'null']
+          examples: ['FACT-007']
+      additionalProperties: false
+
+    TrackerState:
+      type: string
+      enum: [BLOCKED, IN_PROGRESS, CLEARED]
+      description: Where a tracker item stands. Every ordered pair is a legal transition.
+
+    TrackerItem:
+      type: object
+      description: The actionable side of a finding.
+      required:
+        - item_id
+        - project_id
+        - finding_id
+        - scene_numbers
+        - state
+        - needs_review
+        - required_document
+        - contact
+        - litigation_posture
+        - draft_email
+        - note
+        - updated_at
+        - version
+      properties:
+        item_id:
+          type: string
+          examples: ['itm-0031']
+        project_id:
+          type: string
+          examples: ['prj-4f2a']
+        finding_id:
+          type: string
+          examples: ['EVT-014']
+        scene_numbers:
+          type: array
+          description: |
+            Every scene this item covers. More than one when the same asset was
+            deduplicated across scenes.
+          minItems: 1
+          items:
+            type: integer
+            minimum: 1
+          examples: [[12, 41]]
+        state:
+          $ref: '#/components/schemas/TrackerState'
+        needs_review:
+          type: boolean
+          description: |
+            A cleared item whose scene changed in a later version. It is neither
+            silently kept nor silently dropped: a producer looks at it again.
+        required_document:
+          type: string
+          examples: ['Sync License']
+        contact:
+          type: string
+          description: The rights holder to reach, as resolved by rights research.
+          examples: ['licensing@example.com']
+        litigation_posture:
+          type: string
+          description: What the holder is known to have done about unlicensed use.
+          examples: ['no enforcement on record']
+        draft_email:
+          description: |
+            The outreach draft, once `email-drafts` has been posted. Null before
+            that. The system never sends it.
+          type: [string, 'null']
+        note:
+          type: string
+          description: |
+            Why this item is in the state it is, when a version was written for
+            a reason the state alone does not carry. Empty otherwise.
+          examples: ['scene 7 removed in version 2']
+        updated_at:
+          type: string
+          format: date-time
+          examples: ['2026-09-05T12:04:11Z']
+        version:
+          type: integer
+          minimum: 1
+          description: Each action writes a new version rather than mutating this row.
+          examples: [4]
+      additionalProperties: false
+
+    TrackerItemStateUpdate:
+      type: object
+      required: [state]
+      properties:
+        state:
+          $ref: '#/components/schemas/TrackerState'
+      additionalProperties: false
+
+    NotificationCreate:
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          description: What the producer is being told, in one sentence.
+          examples: ['no answer from the rights holder in 14 days']
+      additionalProperties: false
+
+    FactKind:
+      type: string
+      enum: [LORE, POLICY]
+      description: |
+        `LORE` facts feed the continuity audit; `POLICY` facts feed the policy
+        audit.
+
+    BibleFactCreate:
+      type: object
+      required: [kind, text, source]
+      properties:
+        kind:
+          $ref: '#/components/schemas/FactKind'
+        text:
+          type: string
+          minLength: 1
+          examples: ['Mariana has never left the province.']
+        source:
+          type: string
+          minLength: 1
+          description: Where the fact comes from, so a finding that cites it can be checked.
+          examples: ['bible.pdf p.4']
+      additionalProperties: false
+
+    BibleFact:
+      type: object
+      required: [fact_id, kind, text, source]
+      properties:
+        fact_id:
+          type: string
+          description: Assigned by the server as the next `FACT-NNN` in this project.
+          examples: ['FACT-007']
+        kind:
+          $ref: '#/components/schemas/FactKind'
+        text:
+          type: string
+          examples: ['Mariana has never left the province.']
+        source:
+          type: string
+          examples: ['bible.pdf p.4']
+      additionalProperties: false
+
+    ProjectBible:
+      type: object
+      required: [project_id, facts]
+      properties:
+        project_id:
+          type: string
+          examples: ['prj-4f2a']
+        facts:
+          type: array
+          description: Every fact recorded for this project. `fact_id` is unique within it.
+          items:
+            $ref: '#/components/schemas/BibleFact'
+      additionalProperties: false
+
+    QuestionCreate:
+      type: object
+      required: [question, jurisdiction_code]
+      properties:
+        question:
+          type: string
+          minLength: 1
+          examples: ['Can we use the Coca-Cola sign in scene 12 without a license?']
+        jurisdiction_code:
+          type: string
+          description: The corpus the answer is grounded in.
+          examples: ['AR']
+      additionalProperties: false
+
+    QuestionAnswer:
+      type: object
+      required: [text, facts, citations]
+      properties:
+        text:
+          type: string
+          description: The answer.
+        facts:
+          type: array
+          description: The project bible facts the answer drew on. Empty when it drew on none.
+          items:
+            $ref: '#/components/schemas/BibleFact'
+        citations:
+          type: array
+          description: The legal sources the answer rests on.
+          items:
+            $ref: '#/components/schemas/Citation'
+      additionalProperties: false
