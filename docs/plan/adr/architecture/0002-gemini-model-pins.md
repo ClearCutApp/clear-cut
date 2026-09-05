@@ -47,3 +47,33 @@ does not exist at global. Collapsing them back into one constant breaks
 whichever service loses, and a test asserts they differ.
 
 The decision itself stands. The models are right; the region was wrong.
+
+## Amendment, 2026-09-05: both pins are on the deprecation table, and one is not injected
+
+Checked against Google's published deprecation list on 2026-09-05.
+`gemini-3.7-flash` was deprecated on 2026-08-13 with no shutdown date
+announced. `gemini-3.1-flash-lite` was deprecated on 2026-05-07 **with a
+shutdown date of 2027-05-07**, and names `gemini-3.5-flash-lite` as its
+replacement.
+
+Neither breaks today. Deprecated means no new work goes into it, not that it
+stops answering, and the lite model has eight months. Repinning under a product
+deadline would swap two known-good models, each with a tuned `response_schema`
+and a live test proving what it returns, for two unmeasured ones. That is a
+change to make deliberately, with the live tier as the judge, not as a footnote
+to unrelated work.
+
+What this amendment does change: the successor is now written down rather than
+rediscovered under time pressure. When the lite model is repinned it goes to
+`gemini-3.5-flash-lite`, and the extractor's pin is re-evaluated at the same
+time so both move once.
+
+Separately, a defect this check surfaced. `adapters/gcp/vertex_search.py`
+hardcodes `_MODEL = "gemini-3.1-flash-lite"` as a module constant while its two
+sibling adapters take the model injected from `GEMINI_MODEL_LITE`. Setting that
+variable does not change the grounding model, and nothing says so. Injecting it
+is a prerequisite for ever acting on the paragraph above, because a pin that
+cannot be changed by configuration has to be changed by a deploy.
+
+The decision itself stands. The models are still right for now; the clock is
+recorded, and one of the two pins was not honestly injectable.
