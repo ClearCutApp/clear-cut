@@ -11,6 +11,7 @@ const scene: Scene = {
   page_end: 3,
   text: "MARCO wipes down his cherry-red Ferrari Testarossa.",
   content_hash: "a".repeat(64),
+  spans: [],
 };
 
 const trademarkFinding: Finding = {

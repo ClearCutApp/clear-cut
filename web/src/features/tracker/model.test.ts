@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { TrackerItem } from "../../api/client";
-import trackerFixture from "../../fixtures/tracker.json";
+import { TRACKER_FIXTURE } from "../../fixtures";
 import {
   applyFilter,
   groupByState,
@@ -10,7 +10,7 @@ import {
   trackerStats,
 } from "./model";
 
-const items = trackerFixture as TrackerItem[];
+const items = TRACKER_FIXTURE;
 
 function withState(item: TrackerItem, overrides: Partial<TrackerItem>): TrackerItem {
   return { ...item, ...overrides };

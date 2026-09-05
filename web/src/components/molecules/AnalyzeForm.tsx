@@ -1,27 +1,33 @@
-import { useState, type FormEvent, type ReactElement } from "react";
+import { useId, useState, type FormEvent, type ReactElement } from "react";
 
-import type { AnalyzeRequest } from "../../api/client";
+import type { ScriptCreate } from "../../api/client";
+import { ErrorNotice } from "../atoms/ErrorNotice";
 
 export interface AnalyzeFormProps {
-  initialProjectId: string;
   initialGcsUri: string;
   initialJurisdictionCode: string;
+  /** The version this upload will be. The caller derives it from the
+   * stored versions; the field stays editable for a re-run. */
   initialVersion: number;
   submitting: boolean;
   error: string | null;
-  onSubmit: (request: AnalyzeRequest) => void;
+  onSubmit: (request: ScriptCreate) => void;
 }
 
 /**
- * The analyze request as four editable text fields, prefilled with the demo
- * values `App` passes down. `gcs_uri` is a text field, never a file picker
- * -- D10 removed multipart upload and the `ScriptStorage` port with it, so
- * the operator runs `gcloud storage cp` first. Presentational: it builds
- * the request and calls `onSubmit`, but never calls `postAnalyze` itself --
- * that is `ScriptView`'s job as the container.
+ * The three fields `ScriptCreate` has. `gcs_uri` is a text field, never a
+ * file picker: the contract uploads a PDF through its own endpoint and
+ * hands back the URI, and this form queues the analysis of one that is
+ * already stored.
+ *
+ * The project is not a field. It is the collection in the path, so it comes
+ * from the route rather than from something a producer can mistype into a
+ * 404.
+ *
+ * Presentational: it builds the request and calls `onSubmit`, never the
+ * client.
  */
 export function AnalyzeForm({
-  initialProjectId,
   initialGcsUri,
   initialJurisdictionCode,
   initialVersion,
@@ -29,17 +35,15 @@ export function AnalyzeForm({
   error,
   onSubmit,
 }: AnalyzeFormProps): ReactElement {
-  const [projectId, setProjectId] = useState(initialProjectId);
+  const gcsUriId = useId();
+  const jurisdictionId = useId();
+  const versionId = useId();
   const [gcsUri, setGcsUri] = useState(initialGcsUri);
-  const [jurisdictionCode, setJurisdictionCode] = useState(
-    initialJurisdictionCode,
-  );
+  const [jurisdictionCode, setJurisdictionCode] = useState(initialJurisdictionCode);
   const [version, setVersion] = useState(initialVersion);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
-    // `project_id` is not a body field since the REST rename; `ScriptView`
-    // passes it to `postAnalyze` as the collection being written to.
     onSubmit({
       gcs_uri: gcsUri,
       version,
@@ -50,42 +54,38 @@ export function AnalyzeForm({
   return (
     <form className="analyze-form" onSubmit={handleSubmit}>
       <div className="field">
-        <label htmlFor="analyze-project-id">Project id</label>
+        <label htmlFor={gcsUriId}>Script URI</label>
         <input
-          id="analyze-project-id"
+          id={gcsUriId}
           type="text"
-          value={projectId}
-          onChange={(event) => setProjectId(event.target.value)}
-        />
-      </div>
-
-      <div className="field">
-        <label htmlFor="analyze-gcs-uri">GCS uri</label>
-        <input
-          id="analyze-gcs-uri"
-          type="text"
+          required
           className="field__input--mono"
           value={gcsUri}
+          disabled={submitting}
           onChange={(event) => setGcsUri(event.target.value)}
         />
       </div>
 
       <div className="field">
-        <label htmlFor="analyze-jurisdiction">Jurisdiction code</label>
+        <label htmlFor={jurisdictionId}>Jurisdiction code</label>
         <input
-          id="analyze-jurisdiction"
+          id={jurisdictionId}
           type="text"
+          required
           value={jurisdictionCode}
+          disabled={submitting}
           onChange={(event) => setJurisdictionCode(event.target.value)}
         />
       </div>
 
       <div className="field">
-        <label htmlFor="analyze-version">Version</label>
+        <label htmlFor={versionId}>Version</label>
         <input
-          id="analyze-version"
+          id={versionId}
           type="number"
+          min={1}
           value={version}
+          disabled={submitting}
           onChange={(event) => setVersion(Number(event.target.value))}
         />
       </div>
@@ -94,11 +94,7 @@ export function AnalyzeForm({
         {submitting ? "Analyzing…" : "Analyze"}
       </button>
 
-      {error !== null && (
-        <p className="error-panel" role="alert">
-          {error}
-        </p>
-      )}
+      <ErrorNotice message={error} />
     </form>
   );
 }

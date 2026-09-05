@@ -2,7 +2,7 @@ import { render, type RenderResult } from "@testing-library/react";
 import { useEffect, type ReactElement } from "react";
 import { MemoryRouter, useLocation } from "react-router";
 
-import type { AnalyzeResponse } from "../api/client";
+import type { Script } from "../api/client";
 import { ProjectProvider, useProject } from "../state/ProjectContext";
 
 export interface RenderWithProjectOptions {
@@ -10,8 +10,8 @@ export interface RenderWithProjectOptions {
   projectId?: string;
   /** The router's starting location; defaults to the project's overview. */
   path?: string;
-  /** An analysis already in session, as if a POST had run. */
-  analysis?: AnalyzeResponse | null;
+  /** A script already loaded, as if the mount GET had answered. */
+  analysis?: Script | null;
   /** An item already selected, as if a row had been opened. */
   selectedItemId?: string | null;
 }
@@ -23,6 +23,11 @@ function Preselect({ itemId }: { itemId: string }): null {
   }, [itemId, selectItem]);
   return null;
 }
+
+/** The analysis poll's delays are the policy's, and
+ * `features/analysis/model` proves them. No test mounted this way spends
+ * them: it stubs the job's answers and asserts on what the view did. */
+const noWait = () => Promise.resolve();
 
 /** Renders the router's current path so a test can assert a navigation. */
 function LocationProbe(): ReactElement {
@@ -53,7 +58,11 @@ export function renderWithProject(
   } = options;
   return render(
     <MemoryRouter initialEntries={[path]}>
-      <ProjectProvider projectId={projectId} initialAnalysis={analysis}>
+      <ProjectProvider
+        projectId={projectId}
+        initialAnalysis={analysis}
+        pollWait={noWait}
+      >
         {selectedItemId !== null && <Preselect itemId={selectedItemId} />}
         {ui}
         <LocationProbe />

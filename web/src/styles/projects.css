@@ -1,7 +1,212 @@
-/* Projects landing: the open form and the per-browser recent list. Owned
-   by the projects feature; this file starts with the root rule only. */
+/* Projects landing: the headline numbers, the jurisdiction tabs with
+   search, the project rows and the create form. Rows stack below
+   `@container`-less widths and become a three-column grid from 46rem up,
+   which is the width at which the facts stop crowding the title. Owned by
+   the projects feature. */
 
 .projects {
   display: grid;
   gap: var(--space-5);
+}
+
+.projects__header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.projects__subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+/* ----------------------------------------------------------- metrics */
+
+.project-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--space-3);
+}
+
+/* --------------------------------------------------------------- tabs */
+
+.project-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  align-items: flex-end;
+  justify-content: space-between;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.project-filters__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+}
+
+.project-filters__search {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.project-filters__search input {
+  width: 14rem;
+  padding: 6px 10px;
+  font: inherit;
+  color: var(--color-text);
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+}
+
+/* An underline rather than a pill, after the design: the tabs sit on the
+   rule that separates them from the rows they filter. */
+.project-tab {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  padding: 0 0 var(--space-2);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: calc(var(--space-2) * -1 - 1px);
+  transition:
+    color var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.project-tab:hover {
+  color: var(--color-text);
+}
+
+.project-tab--active {
+  color: var(--color-accent);
+  font-weight: 600;
+  border-bottom-color: var(--color-accent);
+}
+
+.project-tab__count {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-dim);
+}
+
+.project-tab--active .project-tab__count {
+  color: inherit;
+}
+
+/* --------------------------------------------------------------- rows */
+
+.projects__list {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.project-row {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-container);
+  transition: border-color var(--transition-fast);
+}
+
+.project-row:hover {
+  border-color: var(--color-border-focus);
+}
+
+.project-row__identity {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.project-row__title {
+  margin: 0;
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+
+.project-row__id {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-text-dim);
+  overflow-wrap: anywhere;
+}
+
+.project-row__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+  margin: 0;
+}
+
+.project-row__fact {
+  display: grid;
+  gap: 2px;
+}
+
+.project-row__fact dt {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.project-row__fact dd {
+  margin: 0;
+  font-size: 13px;
+}
+
+.project-row__open {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  justify-self: start;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+@media (width >= 46rem) {
+  .project-row {
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.2fr) auto;
+    align-items: center;
+  }
+
+  .project-row__open {
+    justify-self: end;
+  }
+}
+
+/* ------------------------------------------------------- create form */
+
+.create-project {
+  display: grid;
+  gap: var(--space-2);
+  max-width: 32rem;
+  margin: 0;
+  padding: var(--space-5);
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-container);
+}
+
+.create-project__note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  text-wrap: pretty;
 }

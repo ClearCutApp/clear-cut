@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { fetchHealth, type ServerMode } from "../api/client";
+import { getHealth, type ServerMode } from "../api/client";
 
 const ServerModeContext = createContext<ServerMode | null>(null);
 
@@ -29,7 +29,7 @@ export function ServerModeProvider({
 
   useEffect(() => {
     let cancelled = false;
-    fetchHealth()
+    getHealth()
       .then((health) => {
         if (!cancelled) {
           setMode(health.mode);

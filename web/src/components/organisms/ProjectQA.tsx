@@ -2,8 +2,8 @@ import { useState, type FormEvent, type ReactElement } from "react";
 
 import {
   ApiError,
-  postQuestion,
-  type QuestionResponse,
+  askProjectQuestion,
+  type QuestionAnswer,
 } from "../../api/client";
 
 export interface ProjectQAProps {
@@ -24,7 +24,7 @@ export function ProjectQA({
   jurisdictionCode,
 }: ProjectQAProps): ReactElement {
   const [question, setQuestion] = useState("");
-  const [answer, setAnswer] = useState<QuestionResponse | null>(null);
+  const [answer, setAnswer] = useState<QuestionAnswer | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,7 +33,7 @@ export function ProjectQA({
     setSubmitting(true);
     setError(null);
     try {
-      const response = await postQuestion(projectId, jurisdictionCode, question);
+      const response = await askProjectQuestion(projectId, jurisdictionCode, question);
       setAnswer(response);
     } catch (thrown) {
       setError(thrown instanceof ApiError ? thrown.message : GENERIC_QUESTION_ERROR);

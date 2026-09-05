@@ -1,7 +1,9 @@
-/* The application frame: sidebar, top bar with the drawer toggle, the main
-   column, the mode banner, and the project layout with its header and the
-   panel column. The sidebar is a permanent column from 1024px up and a
-   drawer below it; the body scrolls, nothing locks to the viewport. */
+/* The application frame: the top bar across every width, the sidebar
+   (a permanent column from 1024px up, a drawer below it), the main column,
+   the mode banner, and the project layout with its header and the panel
+   column. The body scrolls: nothing locks to the viewport, so the top bar
+   and the sidebar are sticky rather than fixed and the page grows past the
+   fold as its content does. */
 
 .shell {
   display: grid;
@@ -15,6 +17,7 @@
   top: 0;
   z-index: 2;
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-3);
   align-items: center;
   padding: var(--space-3) var(--space-4);
@@ -44,6 +47,48 @@
 .topbar__brand {
   font-weight: 600;
   letter-spacing: -0.02em;
+}
+
+/* The three affordances the design puts on the right, and the one sentence
+   that explains why none of them is a control. Pushed right when there is
+   room, dropped to their own line when there is not. */
+.topbar__tools {
+  display: flex;
+  flex: 1 1 18rem;
+  flex-direction: column;
+  gap: var(--space-1);
+  align-items: flex-end;
+}
+
+.topbar__tool-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  justify-content: flex-end;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.topbar__tool {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  font-size: 13px;
+  color: var(--color-text-dim);
+}
+
+.topbar__tool-label {
+  white-space: nowrap;
+}
+
+.topbar__note {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--color-text-dim);
+  text-align: right;
+  text-wrap: pretty;
 }
 
 /* ------------------------------------------------------------- sidebar */
@@ -95,7 +140,58 @@
   background: var(--color-green-glow);
 }
 
+/* A group the API cannot serve: the entries at the dim end of the text
+   scale, the reason under them at the small end. Neither is a link, and
+   neither carries the accent, so the eye sorts them from the live nav
+   before it reads a word. */
+.sidebar__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.sidebar__group-label {
+  margin: 0 0 var(--space-1) var(--space-3);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.sidebar__unavailable-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sidebar__unavailable {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-dim);
+  cursor: not-allowed;
+}
+
+.sidebar__note {
+  margin: 0;
+  padding: 0 var(--space-3);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--color-text-dim);
+  text-wrap: pretty;
+}
+
 .sidebar__footer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
   margin-top: auto;
   padding-top: var(--space-4);
   border-top: 1px solid var(--color-border);
@@ -211,14 +307,27 @@
   color: var(--color-text-muted);
 }
 
+.project-header__id {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-text-dim);
+  overflow-wrap: anywhere;
+}
+
 /* --------------------------------------------------------- wide layout */
 
+/* The top bar spans both columns; the sidebar becomes the first column of
+   the row beneath it and the drawer stops being an overlay. */
 @media (width >= 1024px) {
   .shell {
     grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
   }
 
   .topbar {
+    grid-column: 1 / -1;
+  }
+
+  .topbar__menu {
     display: none;
   }
 
@@ -239,6 +348,7 @@
     width: auto;
     max-width: none;
     max-height: 100dvh;
+    overflow-y: auto;
   }
 
   .shell__main {

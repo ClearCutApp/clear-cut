@@ -1,12 +1,16 @@
 import type { ReactElement } from "react";
 
-import type { TrackerItem } from "../../api/client";
+import type { Category, TrackerItem } from "../../api/client";
 import { NeedsReviewBadge } from "../../components/atoms/NeedsReviewBadge";
 import { StateBadge } from "../../components/atoms/StateBadge";
+import { CATEGORY_LABELS } from "../../theme/labels";
 import { sceneLabel } from "./model";
 
 export interface TrackerRowProps {
   item: TrackerItem;
+  /** The category of the finding this item came from, or null when no
+   * script is loaded to join it to. */
+  category: Category | null;
   selected: boolean;
   onSelect: (itemId: string) => void;
 }
@@ -24,13 +28,31 @@ function orPlaceholder(value: string, placeholder: string): string {
  * row opens the item's detail panel through a single button -- no state
  * select and no action buttons live here (D-plan Section 4: those moved to
  * `ItemDetailPanel`, and the row itself never calls a mutation).
+ *
+ * The Type column is the finding's category in words. A tracker item does
+ * not carry one: it is joined from the loaded script, and reads "unknown"
+ * when there is no script to join to, never a guess from the document name.
  */
-export function TrackerRow({ item, selected, onSelect }: TrackerRowProps): ReactElement {
+export function TrackerRow({
+  item,
+  category,
+  selected,
+  onSelect,
+}: TrackerRowProps): ReactElement {
   return (
-    <div className="tracker-row">
+    <div className={selected ? "tracker-row tracker-row--selected" : "tracker-row"}>
       <StateBadge state={item.state} />
       <span className="tracker-row__finding">{item.finding_id}</span>
       <span className="tracker-row__document">{item.required_document}</span>
+      <span
+        className={
+          category === null
+            ? "tracker-row__type tracker-row__type--unknown"
+            : "tracker-row__type"
+        }
+      >
+        {category === null ? "unknown" : CATEGORY_LABELS[category]}
+      </span>
       <span className="tracker-row__contact">
         {orPlaceholder(item.contact, "no contact on file")}
       </span>

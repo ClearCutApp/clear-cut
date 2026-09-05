@@ -60,7 +60,7 @@ describe("AppShell", () => {
   it("shows the project tabs only while a project route is open", () => {
     renderShell("/projects/demo%20x/ask");
 
-    expect(screen.getByRole("link", { name: "Overview" })).toHaveAttribute("href", "/projects/demo%20x");
+    expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute("href", "/projects/demo%20x");
     expect(screen.getByText("project view")).toBeInTheDocument();
   });
 
@@ -88,9 +88,14 @@ describe("AppShell", () => {
     expect(screen.queryByTestId("mode-banner")).toBeNull();
   });
 
-  it("offers no company selector, settings, notifications or search", () => {
+  it("draws the unserved affordances greyed, never as controls", () => {
     renderShell();
 
+    expect(screen.getByText("Notifications").closest("li")).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(screen.getByText("Settings")).toHaveAttribute("aria-disabled", "true");
     expect(screen.queryByRole("combobox")).toBeNull();
     expect(screen.queryByRole("searchbox")).toBeNull();
     expect(screen.queryByRole("button", { name: /settings|notifications/i })).toBeNull();

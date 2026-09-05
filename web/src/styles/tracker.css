@@ -1,18 +1,103 @@
-/* Overview: stats, filters and the tracker grouped by state. Rows stack
-   below `@container (width >= 40rem)` and become a grid above it. Owned by
-   the tracker feature; this file starts with the root rule only. */
+/* Overview: the cleared ring, the filters and the tracker grouped by
+   state. Rows stack below `@container (width >= 52rem)` and become a grid
+   above it, where the column strip above them is also drawn. Owned by the
+   tracker feature. */
 
 .tracker {
   display: grid;
   gap: var(--space-5);
 }
 
-/* ----------------------------------------------------------------- stats */
+/* --------------------------------------------------------------- summary */
 
-.tracker-stats {
+.tracker-summary {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--space-4) var(--space-5);
+  align-items: center;
+  padding: var(--space-4) var(--space-5);
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-container);
+}
+
+.tracker-summary__cleared {
+  display: flex;
+  gap: var(--space-4);
+  align-items: center;
+}
+
+.tracker-summary__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tracker-summary__value {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.tracker-summary__value--cleared {
+  color: var(--color-state-cleared);
+}
+
+.tracker-summary__value--blocked {
+  color: var(--color-state-blocked);
+}
+
+.tracker-summary__value--in-progress {
+  color: var(--color-state-in-progress);
+}
+
+.tracker-summary__value--needs-review {
+  color: var(--color-blue);
+}
+
+.tracker-summary__label {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.tracker-summary__detail {
+  margin: 0;
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+/* The sweep is `--cleared-percent`, written on the element by the
+   component; the same number is printed inside the hole, so the ring is
+   never the only thing carrying it. */
+.tracker-donut {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  background: conic-gradient(
+    var(--color-accent) 0 calc(var(--cleared-percent, 0) * 1%),
+    var(--color-border) 0
+  );
+  border-radius: 50%;
+}
+
+.tracker-donut__inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.625rem;
+  height: 2.625rem;
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  background: var(--color-card);
+  border-radius: 50%;
 }
 
 /* --------------------------------------------------------------- filters */
@@ -55,6 +140,10 @@
   gap: var(--space-5);
 }
 
+.tracker-table__columns {
+  display: none;
+}
+
 .tracker-table__heading {
   margin: 0 0 var(--space-2);
   font-size: 13px;
@@ -79,16 +168,38 @@
   background: var(--color-card);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-container);
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.tracker-row:hover {
+  border-color: var(--color-border-focus);
+}
+
+/* The open row: a left edge in the accent, a lifted surface, and a border
+   that no longer reads as the resting one. Three signals, because the
+   panel it opens can be off screen on a narrow window. */
+.tracker-row--selected {
+  background: var(--color-card-hover);
+  border-color: var(--color-accent);
+  box-shadow: inset 3px 0 0 0 var(--color-accent);
 }
 
 .tracker-row__finding {
   font-weight: 600;
 }
 
+.tracker-row__type,
 .tracker-row__contact,
 .tracker-row__scene {
   font-size: 13px;
   color: var(--color-text-muted);
+}
+
+.tracker-row__type--unknown {
+  font-style: italic;
+  color: var(--color-text-dim);
 }
 
 .tracker-row__open {
@@ -110,9 +221,22 @@
   outline-offset: 2px;
 }
 
-@container (width >= 40rem) {
+/* The column strip and the row share one template, so the strip is only
+   drawn where the row is actually a row. */
+@container (width >= 52rem) {
+  .tracker-table__columns,
   .tracker-row {
-    grid-template-columns: auto auto 1fr auto auto auto;
+    grid-template-columns: 7.5rem auto minmax(0, 1fr) 9rem minmax(0, 1fr) auto auto;
     align-items: center;
+  }
+
+  .tracker-table__columns {
+    display: grid;
+    gap: var(--space-3);
+    padding: 0 var(--space-4);
+    font-size: 11px;
+    color: var(--color-text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
 }

@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it } from "vitest";
 
-import trackerData from "../fixtures/tracker.json";
+import { TRACKER_FIXTURE } from "../fixtures";
 import { useProject } from "../state/ProjectContext";
 import { stubFetch } from "../testing/fetchStub";
 import { ProjectLayout } from "./ProjectLayout";
@@ -17,7 +17,7 @@ function SelectProbe() {
 }
 
 function renderLayout(path: string) {
-  stubFetch({ tracker: { status: 200, body: trackerData } });
+  stubFetch({ tracker: { status: 200, body: TRACKER_FIXTURE } });
   return render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
