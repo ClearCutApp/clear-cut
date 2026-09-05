@@ -239,6 +239,8 @@ Secret Manager entries mounted as environment variables. The full set:
 | `CLICKHOUSE_PASSWORD` | ClickHouse password |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | Grafana Cloud OTLP endpoint |
 | `OTEL_EXPORTER_OTLP_HEADERS` | Grafana Cloud OTLP auth header |
+| `GRAFANA_URL` | Grafana Cloud stack URL, `https://<slug>.grafana.net`; the dashboard and datasource-query APIs, not the OTLP gateway |
+| `GRAFANA_TOKEN` | Grafana service account token (`glsa_`) with dashboards:write plus datasource query; not the OTLP write token |
 | `GEMINI_MODEL` | `gemini-3.7-flash` |
 | `GEMINI_MODEL_LITE` | `gemini-3.1-flash-lite` |
 | `VERTEX_SEARCH_DATA_STORE_ID` | data store from section 5, as a full resource name: `projects/clearcut-hack/locations/global/collections/default_collection/dataStores/clearcut-legal-corpus` |

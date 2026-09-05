@@ -33,9 +33,18 @@ _SECTION_8_HEADING = "## 8. Secrets and configuration"
 # Read by the OTLP exporters themselves, never by our code (CP-031 criterion
 # 1; CP-049's attempt-1 ruling), or read via os.environ.get with a live-mode
 # default rather than _required_env (CLEARCUT_MODE, composition.py's own
-# mode switch, CP-052) -- documented but deliberately not required.
+# mode switch, CP-052), or read only outside the running application -- by
+# infra/provision_grafana_dashboard.py and tests/live/test_grafana_receipt_live.py
+# (GRAFANA_URL, GRAFANA_TOKEN, CP-058) -- documented but deliberately not
+# required. The service starts and serves without every name in this set.
 OPTIONAL_ENV_VARS = frozenset(
-    {"OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_HEADERS", "CLEARCUT_MODE"}
+    {
+        "OTEL_EXPORTER_OTLP_ENDPOINT",
+        "OTEL_EXPORTER_OTLP_HEADERS",
+        "CLEARCUT_MODE",
+        "GRAFANA_URL",
+        "GRAFANA_TOKEN",
+    }
 )
 
 
@@ -138,3 +147,18 @@ def test_a_documented_but_unread_variable_is_caught() -> None:
     _, undocumented = _mismatches(required, documented)
 
     assert undocumented == {"CLEARCUT_FABRICATED"}
+
+
+def test_the_grafana_credentials_are_documented_though_no_adapter_reads_them() -> None:
+    """`OPTIONAL_ENV_VARS` only *permits* a name to sit in the documents; it
+    does not keep it there. `GRAFANA_URL` and `GRAFANA_TOKEN` are read by
+    `infra/provision_grafana_dashboard.py` and the CP-058 live receipt, never
+    by `composition.py`, so `_required_env` cannot carry them and nothing else
+    would notice if both documents dropped them. CP-058's entire remaining
+    action is a human setting these two, so the instruction needs somewhere to
+    live."""
+    grafana = {"GRAFANA_URL", "GRAFANA_TOKEN"}
+
+    assert grafana <= _env_example_names(ENV_EXAMPLE_PATH.read_text())
+    assert grafana <= _section_8_table_names(INFRASTRUCTURE_DOC_PATH.read_text())
+    assert grafana <= OPTIONAL_ENV_VARS
