@@ -302,3 +302,30 @@ describe("API_DOCS_PATH", () => {
     expect(API_DOCS_PATH.endsWith("docs")).toBe(true);
   });
 });
+
+describe("error bodies", () => {
+  it("unwraps the contract's error sentence instead of showing the raw body", async () => {
+    globalThis.fetch = respondWith(404, JSON.stringify({ error: "project not found" }));
+
+    const failure = await listProjects().catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(ApiError);
+    expect((failure as ApiError).message).toBe("project not found");
+  });
+
+  it("falls back to the raw body when it is not the contract's error shape", async () => {
+    globalThis.fetch = respondWith(502, "upstream exploded");
+
+    const failure = await listProjects().catch((error: unknown) => error);
+
+    expect((failure as ApiError).message).toBe("upstream exploded");
+  });
+
+  it("names the status when the failing response carries no body at all", async () => {
+    globalThis.fetch = respondWith(503, "");
+
+    const failure = await listProjects().catch((error: unknown) => error);
+
+    expect((failure as ApiError).message).toBe("the server returned 503");
+  });
+});

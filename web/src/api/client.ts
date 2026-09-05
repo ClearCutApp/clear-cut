@@ -193,10 +193,43 @@ export class ApiError extends Error {
   }
 }
 
+/** The sentence to show a producer for a failing response.
+ *
+ * Every failing response is contracted to carry `{"error": "<one sentence>"}`
+ * (docs/api/openapi.yaml, the Error schema), written to be safe to display.
+ * Handing the raw body to a component instead puts `{"error":"not found"}` on
+ * the screen, braces and all, which is what shipped before this.
+ *
+ * Two fallbacks, because a failure is the worst moment to throw a second one:
+ * a body that is not the contract's shape is shown as-is, since an unexpected
+ * body is still better evidence than a generic apology, and an empty body
+ * becomes the status, which is all that is known.
+ */
+function errorMessage(status: number, body: string): string {
+  const trimmed = body.trim();
+  if (trimmed === "") {
+    return `the server returned ${String(status)}`;
+  }
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "error" in parsed &&
+      typeof (parsed as { error: unknown }).error === "string"
+    ) {
+      return (parsed as { error: string }).error;
+    }
+  } catch {
+    // Not JSON. The raw body is the best evidence available.
+  }
+  return trimmed;
+}
+
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init);
   if (!response.ok) {
-    throw new ApiError(response.status, await response.text());
+    throw new ApiError(response.status, errorMessage(response.status, await response.text()));
   }
   try {
     return (await response.json()) as T;
