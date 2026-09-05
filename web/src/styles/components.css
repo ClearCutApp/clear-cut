@@ -140,14 +140,37 @@
 
 /* ----------------------------------------------------------- stat card */
 
+/* The tone rides on the bottom edge, after the design, so a card reads as
+   one number rather than as a colored panel. `--unavailable` is the card
+   with no number: dashed, dim, and carrying its reason where the others
+   carry a detail. */
 .stat-card {
   padding: var(--space-4);
   background: var(--color-card);
   border: 1px solid var(--color-border);
+  border-bottom: 2px solid var(--color-border);
   border-radius: var(--radius-container);
 }
 
+.stat-card--green {
+  border-bottom-color: var(--color-green);
+}
+
+.stat-card--amber {
+  border-bottom-color: var(--color-amber);
+}
+
+.stat-card--blue {
+  border-bottom-color: var(--color-blue);
+}
+
+.stat-card--unavailable {
+  background: transparent;
+  border: 1px dashed var(--color-border);
+}
+
 .stat-card__value {
+  margin: 0;
   font-size: 24px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -155,6 +178,16 @@
 }
 
 .stat-card__label {
+  margin: 0;
   font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.stat-card__detail {
+  margin: var(--space-1) 0 0;
+  font-size: 11px;
+  line-height: 1.45;
   color: var(--color-text-muted);
+  text-wrap: pretty;
 }
