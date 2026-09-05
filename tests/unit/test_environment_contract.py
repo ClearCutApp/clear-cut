@@ -24,8 +24,10 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 COMPOSITION_PATH = REPO_ROOT / "src" / "clearcut" / "composition.py"
 ENV_EXAMPLE_PATH = REPO_ROOT / ".env.example"
 INFRASTRUCTURE_DOC_PATH = REPO_ROOT / "docs" / "plan" / "infrastructure.md"
+LIVE_TESTS_DIR = REPO_ROOT / "tests" / "live"
 
 _REQUIRED_ENV_FUNC = "_required_env"
+_REQUIRES_FUNC = "requires"
 _ENV_LINE = re.compile(r"^([A-Z][A-Z0-9_]*)=")
 _DOC_TABLE_ROW = re.compile(r"^\|\s*`([A-Z][A-Z0-9_]*)`\s*\|")
 _SECTION_8_HEADING = "## 8. Secrets and configuration"
@@ -35,8 +37,9 @@ _SECTION_8_HEADING = "## 8. Secrets and configuration"
 # default rather than _required_env (CLEARCUT_MODE, composition.py's own
 # mode switch, CP-052), or read only outside the running application -- by
 # infra/provision_grafana_dashboard.py and tests/live/test_grafana_receipt_live.py
-# (GRAFANA_URL, GRAFANA_TOKEN, CP-058) -- documented but deliberately not
-# required. The service starts and serves without every name in this set.
+# (GRAFANA_URL, GRAFANA_TOKEN, CP-058) -- or read only by the live tier
+# (CLEARCUT_LIVE_SCRIPT_GCS_URI) -- documented but deliberately not required.
+# The service starts and serves without every name in this set.
 OPTIONAL_ENV_VARS = frozenset(
     {
         "OTEL_EXPORTER_OTLP_ENDPOINT",
@@ -44,6 +47,7 @@ OPTIONAL_ENV_VARS = frozenset(
         "CLEARCUT_MODE",
         "GRAFANA_URL",
         "GRAFANA_TOKEN",
+        "CLEARCUT_LIVE_SCRIPT_GCS_URI",
     }
 )
 
@@ -85,6 +89,35 @@ def _section_8_table_names(text: str) -> set[str]:
         match = _DOC_TABLE_ROW.match(line)
         if match:
             names.add(match.group(1))
+    return names
+
+
+def _live_tier_required_names() -> set[str]:
+    """Every literal name passed to `requires(...)` anywhere under
+    `tests/live/`, read from the AST for the same reason `_required_env_names`
+    is.
+
+    The live tier states its own credential needs and nothing used to check
+    them against the documented set. `CLEARCUT_LIVE_SCRIPT_GCS_URI` was
+    required by two tests, named in no `.env.example` entry and no section of
+    `infrastructure.md`, and both tests skipped for it on every machine --
+    which, until the gate was corrected on 2026-09-05, was indistinguishable
+    from a pass. Documenting what the tier asks for is what makes a skip
+    actionable instead of invisible.
+    """
+    names: set[str] = set()
+    for path in sorted(LIVE_TESTS_DIR.glob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text())):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == _REQUIRES_FUNC
+            ):
+                names.update(
+                    arg.value
+                    for arg in node.args
+                    if isinstance(arg, ast.Constant) and isinstance(arg.value, str)
+                )
     return names
 
 
@@ -162,3 +195,19 @@ def test_the_grafana_credentials_are_documented_though_no_adapter_reads_them() -
     assert grafana <= _env_example_names(ENV_EXAMPLE_PATH.read_text())
     assert grafana <= _section_8_table_names(INFRASTRUCTURE_DOC_PATH.read_text())
     assert grafana <= OPTIONAL_ENV_VARS
+
+
+def test_live_tier_requirements_are_documented() -> None:
+    """Every variable a live test asks for is in `.env.example` and in
+    section 8, so an operator following the runbook ends with a tier that
+    runs rather than one that silently skips."""
+    wanted = _live_tier_required_names()
+    in_example = _env_example_names(ENV_EXAMPLE_PATH.read_text())
+    in_doc = _section_8_table_names(INFRASTRUCTURE_DOC_PATH.read_text())
+
+    assert wanted - in_example == set(), (
+        f"wanted by tests/live/, missing from .env.example: {wanted - in_example}"
+    )
+    assert wanted - in_doc == set(), (
+        f"wanted by tests/live/, missing from infrastructure.md section 8: {wanted - in_doc}"
+    )

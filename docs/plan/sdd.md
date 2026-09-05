@@ -584,17 +584,33 @@ runs, attributed.
 
 | Phase | Exit criterion, verbatim | Met |
 |---|---|---|
-| 1 Ingestion | "a test turns a real screenplay PDF into scenes with page anchors and raw findings JSON" | Partly. `tests/live/test_document_ai_live.py` requires `CLEARCUT_LIVE_SCRIPT_GCS_URI`, which is in no `.env` and named in no document, so it has never run from a cold start |
+| 1 Ingestion | "a test turns a real screenplay PDF into scenes with page anchors and raw findings JSON" | **No.** `tests/live/test_document_ai_live.py` is exactly this test and it skips: `CLEARCUT_LIVE_SCRIPT_GCS_URI` is set nowhere, so Document AI has never parsed a PDF from a cold start |
 | 2 Lore | "seeded bible facts come back from a project-scoped similarity query" | Yes at `337bddd`. `tests/live/test_bigquery_lore_store_live.py` proves a scratch-id fact round-trips; it does not prove the seeder indexed the demo project, which is why CP-057 is still IN_REVIEW |
 | 3 Grounding | "a jurisdiction-filtered query returns grounded text with groundingChunks" | Yes at `337bddd` |
 | 4 Wiring | "the end-to-end check of section 8(d) passes" | **Yes, 2026-09-04.** `1 passed in 870.64s` — see section 8(d) |
 | 5 Delta | "uploading v2 with one edited scene re-analyzes exactly that scene and preserves CLEARED items" | No. Proven in mock mode only |
 
-The live tier at HEAD is **8 passed, 1 failed, 5 skipped of 14**, recorded by
-the reviewer on 2026-09-05 with `.env` sourced by hand. The failure is
-`tests/live/test_parallel_research_live.py`, reproducibly at roughly 60 seconds
-in the Task API long-poll. It is a regression against `337bddd`, where the tier
-was 10 for 10.
+The live tier at HEAD is **9 passed, 5 skipped, 0 failed of 14**, run through
+the corrected gate on 2026-09-05 in 92 seconds. This supersedes the same day's
+earlier reviewer run of 8 passed, 1 failed: the failure was
+`tests/live/test_parallel_research_live.py` timing out in the Task API
+long-poll, and it does not reproduce. Treat that one as transient rather than
+as a regression against `337bddd`.
+
+Every skip is a missing environment variable, and the tier names each one
+rather than passing over it:
+
+| Skipped test | Wants |
+|---|---|
+| `test_document_ai_live.py` | `CLEARCUT_LIVE_SCRIPT_GCS_URI` |
+| `test_end_to_end_live.py` | `CLEARCUT_LIVE_SCRIPT_GCS_URI`, `NOTIFY_WEBHOOK_URL` |
+| `test_grafana_receipt_live.py` (3 cases) | `GRAFANA_URL`, `GRAFANA_TOKEN` |
+
+`CLEARCUT_LIVE_SCRIPT_GCS_URI` is required by two tests and is named in no
+markdown file and no `.env.example` entry. `tests/unit/test_environment_contract.py`
+parses `_required_env` call sites against `.env.example` and section 8 of
+`infrastructure.md`, and it does not reach the live tier's own requirements, so
+nothing catches the omission.
 
 Five phases. The first three are independent verticals; the leader can assign
 them to parallel implementers on day one.
@@ -735,8 +751,9 @@ Gates as of 2026-09-05:
   `mypy src tests infra main.py` over 125 source files, 628 backend cases,
   stylelint, `tsc --noEmit`, 185 frontend cases across 40 files. Stylelint is
   the seventh gate, added in `79aacb1`.
-- `./.claude/init.sh live`: 8 passed, 1 failed, 5 skipped of 14, recorded by the
-  reviewer with `.env` sourced by hand. Before 2026-09-05 this command printed
+- `./.claude/init.sh live`: **9 passed, 5 skipped, 0 failed** of 14 in 92
+  seconds, through the corrected gate. Every skip names the variable it wanted;
+  see section 7. Before 2026-09-05 this command printed
   `1 passed, 0 failed` while executing nothing, because pytest exits zero when
   every test skips and the gate read only the exit code. It now requires a
   `N passed` in the summary and names an all-skipped run as a configuration

@@ -2612,9 +2612,12 @@ second time in its history.**
 The goal is ADR 0011: run the analyze path live for the 2026-09-07 submission.
 `clearcut-hack` exists (number `813918777633`). The live adapter tier was 10/10
 against real services at `337bddd`, and that evidence no longer holds at HEAD.
-The 2026-09-05 re-run found the gate reporting green having contacted nothing,
-and with `.env` actually sourced the tier is 8 passed, 1 failed, 5 skipped of
-14. CP-055 and CP-056 were returned CHANGES_REQUESTED that day and are back at
+The 2026-09-05 re-run found the gate reporting green having contacted nothing.
+With the gate corrected the tier is 9 passed, 5 skipped, 0 failed of 14 in 92
+seconds; the Parallel long-poll failure seen earlier that day does not
+reproduce. Every skip names a missing variable:
+`CLEARCUT_LIVE_SCRIPT_GCS_URI` (2), `NOTIFY_WEBHOOK_URL` (1), `GRAFANA_URL`
+and `GRAFANA_TOKEN` (3). CP-055 and CP-056 were returned CHANGES_REQUESTED that day and are back at
 TODO, 1/3. CP-057 sits IN_REVIEW. CP-060 is DONE. CP-058 is BLOCKED waiting on a
 human Grafana Cloud service account (`GRAFANA_URL`, `GRAFANA_TOKEN`); the OTLP
 write pair cannot provision or query the dashboard (D73). Independent reviews
