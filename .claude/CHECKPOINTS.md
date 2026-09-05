@@ -2454,6 +2454,154 @@ OTLP pair as `GRAFANA_TOKEN`. Independent IN_REVIEW work (CP-055, CP-056,
 CP-057, CP-060) continues. CP-059 stays TODO until CP-058 is DONE; it also
 needs a human `NOTIFY_WEBHOOK_URL`.
 
+**D74. The board reopens a third time, on 2026-09-04, and CP-061 through
+CP-077 close none of CP-055 through CP-060.** The new goal is the approved plan
+"ClearCut API by domain: RESTful partition and MVP coverage". The state the
+leader found, by reading `git log` and the working tree rather than the board:
+
+- Statuses as written, unchanged by this turn, because only the agent named in
+  §7 may move one: CP-055 `IN_REVIEW`, CP-056 `IN_REVIEW`, CP-057 `IN_REVIEW`,
+  CP-058 `BLOCKED`, CP-059 `TODO`, CP-060 `IN_REVIEW`. No reviewer has passed
+  any of them. Nothing below fabricates a `DONE` for work a reviewer never saw.
+- The service is deployed: revision `clearcut-00005-sqx`,
+  `https://clearcut-813918777633.us-central1.run.app`. The live adapter tier
+  was 10 passed, 0 skipped at `337bddd`.
+- Four commits landed outside the loop, joining `349da37` (D63) in the set
+  `git log` reports and the Archive does not: `fbc1d34` and `bee965b` on
+  2026-09-03 (the OpenAPI document, Swagger UI, and the D72 resource rename),
+  `79aacb1` and `29c1f9a` on 2026-09-04 (the stylelint gate, and an 8(d) live
+  test tightened to assert what a real model produces). CP-060's block already
+  records that the deployed revision carries the rename.
+- The tree is dirty: this file, `docs/plan/infrastructure.md`, `infra/README.md`
+  and five `web/` fixture and test files are modified, and CP-058's four
+  Grafana artefacts are untracked. An implementer starting CP-061 inherits
+  that, and none of it collides with the new file sets.
+
+The relationship is stacking, not replacement. CP-055–CP-060 are the live-tier
+and deploy goal (ADR 0011). CP-061–CP-077 are the API-shape goal on top of the
+same service, and they will require a second deploy — that is CP-077, not a
+re-run of CP-060. Reviewers of CP-055–CP-060 judge them against their own
+criteria as written; the new work neither satisfies nor invalidates any of them.
+CP-058 stays `BLOCKED` for the same human credential (D73) and CP-059 stays
+`TODO` behind it, unaffected by everything below.
+
+**D75. ADR 0011's cut of projects, script reads and bible writes is reversed,
+deliberately, and the reversal gets its own ADR.** ADR 0011 cut
+`POST /api/projects`, `POST /api/projects/{id}/bible` and
+`GET /api/scripts/{script_id}` to reach a live analyze path by the deadline.
+That path is live, and the three cut endpoints are exactly what the mockup's
+Projects list, New Project wizard and finding detail need; `docs/plan/sdd.md` §4
+has been reporting them MISSING throughout. The Active preamble's instruction
+"do not add endpoints ADR 0011 cut" applied to that goal and is now superseded
+for this one. `docs/plan/adr/product/0012-api-partitioned-by-domain.md` amends
+0011 rather than editing it, because an ADR that quietly changes its own mind
+stops being a record.
+
+**D76. `POST /api/tracker-items/{id}/actions` is split into sub-resources, and
+the two unimplemented actions get no route at all.** An `action` enum in a
+request body is a verb endpoint carrying four behaviours through one path, and
+two of the four (`generate_document`, `stakeholder_link`) return 500 by
+decision — a documented server error for a feature that was never built. The
+replacement is two resources: `POST .../email-drafts` (201, the drafted item)
+and `POST .../notifications` (201 with `sent_at`, 400 on a blank `reason`, 502
+when the notifier is down). The other two stay in Backlog with **no route**, so
+an unimplemented feature answers 404 by absence rather than 500 by decision. A
+500 tells a client the server is broken; 404 tells it the truth.
+
+**D77. The tracker key defect: `ReplacingMergeTree ORDER BY item_id` silently
+merges two projects' items into one.** `tracker_items` is keyed on `item_id`
+alone (`adapters/clickhouse/tracker.py:76-77`) while item ids are `EVT-NNN`
+sequential *per project* (`application/evaluate_delta.py:97-103`). Two projects
+both produce `EVT-001`, and on the next background merge ClickHouse keeps one
+row — the other project's clearance history is gone, with no error anywhere.
+`TrackerStore.latest(item_id)` has no project filter, so the top-level
+`PATCH /api/tracker-items/{item_id}` route cannot even ask the right question.
+`script_versions ENGINE = ReplacingMergeTree(version) ORDER BY project_id` is
+the same defect in a second table: every version but the last collapses, which
+is why versions cannot be listed at all.
+
+The fix is three parts and they must land together or the data stays wrong:
+`ORDER BY (project_id, item_id)` for `tracker_items`; `ORDER BY (project_id,
+script_id)` for `script_versions` with the `(version)` argument dropped so every
+version survives and `latest` picks the maximum client-side; and
+`latest(project_id, item_id)` on the port, so the query carries the filter the
+key now expects. ClickHouse cannot alter `ORDER BY` in place, so this is a
+DROP-and-CREATE migration (CP-067) executed against the deployed service only
+after the human confirms it (CP-077). The proof is a live test, not a unit test:
+two projects each holding `EVT-001` must both survive `OPTIMIZE TABLE
+tracker_items FINAL`, which forces the merge that today's key loses rows to. No
+fake can fail that assertion, which is the point of §5.
+
+**D78. `AnalyzeScript` and `EvaluateDelta` go to eight and nine constructor
+parameters, over §4's ≤ 4 guide, on purpose.** They are already at seven and
+eight, and adding `scripts: ScriptStore` makes each one worse. The only way to
+get under the guide is a facade port bundling the stores, which §4 forbids
+outright ("a port only for a real I/O boundary", "no interface with a single
+implementation"). Between a soft size guide and two hard rules, the guide loses,
+and it loses visibly here rather than silently in a review. §4 calls the size
+guides soft and says to argue if wrong; this is the argument.
+
+**D79. `composition.py` passes 300 lines, and does not get split.** §2 rule 4 is
+a hard rule: wiring happens in exactly one place, no DI container, no service
+locator. Fourteen use cases wired for two modes cannot be both single-file and
+under 300 lines. The soft guide yields to the hard rule. The one extraction
+allowed is mechanical: `create_app` delegates blueprint registration to
+`_register_api(app, graph, mode)` in the same file. Splitting the graph across
+modules to satisfy a line count would reintroduce the many-places wiring §2.4
+exists to prevent.
+
+**D80. Four limits are deliberate, and each has its reason recorded so it is not
+re-litigated as an oversight.** (1) Analysis stays synchronous — `POST
+.../scripts` returns 201 after the pipeline runs; a 202 plus a job resource is a
+second bounded context and is deferred. (2) The five existing use cases do not
+gain a project-existence check this round: it would add a `ProjectStore`
+dependency to each, and an unknown `project_id` currently analyzes rather than
+404s. That is a real gap, and it is a follow-up checkpoint once the SPA creates
+projects, not a widening of any checkpoint below. (3) `jurisdiction_code` stays
+required in the scripts and questions request bodies; the SPA defaults it from
+the project rather than the server inferring it. (4) A v2 script's `GET` returns
+the delta's findings, matching what its own `POST` returned (D37 follow-up), not
+a recomputed full set.
+
+**D81. The four parallel domain units share three files, and the shared lines
+are additive.** CP-071 through CP-074 have disjoint file sets except
+`composition.py`, `tests/unit/test_composition.py`, and the `DOMAINS` tuple in
+`adapters/http/openapi.py`, where each adds one graph field, one line per mode
+branch, one blueprint argument, one tuple entry and one assertion. Placement
+rule that keeps the rest disjoint: a serializer or schema with one consuming
+domain lives in that domain's module; one used by two or more lives in
+`serializers.py` / `schemas.py`. Merge the four serially. A conductor running
+them in parallel resolves those three files by hand, in checkpoint order, and
+runs the gates after each merge.
+
+**D82. Seventeen checkpoints for the plan's seven units, and where each split
+falls.** The plan's CP-A alone spans a domain module, four ports, three
+adapters, the demo tier, the fakes, two constructors, composition and two infra
+scripts — that is not one implementer turn, and a checkpoint too big to finish
+is a checkpoint that burns three attempts and lands as `BLOCKED` at Depth 0 with
+its split budget already spent. The mapping: CP-A → CP-061..CP-067, CP-B →
+CP-068..CP-070, CP-3a → CP-071, CP-3b → CP-072, CP-3c → CP-073, CP-3d → CP-074,
+CP-C → CP-075..CP-077. Every edge the plan states is preserved; the splits only
+add edges inside a unit. Two seams carry the risk: CP-069 is a pure move whose
+invariant is that the served `(path, method)` set does not change, and CP-070 is
+where the behaviour changes, proved live. CP-072 is the heaviest single
+checkpoint left (three use cases plus multipart upload); if it blocks, it is a
+Depth 0 checkpoint and can still be split once.
+
+**D83. The HTTP modules are adapters, and §5's live-test rule reaches them
+through CP-077, not through a `tests/live/` file per module.** §5 says an
+adapter checkpoint is not `DONE` without a `tests/live/` test that reaches the
+real service. For `adapters/gcp/storage.py` that service is GCS and the rule
+applies literally — every store and storage checkpoint below names its live test
+and the server-assigned value it asserts. For `adapters/http/` there is no
+external service: the blueprint *is* the service, and its real-service proof is
+an HTTP request to the deployed revision. So the HTTP checkpoints are proved by
+their Flask test-client suites, named individually, plus CP-077's checklist
+against `https://clearcut-813918777633.us-central1.run.app`. The one exception
+is CP-070, which changes a ClickHouse query as well as a route: it names a live
+test, because the store half of it is exactly the kind of defect D77 describes
+and a test client cannot see it.
+
 ---
 
 ## Active
@@ -2473,6 +2621,31 @@ needs `NOTIFY_WEBHOOK_URL` in `.env`.
 Do not widen CP-056 to ContinuityCheck instrumentation, EvaluateDelta failure
 paths, or a Notifier live test. Do not supersede CP-058: the obstacle is a
 credential, not mixed scope. The web-product-ui plan does not touch this board.
+
+**Twenty-three checkpoints, from 2026-09-04. The board reopened a third time,
+on a second human goal, while the first one is still IN_REVIEW.** CP-061
+through CP-077 come from the approved plan "ClearCut API by domain: RESTful
+partition and MVP coverage": the API, its OpenAPI document and
+`src/clearcut/adapters/http/` are partitioned into six bounded contexts, every
+path becomes a resource with correct status codes, the ClickHouse tracker key
+defect is fixed, and the resources the docs and the MVP need are added.
+
+The two goals stack rather than compete, and D74 records exactly how. Nothing
+below moves a status on CP-055 through CP-060; those six are judged against
+their own criteria by the reviewer who holds them. The line above forbidding
+`POST /api/projects`, `POST /api/projects/{id}/bible` and
+`GET /api/scripts/{script_id}` bound the ADR 0011 goal and is reversed for this
+one by D75 — those three endpoints are now required work (CP-071, CP-074,
+CP-072). The deployed revision `clearcut-00005-sqx` already serves the D72
+rename and the Swagger UI; CP-077 deploys again on top of it, after a
+destructive ClickHouse migration the human must confirm first (D77).
+
+Dispatch order: CP-061 and CP-062 are independent and may run together. Then
+CP-063 → CP-064 → CP-065 → CP-066 serially, with CP-067 free to run beside
+CP-065 and CP-066 once CP-064 is `DONE`. CP-068 → CP-069 → CP-070 serially.
+Then CP-071, CP-072, CP-073, CP-074 in parallel, merging their three shared
+files serially in checkpoint order (D81). Then CP-075 and CP-076 in parallel,
+and CP-077 last.
 
 ### CP-055 — Provision every Google Cloud resource the live graph reads
 - Status: TODO
@@ -3001,6 +3174,849 @@ credential, not mixed scope. The web-product-ui plan does not touch this board.
   is hand-maintained and currently matches the ten `_required_env` calls in
   `composition.py`, but nothing enforces that. An eleventh required variable
   would silently drop out of the parametrized failure coverage.
+### CP-061 — Add the three domain values the API partition needs
+- Status: DONE
+- Attempts: 0/3
+- Depth: 0
+- Layer: domain
+- Depends on: -
+- Acceptance:
+  - [x] `tests/unit/domain/test_project.py`: a frozen `Project(project_id,
+        title, jurisdiction_code, created_at)` keeps the four values it was
+        given, and two `Project`s with equal fields compare equal.
+  - [x] Failure paths in the same file: a blank `project_id` raises
+        `ValueError`, a blank `title` raises `ValueError`, and an unknown
+        jurisdiction code raises the error `jurisdiction_for` already raises —
+        validation happens in the constructor, so no caller can hold an invalid
+        `Project`.
+  - [x] `tests/unit/domain/test_bible.py`: `next_fact_number([])` is 1;
+        `FACT-001` and `FACT-002` give 3; a gap (`FACT-001`, `FACT-003`) gives
+        4; an id that does not match `^FACT-(\d+)$` is ignored rather than
+        crashing. It mirrors `_next_evt_number`
+        (`application/evaluate_delta.py:97-103`) without importing it.
+  - [x] `tests/unit/domain/test_tracker.py`: `clearance_rollup(items)` returns
+        a `ClearanceRollup(blocked, in_progress, cleared, needs_review)` whose
+        counts sum to `total`, and whose `clearance_percent` weights each state
+        0 / 50 / 100. Boundaries, each its own test: empty → 0; all BLOCKED →
+        0; all CLEARED → 100; one item in each of the four states → 50;
+        `[BLOCKED, IN_PROGRESS]` → 25; a halved percentage rounds up and the
+        result is an `int`.
+  - [x] `tests/unit/test_layer_boundaries.py` still passes: all three modules
+        import stdlib and `clearcut.domain` only.
+  - [x] Gate: `./.claude/init.sh check`.
+- Files: `src/clearcut/domain/project.py`, `src/clearcut/domain/bible.py`,
+  `src/clearcut/domain/tracker.py`, `tests/unit/domain/test_project.py`,
+  `tests/unit/domain/test_bible.py`, `tests/unit/domain/test_tracker.py`
+- Notes: No live test — this is the domain layer and touches no adapter (§5).
+  `ProjectBible` gets its first consumer in CP-074; `ClearanceRollup` gets one
+  in CP-071. Both are collected here so those two checkpoints stay inside one
+  layer each. `clearance_rollup` buckets an item by `needs_review` ahead of
+  `state` (weight 50, same as `IN_PROGRESS`) so the four buckets stay disjoint
+  and sum to `total`; this worktree's `.venv` had to be rebuilt from
+  `python@3.13` because the pre-existing one was an empty shell on a broken
+  `python@3.14` (`pyexpat` ABI mismatch against the system `libexpat`, so
+  `pip` itself could not bootstrap) — a machine-level defect unrelated to this
+  checkpoint, fixed by using a working interpreter rather than the system one.
+
+### CP-062 — Split the ClickHouse adapter into a package, changing no behaviour
+- Status: IN_REVIEW
+- Attempts: 0/3
+- Depth: 0
+- Layer: adapters
+- Depends on: -
+- Acceptance:
+  - [x] `adapters/clickhouse/tracker.py` (308 lines) becomes `client.py` (the
+        `_ChClient` protocol and `ClickHouseUnavailable`), `schema.py` (`DDL`
+        and `ensure_schema`) and `tracker.py` (the store). Every name keeps its
+        spelling, `TrackerItemNotFound` included —
+        `tests/unit/test_error_boundaries.py:34` names it.
+  - [x] The three import sites move with it: `composition.py`,
+        `infra/provision_tracker_schema.py`,
+        `tests/live/test_clickhouse_tracker_live.py`. `rg "clickhouse.tracker"`
+        finds no stale path.
+  - [x] `tests/unit/adapters/test_clickhouse_tracker.py` passes with only its
+        import lines changed. No assertion is edited, because no behaviour
+        changed — that is this checkpoint's whole invariant.
+  - [x] `tests/unit/test_error_boundaries.py` still walks every adapter
+        exception to exactly one domain error type.
+  - [~] Live: `./.claude/init.sh live` still green, and
+        `tests/live/test_clickhouse_tracker_live.py` still asserts what it
+        asserted before against the real ClickHouse Cloud service. It runs
+        through the moved `_ChClient` import, which is the only proof the split
+        did not break the wiring the unit tests fake. This worktree has no
+        `.env`, so `init.sh live` ran green with the three tracker-live tests
+        *skipped*, not executed — proving only that the moved import collects
+        cleanly, not that the real service still round-trips. Needs a run with
+        credentials before this box is fully earned.
+  - [x] Gate: `./.claude/init.sh check`.
+- Files: `src/clearcut/adapters/clickhouse/{client.py,schema.py,tracker.py}`,
+  `src/clearcut/composition.py`, `infra/provision_tracker_schema.py`,
+  `tests/unit/adapters/test_clickhouse_tracker.py`,
+  `tests/live/test_clickhouse_tracker_live.py`
+- Notes: Mechanical, and deliberately alone. CP-063 changes the DDL and the
+  keys; doing both in one turn would make a data-integrity fix (D77) arrive
+  inside a 300-line move, where a reviewer cannot see it.
+
+  **Implementer 2026-09-04.** Two decisions the acceptance text left implicit:
+
+  1. `ClickHouseUnavailable` replaces `TrackerUnavailable` (the class moves to
+     `client.py` under the name the checkpoint text already uses for it, and
+     which CP-063/CP-064 both assume exists there). That rename reaches one
+     file the "Files" list above does not name:
+     `tests/unit/adapters/test_error_translation.py` (import line and one
+     `raise` site only, same "no assertion edited" invariant `Files` already
+     holds the rest of the diff to). Flagging it explicitly since it is a
+     deviation from the stated file set, not an omission.
+  2. `tests/unit/test_layer_boundaries.py::test_composition_is_the_only_module_
+     importing_adapters` only exempts a same-package import shaped
+     `from clearcut.adapters.<pkg> import <sibling>` (package-level, matching
+     `adapters/demo/in_memory.py`'s existing `from clearcut.adapters.demo
+     import scenario`) — not `from clearcut.adapters.<pkg>.<sibling> import
+     X`. `tracker.py` and `schema.py` therefore import `client`/`schema` as
+     modules (`ch_client._ChClient`, `ch_client.ClickHouseUnavailable`,
+     `schema.ensure_schema`) rather than importing names directly, or the
+     layer gate fails. This is worth a Backlog note if a future split ever
+     wants the direct-name-import ergonomics back — it would need the gate
+     widened first.
+
+  Live tier: this worktree carries no ClickHouse credentials, so
+  `./.claude/init.sh live` passed with the three
+  `test_clickhouse_tracker_live.py` cases **skipped**, not run — the
+  acceptance box above is left `[~]` rather than checked. `./.claude/init.sh
+  check` (7/7, including `pytest -q` at 558 passed) is the gate this turn
+  actually cleared.
+
+  **Reviewer 2026-09-04 — unit review passed, live run still pending.** Status
+  stays `IN_REVIEW` and `Attempts` stays `0/3`: every criterion except the live
+  box is met, and the live box cannot be judged in this worktree, which carries
+  no `.env` by design. Zero blocking findings. Evidence, re-run rather than
+  taken from the turn above: `./.claude/init.sh check` 7 passed / 0 failed
+  (`ruff check`, `ruff format`, `mypy`, `pytest -q` 558 passed / 11 deselected,
+  `web lint:css`, `web typecheck`, `web test` 64 passed);
+  `./.claude/init.sh live` 1 passed with 11 live cases skipped, three of them
+  `test_clickhouse_tracker_live.py`, each naming the credentials it lacks — the
+  honest outcome for a live test without credentials, and not a pass.
+
+  The no-behaviour-change invariant holds mechanically. Both DDL strings are
+  byte-identical to `974c5b1`'s. The old 308-line module's def/class set is
+  preserved across the new 42 + 60 + 246 lines, the only differences being the
+  `TrackerUnavailable` → `ClickHouseUnavailable` rename and
+  `schema.ensure_schema` as a module-level function beside the store method that
+  now delegates to it. `git diff 974c5b1 1dc252d --
+  tests/unit/adapters/test_clickhouse_tracker.py` is import lines plus five
+  `pytest.raises` type names carrying that rename; no arranged input, no
+  expected value and no other assertion is touched.
+  `tests/unit/test_error_boundaries.py` still walks the package with
+  `pkgutil.walk_packages`, so `client.py` is inspected automatically and
+  `ClickHouseUnavailable` would fail that walk if it did not subclass exactly
+  one domain error.
+
+  Both implementer judgment calls are accepted, on the record:
+
+  1. **The rename, and the file outside `Files`.** The acceptance text's own
+     first clause names `ClickHouseUnavailable` as what `client.py` holds, and
+     CP-063 and CP-064 both assert a client error becomes that type. "Every name
+     keeps its spelling" is qualified by the parenthetical naming
+     `TrackerItemNotFound`, which is the name `test_error_boundaries.py` pins.
+     Keeping `TrackerUnavailable` would have contradicted the criterion it sits
+     in and pushed the rename into CP-063, where it would land inside a DDL and
+     key change — the exact mixing this checkpoint's Notes exist to prevent. The
+     reach into `tests/unit/adapters/test_error_translation.py` is one import
+     line and one `raise` argument; its assertion,
+     `pytest.raises(SourceUnavailable)`, is unchanged. Declaring it in Notes was
+     the right handling.
+  2. **Module-shaped sibling imports.** Verified against the gate rather than
+     accepted on assertion: `_adapter_import_violations` allows an adapters
+     import only when the imported name equals the module's own package, so
+     `from clearcut.adapters.clickhouse.client import X` inside the package
+     would be reported as `clearcut.adapters.clickhouse.client` and fail, while
+     `from clearcut.adapters.clickhouse import client as ch_client` matches the
+     package exactly and passes. The chosen shape is the only one the existing
+     gate permits, and it adds no indirection of its own.
+
+  No Section 4 finding. `schema.ensure_schema` and the `DDL` tuple are named by
+  the acceptance criteria and consumed by CP-063, which depends on this
+  checkpoint, so they are a move under a stated requirement rather than a
+  speculative abstraction. No secrets in the diff; no `.env` was created or
+  copied. `rg "clickhouse.tracker"` returns only live references to the module
+  that still exists.
+
+  One non-blocking observation, deliberately not filed as its own checkpoint
+  because CP-063 already edits the file: five test functions in
+  `tests/unit/adapters/test_clickhouse_tracker.py` still read
+  `..._wraps_a_client_error_as_tracker_unavailable` while raising
+  `ClickHouseUnavailable`. Renaming them here would have widened the diff past
+  the invariant this checkpoint is built on; CP-063 can refresh them in passing.
+
+  What remains before `DONE`: one `./.claude/init.sh live` run with
+  `CLICKHOUSE_HOST`, `CLICKHOUSE_USER` and `CLICKHOUSE_PASSWORD` present, so the
+  three tracker cases execute against ClickHouse Cloud and the `[~]` box is
+  earned. The conductor runs it where those credentials exist.
+
+### CP-063 — Give the script aggregate its own store, keyed so versions survive
+- Status: TODO
+- Attempts: 0/3
+- Depth: 0
+- Layer: adapters
+- Depends on: CP-062
+- Acceptance:
+  - [ ] `application/ports.py` declares `ScriptStore` with `record`, `latest`,
+        `list_for_project`, `get` (raising `RecordNotFound` when absent),
+        `record_findings` and `findings_for`. `TrackerStore` no longer declares
+        `record_script` or `latest_script`; `latest(item_id)` is unchanged
+        here, and CP-070 changes it.
+  - [ ] `tests/unit/application/test_ports.py` binds `FakeScriptStore` to
+        `ScriptStore` through an annotated assignment made *before* any
+        `isinstance` narrowing — the inert-binding pitfall D3 records.
+  - [ ] `DDL` in `schema.py` creates `script_versions` as
+        `ReplacingMergeTree ORDER BY (project_id, script_id)` with no
+        `(version)` argument, `findings` as `ReplacingMergeTree ORDER BY
+        (script_id, finding_id)` with citations in a JSON column, and
+        `tracker_items` as `ReplacingMergeTree(version) ORDER BY (project_id,
+        item_id)`. A test asserts each engine line, because these three strings
+        are the defect D77 describes.
+  - [ ] `tests/unit/adapters/test_clickhouse_scripts.py`: `record` then
+        `get(project_id, script_id)` round-trips a `Script` with its scenes;
+        `list_for_project` returns versions ascending; `latest` picks the
+        maximum version client-side; `findings_for` returns what
+        `record_findings` stored, citations included.
+  - [ ] Failure paths in that file: `get` on an unknown `script_id` raises
+        `RecordNotFound`, and a client error becomes `ClickHouseUnavailable`,
+        not the driver's exception.
+  - [ ] `AnalyzeScript` and `EvaluateDelta` take `scripts: ScriptStore` (eight
+        and nine parameters, D78) and call it instead of the tracker's script
+        methods. Their existing tests pass with the new fake wired in.
+  - [ ] `InMemoryScriptStore` in `adapters/demo/in_memory.py`, seeded with the
+        scenario script, and `composition.py` wires one instance into both
+        modes. `tests/unit/test_composition.py` asserts both builders share it.
+  - [ ] Live: new `tests/live/test_clickhouse_scripts_live.py` records v1 and
+        v2 of one project's script into the real service, runs `OPTIMIZE TABLE
+        script_versions FINAL` to force the merge, and asserts
+        `list_for_project` returns **both** rows and `get` returns v1's scenes.
+        Against today's `ReplacingMergeTree(version) ORDER BY project_id` the
+        merge deletes v1 and this test fails; no fake can fail it.
+  - [ ] Live: `tests/live/test_clickhouse_tracker_live.py` gains an assertion
+        that `EVT-001` saved under two different project ids leaves two rows
+        after `OPTIMIZE TABLE tracker_items FINAL`. That is the key fix itself.
+  - [ ] Gate: `./.claude/init.sh check` and `./.claude/init.sh live`.
+- Files: `src/clearcut/application/ports.py`,
+  `src/clearcut/application/{analyze_script.py,evaluate_delta.py}`,
+  `src/clearcut/adapters/clickhouse/{schema.py,scripts.py,tracker.py}`,
+  `src/clearcut/adapters/demo/in_memory.py`, `src/clearcut/composition.py`,
+  `tests/unit/fakes.py`, `tests/unit/application/test_ports.py`,
+  `tests/unit/application/{test_analyze_script.py,test_evaluate_delta.py}`,
+  `tests/unit/adapters/test_clickhouse_scripts.py`,
+  `tests/unit/test_composition.py`,
+  `tests/live/{test_clickhouse_scripts_live.py,test_clickhouse_tracker_live.py}`
+- Notes: The live tests need the new tables, so provision them against a scratch
+  database first — CP-067 builds the `--recreate` path for the deployed ones and
+  CP-077 executes it after the human confirms. Do not run a DROP against the
+  demo tables here.
+
+### CP-064 — Persist projects, so a producer can create one
+- Status: TODO
+- Attempts: 0/3
+- Depth: 0
+- Layer: adapters
+- Depends on: CP-061, CP-063
+- Acceptance:
+  - [ ] `ProjectStore` in `ports.py` with `save`, `get` (raising
+        `RecordNotFound`) and `list`, bound to `FakeProjectStore` in
+        `tests/unit/application/test_ports.py`.
+  - [ ] `DDL` gains `projects` as `ReplacingMergeTree ORDER BY project_id`.
+  - [ ] `tests/unit/adapters/test_clickhouse_projects.py`: `save` then `get`
+        round-trips all four `Project` fields; `list` returns every saved
+        project; `get` on an unknown id raises `RecordNotFound`; a client error
+        becomes `ClickHouseUnavailable`.
+  - [ ] `InMemoryProjectStore` seeded with a new `scenario.PROJECT =
+        Project("demo-project", ..., "AR", ...)`, so mock mode lists the same
+        project its tracker and script already describe.
+        `tests/unit/adapters/test_demo_scenario.py` asserts the seeded id
+        matches the scenario's tracker items.
+  - [ ] `composition.py` builds `ClickHouseProjectStore` in live mode and the
+        in-memory one in mock mode, sharing the single client the other stores
+        use; `tests/unit/test_composition.py` asserts that.
+  - [ ] Live: new `tests/live/test_clickhouse_projects_live.py` saves a project
+        with a scratch id and a microsecond-precision `created_at`, reads it
+        back with `get`, and asserts the `created_at` the **server** returned
+        equals what ClickHouse's `DateTime64` actually stores. A fake returns
+        the object it was handed and cannot fail on the column's precision.
+  - [ ] Gate: `./.claude/init.sh check` and `./.claude/init.sh live`.
+- Files: `src/clearcut/application/ports.py`,
+  `src/clearcut/adapters/clickhouse/{schema.py,projects.py}`,
+  `src/clearcut/adapters/demo/{in_memory.py,scenario.py}`,
+  `src/clearcut/composition.py`, `tests/unit/fakes.py`,
+  `tests/unit/application/test_ports.py`,
+  `tests/unit/adapters/{test_clickhouse_projects.py,test_demo_scenario.py}`,
+  `tests/unit/test_composition.py`,
+  `tests/live/test_clickhouse_projects_live.py`
+- Notes: No HTTP route yet — CP-071 adds it. This checkpoint only makes a
+  project a thing the system can store, which is what D75 reverses ADR 0011 to
+  allow.
+
+### CP-065 — Store an uploaded screenplay in the intake bucket
+- Status: TODO
+- Attempts: 0/3
+- Depth: 0
+- Layer: adapters
+- Depends on: CP-064
+- Acceptance:
+  - [ ] `ScriptStorage` in `ports.py` — one method,
+        `put(project_id, object_name, content) -> str` returning the `gs://`
+        URI. It is a port because it crosses a real network boundary (§4);
+        nothing else is added to it.
+  - [ ] `adapters/gcp/storage.py` holds `GcsScriptStorage(client, bucket_name)`
+        over narrow `_StorageClient` / `_Bucket` / `_Blob` protocols, matching
+        how `document_ai.py` and `vertex_search.py` already type their clients.
+  - [ ] `tests/unit/adapters/test_gcs_script_storage.py`: `put` uploads to
+        `{project_id}/{object_name}` and returns
+        `gs://{bucket}/{project_id}/{object_name}`; a `GoogleAPIError` from the
+        client becomes `ScriptUploadFailed`, a `SourceUnavailable` subclass, so
+        the route answers 502 rather than 500.
+        `tests/unit/test_error_boundaries.py` covers it in the contract walk.
+  - [ ] `google-cloud-storage==3.13.1` is declared in `pyproject.toml`;
+        `tests/unit/test_declared_dependencies.py` passes, which it would not
+        the moment the import lands undeclared.
+  - [ ] `SCRIPTS_INTAKE_BUCKET` is read by `_required_env` in `composition.py`
+        and appears in `.env.example`, `docs/plan/infrastructure.md` §8 and
+        `tests/unit/test_composition.py::_LIVE_ENV_VALUES`.
+        `tests/unit/test_environment_contract.py` is bidirectional and proves
+        the documented set and the required set are the same set.
+  - [ ] `InMemoryScriptStorage` returns
+        `gs://clearcut-demo/{project_id}/{object_name}` so mock mode answers
+        without a bucket.
+  - [ ] Live: new `tests/live/test_gcs_script_storage_live.py` uploads bytes to
+        the real `clearcut-scripts-intake` bucket under a scratch object name,
+        re-fetches the blob through `bucket.get_blob`, and asserts
+        `blob.size == len(content)` and a non-empty server-assigned
+        `generation`. Both values come from GCS, not from the code under test.
+        The test deletes the object afterwards.
+  - [ ] Gate: `./.claude/init.sh check` and `./.claude/init.sh live`.
+- Files: `src/clearcut/application/ports.py`,
+  `src/clearcut/adapters/gcp/storage.py`,
+  `src/clearcut/adapters/demo/in_memory.py`, `src/clearcut/composition.py`,
+  `pyproject.toml`, `.env.example`, `docs/plan/infrastructure.md`,
+  `tests/unit/fakes.py`, `tests/unit/application/test_ports.py`,
+  `tests/unit/adapters/test_gcs_script_storage.py`,
+  `tests/unit/{test_composition.py,test_error_boundaries.py}`,
+  `tests/live/test_gcs_script_storage_live.py`
+- Notes: The bucket already exists (`infra/provision_data_plane.sh:24`). D10
+  deferred multipart upload behind exactly this port; this is that port, and
+  CP-072 is the route above it. `google-cloud-storage` is installed
+  transitively today, which is why the declared-dependency test is the
+  criterion that matters.
+
+### CP-066 — Read a project's bible facts back out of BigQuery
+- Status: TODO
+- Attempts: 0/3
+- Depth: 0
+- Layer: adapters
+- Depends on: CP-065
+- Acceptance:
+  - [ ] `LoreStore` gains `facts(project_id) -> list[BibleFact]`. The port keeps
+        three methods; nothing else is added.
+  - [ ] `BigQueryLoreStore.facts` calls `get_documents(filter={"project_id":
+        ..., "kind": "bible_fact"})` and reconstructs each `BibleFact` from
+        stored metadata.
+  - [ ] `index` writes `fact_id`, `fact_kind` and `source` into the metadata of
+        a fact row, so a fact read back is the fact that was written rather
+        than one reconstructed from its text.
+  - [ ] `tests/unit/adapters/test_lore_store.py`: a row indexed before this
+        change — no `fact_id` in its metadata — still returns a usable
+        `BibleFact` through the documented fallback instead of raising
+        `KeyError`. That is the failure path, and the demo project has such
+        rows today.
+  - [ ] The `_VectorStore` protocol and both of its test fakes gain
+        `get_documents`; mypy passes over the annotated binding.
+  - [ ] `InMemoryLoreStore.facts` returns the scenario's seeded facts, so mock
+        mode serves a bible.
+  - [ ] Live: `tests/live/test_bigquery_lore_store_live.py` indexes a fact
+        under a scratch project id with a known `fact_id`, then asserts
+        `facts(project_id)` returns a `BibleFact` carrying that same `fact_id`,
+        `kind` and `source` **read back from BigQuery's stored metadata**. The
+        existing search-based test cannot prove that: it matches on text, which
+        a fake reproduces exactly.
+  - [ ] Gate: `./.claude/init.sh check` and `./.claude/init.sh live`.
+- Files: `src/clearcut/application/ports.py`,
+  `src/clearcut/adapters/bigquery/lore_store.py`,
+  `src/clearcut/adapters/demo/in_memory.py`, `tests/unit/fakes.py`,
+  `tests/unit/application/test_ports.py`,
+  `tests/unit/adapters/test_lore_store.py`,
+  `tests/live/test_bigquery_lore_store_live.py`
+- Notes: The demo project's existing lore rows lack `fact_id`, which is both why
+  the fallback exists and why CP-077's runbook deletes them before re-seeding —
+  re-seeding over them duplicates the demo fact.
+
+### CP-067 — Let the infra scripts rebuild and reseed the four tables
+- Status: TODO
+- Attempts: 0/3
+- Depth: 0
+- Layer: infra
+- Depends on: CP-064
+- Acceptance:
+  - [ ] `infra/provision_tracker_schema.py --recreate` drops and re-creates
+        `tracker_items`, `script_versions`, `findings` and `projects`, in that
+        order, from `schema.py`'s `DDL` rather than from statements repeated in
+        the script. ClickHouse cannot alter `ORDER BY` in place, which is why
+        this exists (D77).
+  - [ ] It refuses to run unattended: `--recreate` prompts for a typed `yes`
+        unless `--force` is also given.
+        `tests/unit/infra/test_provision_tracker_schema.py` asserts a declined
+        prompt executes no statement.
+  - [ ] `--dry-run --recreate` prints eight statements (four DROP, four CREATE)
+        and connects to nothing. One test asserts the count and that no client
+        was constructed, so it runs on a machine with no credentials.
+  - [ ] Failure path: a missing credential exits naming the variable, matching
+        the shape the script already uses.
+  - [ ] `infra/seed_project_bible.py` also saves `scenario.PROJECT` through
+        `ProjectStore`, so a reseeded demo has a project row and not only
+        facts. `tests/unit/infra/test_seed_project_bible.py` asserts the saved
+        project is the scenario object itself, the same identity check CP-057
+        used for the bible fact.
+  - [ ] `infra/README.md` documents `--recreate` as destructive, names the four
+        tables, and says the deployed service loses its tracker history.
+  - [ ] Gate: `./.claude/init.sh check`.
+- Files: `infra/provision_tracker_schema.py`, `infra/seed_project_bible.py`,
+  `infra/README.md`,
+  `tests/unit/infra/{test_provision_tracker_schema.py,test_seed_project_bible.py}`
+- Notes: This checkpoint only builds the tool. Running it against the deployed
+  service is CP-077, after the human confirms, because it destroys the demo
+  tracker history. No live test: the script is infra, and the DDL it executes is
+  already proved live by CP-063 and CP-064.
+
+### CP-068 — Extract the HTTP helpers out of the one route module
+- Status: TODO
+- Attempts: 0/3
+- Depth: 0
+- Layer: adapters
+- Depends on: CP-066, CP-067
+- Acceptance:
+  - [ ] `adapters/http/errors.py` holds `error_response` and
+        `run_use_case(build, *, status=200, location_of=None)` with the
+        404/502/500 mapping now inline at `routes.py:90-112`.
+  - [ ] `adapters/http/validators.py` holds `json_body`, `require_field`,
+        `require_version`, `require_state`, `resolve_jurisdiction`, `now` and
+        `new_id` from `routes.py:77-136, 230-239`.
+  - [ ] `adapters/http/serializers.py` holds the serializers with two or more
+        consuming domains: citation, scene, finding, tracker item, analysis
+        report, bible fact (`routes.py:151-219`).
+  - [ ] `tests/unit/adapters/test_http_errors.py` covers the mapping directly:
+        a `RecordNotFound` becomes 404, a `SourceUnavailable` becomes 502, an
+        unexpected exception becomes 500 with no traceback in the body, and
+        `location_of` sets the `Location` header on a 201.
+  - [ ] `tests/unit/adapters/test_http_validators.py` covers each validator's
+        failure: absent JSON body, missing field, non-integer version, unknown
+        state, unknown jurisdiction code — each a 400 carrying the field name.
+  - [ ] `tests/unit/adapters/http_support.py` holds the shared test builder the
+        five route suites will use, so each domain suite constructs an app
+        without repeating composition.
+  - [ ] Invariant: `tests/unit/adapters/test_routes.py` passes with **no edited
+        assertion**. `routes.py` shrinks to handlers plus its blueprint and
+        imports the three new modules. No path, status code or response body
+        changes.
+  - [ ] Gate: `./.claude/init.sh check`.
+- Files:
+  `src/clearcut/adapters/http/{errors.py,validators.py,serializers.py,routes.py}`,
+  `tests/unit/adapters/{http_support.py,test_http_errors.py,test_http_validators.py}`
+- Notes: No live test (D83). The extraction is separated from the partition so
+  that CP-069 is a move of whole handlers rather than a move plus a
+  decomposition.
+
+### CP-069 — Partition the HTTP adapter and the OpenAPI document by domain
+- Status: TODO
+- Attempts: 0/3
+- Depth: 0
+- Layer: adapters
+- Depends on: CP-068
+- Acceptance:
+  - [ ] `adapters/http/schemas.py` holds `ref`, `json_of`, `json_array_of`,
+        `path_param`, `error`, `INTERNAL_ERROR`, the `SHARED` schemas (`Error`,
+        `Citation`, `Scene`, `Finding`, `TrackerItem`, `ScriptAnalysis`,
+        `BibleFact`) and `merge_schemas`, which **raises** on a duplicate name
+        rather than letting one domain silently overwrite another's schema. One
+        test asserts that raise.
+  - [ ] `adapters/http/openapi.py` holds `_INFO`, the Swagger HTML,
+        `merge_paths` (raising on a duplicate `(path, method)`), `build_spec`
+        over a `DOMAINS` tuple, and `create_openapi_blueprint`.
+  - [ ] Today's operations move into `system.py` (health, openapi, docs),
+        `scripts.py` (create), `tracker.py` (list, transition, actions) and
+        `questions.py` (ask), each module exporting `create_<domain>_blueprint`,
+        `TAG`, `PATHS` and `SCHEMAS`. `projects.py` and `bible.py` are **not**
+        created empty; CP-071 and CP-074 add them with their first operation
+        (§4).
+  - [ ] `routes.py`, `docs.py` and `health.py` are deleted, with
+        `test_routes.py`, `test_docs.py` and `test_health.py` replaced by
+        `test_openapi.py`, `test_system.py` and one `test_<domain>_routes.py`
+        per populated domain.
+  - [ ] Drift test in `test_openapi.py`, both directions: every `(path, method)`
+        Flask serves appears in the document, and every one the document
+        declares is served. It fails if either side gains an entry alone.
+  - [ ] Every operation carries exactly one tag naming its module, every
+        `operationId` is unique across the document, every `$ref` resolves
+        inside `components/schemas`, every operation documents a `500`
+        referencing `Error`, and an array response is typed as an array — the
+        tracker list is documented as an object today and returns a list.
+  - [ ] Invariant: the served `(path, method)` set and every status code are
+        unchanged from CP-068. `tests/unit/adapters/test_spa.py` still passes
+        untouched, and so does the SPA catch-all rule
+        (`composition.py:342-343`) — the openapi blueprint registers before it
+        and the SPA blueprint stays last.
+  - [ ] `tests/unit/test_entrypoint.py` asserts one registration rule per
+        domain, and `tests/unit/test_layer_boundaries.py:214`'s planted path is
+        updated to a module that still exists.
+  - [ ] Gate: `./.claude/init.sh check`.
+- Files:
+  `src/clearcut/adapters/http/{schemas.py,openapi.py,system.py,scripts.py,tracker.py,questions.py}`,
+  deletes `src/clearcut/adapters/http/{routes.py,docs.py,health.py}`,
+  `src/clearcut/composition.py`,
+  `tests/unit/adapters/{test_openapi.py,test_system.py,test_scripts_routes.py,test_tracker_routes.py,test_questions_routes.py}`,
+  deletes `tests/unit/adapters/{test_routes.py,test_docs.py,test_health.py}`,
+  `tests/unit/{test_entrypoint.py,test_layer_boundaries.py}`
+- Notes: No live test (D83); CP-077 exercises the document against the deployed
+  revision. The invariant is what makes this reviewable at its size: if any
+  status code or path moved, the checkpoint did more than it claims. Four tags
+  exist at the end of it, not six — CP-071 and CP-074 add the other two with
+  their modules.
+
+### CP-070 — Nest the tracker under its project and correct the write statuses
+- Status: TODO
+- Attempts: 0/3
+- Depth: 0
+- Layer: adapters
+- Depends on: CP-069
+- Acceptance:
+  - [ ] `TrackerStore.latest(project_id, item_id)` is project-scoped, and
+        `ClickHouseTrackerStore` filters `WHERE project_id = ... AND item_id =
+        ...`. `InMemoryTrackerStore` is keyed by the pair. This is the read half
+        of D77.
+  - [ ] `ResolveFinding.execute(project_id, item_id, action, at)` passes the
+        project through; `tests/unit/application/test_resolve_finding.py` proves
+        two projects holding the same `EVT-001` resolve independently — with the
+        old key one overwrites the other.
+  - [ ] `PATCH /api/projects/{project_id}/tracker-items/{item_id}` replaces the
+        top-level `PATCH /api/tracker-items/{item_id}`, which is gone: a request
+        to the old path returns 404 from routing, not 400 from a handler.
+  - [ ] `POST /api/projects/{project_id}/scripts` returns **201** with a
+        `Location` header naming the created script, not 200. `test_spa.py` and
+        `test_scripts_routes.py` assert the status and the header.
+  - [ ] `question` is required: `POST .../questions` with a blank or absent
+        `question` returns 400 and calls no adapter. A test asserts the fake was
+        never called, so an empty question cannot reach Gemini.
+  - [ ] `web/src/api/client.ts` `patchTrackerState` takes `projectId`, and
+        `TrackerDashboard.tsx` passes it. The web typecheck and tests pass —
+        `client.ts` stays the only file holding `/api/` literals.
+  - [ ] Live: `tests/live/test_clickhouse_tracker_live.py` saves `EVT-001` under
+        two different project ids, runs `OPTIMIZE TABLE tracker_items FINAL`,
+        and asserts `latest("proj-a", "EVT-001")` and `latest("proj-b",
+        "EVT-001")` each return their own project's item. Against the old key
+        one row is deleted by the merge and the second call raises; no fake can
+        reproduce a ClickHouse merge.
+  - [ ] Gate: `./.claude/init.sh check` and `./.claude/init.sh live`.
+- Files:
+  `src/clearcut/application/{ports.py,resolve_finding.py,list_tracker_items.py}`,
+  `src/clearcut/adapters/clickhouse/tracker.py`,
+  `src/clearcut/adapters/demo/in_memory.py`,
+  `src/clearcut/adapters/http/{tracker.py,scripts.py,questions.py}`,
+  `tests/unit/fakes.py`, `tests/unit/application/test_resolve_finding.py`,
+  `tests/unit/adapters/{test_tracker_routes.py,test_scripts_routes.py,test_questions_routes.py,test_spa.py}`,
+  `tests/live/test_clickhouse_tracker_live.py`, `web/src/api/client.ts`,
+  `web/src/components/organisms/TrackerDashboard.tsx`
+- Notes: This is the behavioural half of the partition, and the checkpoint the
+  whole data-integrity fix rests on. `POST .../actions` is untouched here — its
+  removal belongs with the sub-resources that replace it (CP-073, D76).
+
+### CP-071 — Serve projects and jurisdictions as resources
+- Status: TODO
+- Attempts: 0/3
+- Depth: 0
+- Layer: application
+- Depends on: CP-070
+- Acceptance:
+  - [ ] `CreateProject(projects).execute(project_id, title, jurisdiction, at)`
+        returns the saved `Project`; `summarize(project, tracker, scripts)` is a
+        plain function returning `ProjectSummary(project, rollup,
+        latest_script_version)`; `ListProjects(projects, tracker,
+        scripts).execute()` returns summaries `created_at` descending;
+        `GetProject(...).execute(project_id)` returns one.
+  - [ ] Unit tests, one file per use case under `tests/unit/application/`:
+        happy path plus a failure path each — `GetProject` on an unknown id
+        raises `RecordNotFound`, `CreateProject` with a blank title propagates
+        the domain `ValueError` rather than saving, and `ListProjects` returns
+        `[]` rather than raising when no project exists.
+  - [ ] `GET /api/projects` returns 200 and a JSON **array** of
+        `ProjectSummary`; in mock mode it contains the seeded `demo-project`
+        with `clearance_percent` 0, and 50 after one item moves to
+        `IN_PROGRESS`. That second assertion is what proves the rollup is
+        computed rather than stored.
+  - [ ] `POST /api/projects` returns 201 with a `Location` header and the
+        created `Project`, its id a `uuid4().hex`. Failure paths: a missing
+        `title` → 400, an unknown `jurisdiction_code` → 400, and no store call
+        in either case.
+  - [ ] `GET /api/projects/{project_id}` returns 200, and 404 for an unknown id.
+  - [ ] `GET /api/jurisdictions` returns the ten entries of
+        `domain/jurisdiction.JURISDICTIONS` with no port involved — reading a
+        domain constant is not I/O (§4).
+  - [ ] `adapters/http/projects.py` is added to `DOMAINS` in `openapi.py` and
+        registered in `composition.py`; the drift test in `test_openapi.py`
+        passes with the four new operations, each tagged `Projects` with a
+        unique `operationId`.
+  - [ ] Gate: `./.claude/init.sh check`.
+- Files:
+  `src/clearcut/application/{create_project.py,project_summary.py,list_projects.py,get_project.py}`,
+  `src/clearcut/adapters/http/{projects.py,openapi.py}`,
+  `src/clearcut/composition.py`,
+  `tests/unit/application/{test_create_project.py,test_project_summary.py,test_list_projects.py,test_get_project.py}`,
+  `tests/unit/adapters/test_projects_routes.py`,
+  `tests/unit/test_composition.py`
+- Notes: Parallel with CP-072, CP-073, CP-074; shares only the additive lines in
+  `composition.py`, `test_composition.py` and `openapi.py`'s `DOMAINS` (D81). No
+  live test (D83). `ClearanceRollup` comes from CP-061, so no domain file is
+  touched here.
+
+### CP-072 — Accept a screenplay upload and serve script reads
+- Status: TODO
+- Attempts: 0/3
+- Depth: 0
+- Layer: application
+- Depends on: CP-070
+- Acceptance:
+  - [ ] `UploadScriptFile(storage).execute(project_id, upload_id, file_name,
+        content)` returns `StoredScriptFile(gcs_uri, file_name, size_bytes)`
+        and stores the object as `{upload_id}.pdf`.
+  - [ ] `ListScripts(scripts).execute(project_id)` returns versions ascending;
+        `GetScript(scripts, tracker).execute(project_id, script_id)` returns an
+        `AnalysisReport` whose tracker items are `latest_for_project` filtered
+        to that script's finding ids.
+  - [ ] Unit tests per use case with a failure path each: `GetScript` on an
+        unknown id raises `RecordNotFound`, `ListScripts` returns `[]` for a
+        project with no script, and `UploadScriptFile` propagates
+        `ScriptUploadFailed` rather than swallowing it.
+  - [ ] `POST /api/projects/{project_id}/script-files` accepts multipart `file`
+        and returns 201 with the `gs://` URI. In mock mode
+        `test_scripts_routes.py` asserts `gs://clearcut-demo/...`.
+  - [ ] Failure paths on that route, each its own test: a non-PDF → 400, a file
+        over 25 MiB → **413**, an absent `file` part → 400, and a storage
+        outage → 502. The 25 MiB cap sits under Cloud Run's 32 MiB request
+        limit, so the 413 is ours to return.
+  - [ ] `GET /api/projects/{project_id}/scripts` returns 200 and an array of
+        `ScriptSummary`.
+  - [ ] `GET /api/projects/{project_id}/scripts/{script_id}` returns 200 with
+        **the same eight top-level keys** its `POST` returns — one test compares
+        the two key sets directly, so the two shapes cannot drift. An unknown
+        `script_id` → 404.
+  - [ ] The three operations join `scripts.py`'s `PATHS` and `SCHEMAS`; the
+        drift test passes and every new `operationId` is unique. If `scripts.py`
+        crosses 300 lines, its `PATHS`/`SCHEMAS` move to `scripts_spec.py` in
+        the same package rather than the handlers being compressed.
+  - [ ] Gate: `./.claude/init.sh check`.
+- Files:
+  `src/clearcut/application/{upload_script_file.py,list_scripts.py,get_script.py}`,
+  `src/clearcut/adapters/http/scripts.py` (and `scripts_spec.py` if needed),
+  `src/clearcut/composition.py`,
+  `tests/unit/application/{test_upload_script_file.py,test_list_scripts.py,test_get_script.py}`,
+  `tests/unit/adapters/test_scripts_routes.py`,
+  `tests/unit/test_composition.py`
+- Notes: The heaviest of the four parallel units — three use cases plus
+  multipart handling. It is `Depth: 0`, so if it blocks it can still be split
+  once, most naturally into upload and reads (D82). No live test (D83): the GCS
+  adapter beneath it was proved live by CP-065. A v2 script's `GET` returns the
+  delta's findings, matching its own `POST` (D80).
+
+### CP-073 — Replace the tracker action verb with two sub-resources
+- Status: TODO
+- Attempts: 0/3
+- Depth: 0
+- Layer: application
+- Depends on: CP-070
+- Acceptance:
+  - [ ] `GetTrackerItem(tracker).execute(project_id, item_id)` returns one item;
+        `tests/unit/application/test_get_tracker_item.py` covers the happy path
+        and `RecordNotFound` for an unknown id.
+  - [ ] `GET /api/projects/{project_id}/tracker-items/{item_id}` returns 200,
+        and 404 for an unknown item.
+  - [ ] `POST .../tracker-items/{item_id}/email-drafts` returns 201 carrying the
+        item with `draft_email` set; 404 for an unknown item.
+  - [ ] `POST .../tracker-items/{item_id}/notifications` returns 201 carrying a
+        `Notification` with `sent_at`. Failure paths: a blank or absent `reason`
+        → 400 with no notifier call, an unknown item → 404, a notifier that
+        raises → 502.
+  - [ ] `POST /api/projects/{project_id}/tracker-items/{item_id}/actions`
+        returns **404**: the route is gone, and `generate_document` and
+        `stakeholder_link` answer by absence rather than by a documented 500
+        (D76). One test asserts the 404.
+  - [ ] `web/src/api/client.ts` drops `TrackerAction` and `postTrackerAction`
+        and gains `postEmailDraft(projectId, itemId)` and
+        `postNotification(projectId, itemId, reason)`; `TrackerDashboard.tsx`
+        calls them, and `runMutation` becomes generic so a `Notification`
+        result leaves the row untouched instead of replacing it. The web
+        typecheck and tests pass.
+  - [ ] The three operations join `tracker.py`'s `PATHS`; the drift test passes
+        and the removed `/actions` entry is gone from the document too.
+  - [ ] Gate: `./.claude/init.sh check`.
+- Files: `src/clearcut/application/get_tracker_item.py`,
+  `src/clearcut/adapters/http/tracker.py`, `src/clearcut/composition.py`,
+  `tests/unit/application/test_get_tracker_item.py`,
+  `tests/unit/adapters/test_tracker_routes.py`,
+  `tests/unit/test_composition.py`, `web/src/api/client.ts`,
+  `web/src/api/client.test.ts`,
+  `web/src/components/organisms/TrackerDashboard.tsx`
+- Notes: `ResolveFinding` keeps its shape — `Notify` still returns the item
+  unchanged and the route builds the 201 `Notification` body, so no use case
+  learns about HTTP. No live test (D83); the notifier's live coverage stays
+  CP-059's, which is still blocked on `NOTIFY_WEBHOOK_URL`.
+
+### CP-074 — Serve the project bible and let a producer add facts
+- Status: TODO
+- Attempts: 0/3
+- Depth: 0
+- Layer: application
+- Depends on: CP-070
+- Acceptance:
+  - [ ] `GetBible(lore).execute(project_id)` returns a `ProjectBible`;
+        `AddBibleFacts(lore).execute(project_id, drafts)` numbers new facts from
+        `next_fact_number(lore.facts(project_id))` and indexes them, returning
+        the created `BibleFact`s.
+  - [ ] Unit tests: adding two facts to a bible holding `FACT-001` returns
+        `FACT-002` and `FACT-003`, and both reach `lore.index` exactly once.
+        Failure paths: an unknown `kind` raises rather than indexing, an empty
+        `facts` list is refused, and a `LoreStore` outage propagates as
+        `SourceUnavailable`.
+  - [ ] `GET /api/projects/{project_id}/bible` returns 200 and
+        `{project_id, facts: [...]}`; in mock mode the array contains
+        `FACT-001`.
+  - [ ] `POST /api/projects/{project_id}/bible/facts` returns 201 and an array
+        of the created facts. Failure paths: an invalid `kind` → 400, a missing
+        `text` → 400, an empty `facts` array → 400, and no `index` call in any
+        of them.
+  - [ ] `adapters/http/bible.py` is added to `DOMAINS` in `openapi.py` and
+        registered in `composition.py`; the drift test passes, both operations
+        are tagged `Bible`, and the document now carries all six tags.
+  - [ ] Gate: `./.claude/init.sh check`.
+- Files: `src/clearcut/application/{get_bible.py,add_bible_facts.py}`,
+  `src/clearcut/adapters/http/{bible.py,openapi.py}`,
+  `src/clearcut/composition.py`,
+  `tests/unit/application/{test_get_bible.py,test_add_bible_facts.py}`,
+  `tests/unit/adapters/test_bible_routes.py`,
+  `tests/unit/test_composition.py`
+- Notes: This closes the endpoint ADR 0011 cut and CP-057's block called "a real
+  product gap: a producer cannot upload a bible in the demo". `next_fact_number`
+  comes from CP-061 and `LoreStore.facts` from CP-066, so this touches neither
+  the domain nor an adapter. No live test (D83).
+
+### CP-075 — Finish the API client against the partitioned API
+- Status: TODO
+- Attempts: 0/3
+- Depth: 0
+- Layer: adapters
+- Depends on: CP-071, CP-072, CP-073, CP-074
+- Acceptance:
+  - [ ] `web/src/api/client.ts` gains the types `Project`, `ProjectSummary`,
+        `TrackerCounts`, `CreateProjectRequest`, `Jurisdiction`, `ScriptFile`,
+        `ScriptSummary`, `Notification`, `Bible`, `BibleFactDraft` and the
+        functions `listProjects`, `createProject`, `getProject`,
+        `listJurisdictions`, `uploadScriptFile`, `listScripts`, `getScript`,
+        `getTrackerItem`, `getBible`, `addBibleFacts`.
+  - [ ] `uploadScriptFile(projectId, file)` sends `FormData` and sets **no**
+        `Content-Type` header, so the browser writes the multipart boundary. One
+        test asserts the header is absent — setting it is the failure that makes
+        every upload 400 and is invisible to a type check.
+  - [ ] Each function has a test asserting the exact path it calls and the
+        shape it returns; `client.ts` remains the only file containing `/api/`
+        literals, which the `web/` tests already enforce.
+  - [ ] Failure path: a non-2xx response raises with the server's error message
+        rather than resolving to `undefined`, for every new function.
+  - [ ] The fixtures under `web/src/fixtures/` keep their existing shapes and
+        `fixtures.test.ts` passes, so the SPA's rendering tests are unaffected.
+  - [ ] Gate: `./.claude/init.sh check`, which runs the `web/` typecheck, tests
+        and stylelint.
+- Files: `web/src/api/client.ts`, `web/src/api/client.test.ts`,
+  `web/src/fixtures/` if a shape moved
+- Notes: No component gains a new screen here — the santree-style SPA rebuild is
+  a separate plan and does not touch this board. This checkpoint makes the
+  client able to call every resource; wiring screens onto it is later work.
+
+### CP-076 — Write down the API the partition produced
+- Status: TODO
+- Attempts: 0/3
+- Depth: 0
+- Layer: docs
+- Depends on: CP-071, CP-072, CP-073, CP-074
+- Acceptance:
+  - [ ] `docs/plan/adr/product/0012-api-partitioned-by-domain.md` exists and, as
+        prose a reviewer judges against `.claude/WRITING.md`, states: that it
+        amends ADR 0011 rather than replacing it, and why the three cut
+        endpoints came back (D75); the `/actions` split and why an unbuilt
+        feature 404s instead of 500ing (D76); the tracker key defect, its
+        symptom, and the migration it forced (D77); the constructor and
+        composition size arguments (D78, D79); and the four deliberate limits
+        with the reason each was accepted (D80). A reader who was not in the
+        room can tell what was decided and what it cost.
+  - [ ] `docs/plan/sdd.md` §3's port table and §4's route table match the
+        shipped code: no route is listed MISSING that now exists, none is listed
+        that no longer exists, and each carries its status codes. A reader
+        comparing §4 to `/api/openapi.json` finds the same set of paths.
+  - [ ] `README.md:26-30` no longer documents `POST /api/analyze`; its curl
+        sequence is one a reader can paste in order against mock mode, verified
+        by running it rather than by reading it.
+  - [ ] `docs/plan/infrastructure.md` §6 lists four ClickHouse tables with their
+        engines and sort keys, and §8 carries `SCRIPTS_INTAKE_BUCKET`.
+        `tests/unit/test_environment_contract.py` is bidirectional, so §8 and
+        the required set cannot disagree.
+  - [ ] No document claims a checkpoint is `DONE` that a reviewer has not
+        passed, and none claims the deployed revision serves the new API before
+        CP-077 has deployed it.
+  - [ ] Gate: `./.claude/init.sh check`.
+- Files: `docs/plan/adr/product/0012-api-partitioned-by-domain.md`,
+  `docs/plan/sdd.md`, `README.md`, `docs/plan/infrastructure.md`
+- Notes: The deliverable is prose, so `.claude/WRITING.md` findings are blocking
+  for this checkpoint rather than deferred. Parallel with CP-075: disjoint
+  files.
+
+### CP-077 — Migrate and redeploy, after the human confirms the data loss
+- Status: TODO
+- Attempts: 0/3
+- Depth: 0
+- Layer: infra
+- Depends on: CP-067, CP-075, CP-076
+- Acceptance:
+  - [ ] **Stop and ask first.** `provision_tracker_schema.py --recreate` drops
+        the deployed demo tables and the tracker history goes with them. The
+        implementer asks the human explicitly and records the answer in this
+        block before running anything. Without that answer the checkpoint goes
+        `BLOCKED`, not ahead.
+  - [ ] `provision_tracker_schema.py --recreate` has run against the real
+        ClickHouse service, and all four tables exist with their new sort keys —
+        verified by querying `system.tables`, not by reading script output.
+  - [ ] The demo project's legacy lore rows, which carry no `fact_id`, are
+        deleted from BigQuery before reseeding; `seed_project_bible.py` then
+        writes the project row and the 8(d) fact, and
+        `GET /api/projects/demo-project/bible` returns exactly one `FACT-001`
+        rather than a duplicate.
+  - [ ] The planted script v1 is re-POSTed through
+        `POST /api/projects/demo-project/scripts` and returns 201, and
+        `GET .../scripts` then lists it.
+  - [ ] `./.claude/init.sh live` is green with credentials present, including
+        every live test CP-063, CP-064, CP-065, CP-066 and CP-070 added.
+  - [ ] `gcloud run deploy --source .` puts a new revision behind
+        `https://clearcut-813918777633.us-central1.run.app`, and against **that
+        URL**: `/api/docs` shows six collapsible groups (Projects, Scripts,
+        Tracker, Bible, Questions, System); "Try it out" on
+        `GET /api/jurisdictions` returns ten rows; `/api/openapi.json` has six
+        tags and as many unique `operationId`s as operations;
+        `POST .../tracker-items/EVT-001/actions` returns 404; and
+        `GET /api/health` reports `live`, not `mock`.
+  - [ ] Failure path, recorded rather than worked around: if the deployed
+        revision serves `mock`, or a live test fails against the migrated
+        tables, this checkpoint reports it and stops. A green local run is not
+        evidence about a deployed revision — that confusion is what §5 exists to
+        prevent.
+- Files: none in `src/`. Evidence goes in this block; `infra/README.md` and
+  `docs/plan/infrastructure.md` only if a documented step proves wrong in
+  practice, which CP-055 shows is the likely outcome.
+- Notes: This is the live proof for every HTTP checkpoint above (D83): the curl
+  and Swagger checks are real requests to the real service, which no test client
+  can substitute for. It does not close CP-060 — that checkpoint is judged on
+  its own criteria by its own reviewer (D74).
 
 ---
 

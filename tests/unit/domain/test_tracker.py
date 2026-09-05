@@ -4,11 +4,14 @@ import dataclasses
 
 import pytest
 
-from clearcut.domain.tracker import TrackerItem, TrackerState
+from clearcut.domain.tracker import ClearanceRollup, TrackerItem, TrackerState, clearance_rollup
 
 
 def _item(
-    state: TrackerState = TrackerState.BLOCKED, version: int = 1, project_id: str = "proj-1"
+    state: TrackerState = TrackerState.BLOCKED,
+    version: int = 1,
+    project_id: str = "proj-1",
+    needs_review: bool = False,
 ) -> TrackerItem:
     return TrackerItem(
         item_id="itm-1",
@@ -22,6 +25,7 @@ def _item(
         note="",
         updated_at="2026-08-30T00:00:00Z",
         version=version,
+        needs_review=needs_review,
     )
 
 
@@ -268,3 +272,79 @@ def test_rejects_a_blank_or_whitespace_only_project_id(blank_project_id):
             updated_at="2026-08-30T00:00:00Z",
             version=1,
         )
+
+
+def test_clearance_rollup_of_no_items_is_all_zero_and_zero_percent():
+    rollup = clearance_rollup([])
+
+    assert rollup == ClearanceRollup(blocked=0, in_progress=0, cleared=0, needs_review=0)
+    assert rollup.total == 0
+    assert rollup.clearance_percent == 0
+
+
+def test_clearance_rollup_counts_sum_to_total():
+    items = [
+        _item(state=TrackerState.BLOCKED),
+        _item(state=TrackerState.IN_PROGRESS),
+        _item(state=TrackerState.CLEARED),
+    ]
+
+    rollup = clearance_rollup(items)
+    bucket_sum = rollup.blocked + rollup.in_progress + rollup.cleared + rollup.needs_review
+
+    assert bucket_sum == rollup.total
+    assert rollup.total == 3
+
+
+def test_clearance_rollup_of_all_blocked_is_zero_percent():
+    items = [_item(state=TrackerState.BLOCKED), _item(state=TrackerState.BLOCKED)]
+
+    assert clearance_rollup(items).clearance_percent == 0
+
+
+def test_clearance_rollup_of_all_cleared_is_a_hundred_percent():
+    items = [_item(state=TrackerState.CLEARED), _item(state=TrackerState.CLEARED)]
+
+    assert clearance_rollup(items).clearance_percent == 100
+
+
+def test_clearance_rollup_of_one_item_in_each_of_the_four_states_is_fifty_percent():
+    items = [
+        _item(state=TrackerState.BLOCKED),
+        _item(state=TrackerState.IN_PROGRESS),
+        _item(state=TrackerState.CLEARED),
+        _item(state=TrackerState.BLOCKED, needs_review=True),
+    ]
+
+    rollup = clearance_rollup(items)
+
+    assert rollup == ClearanceRollup(blocked=1, in_progress=1, cleared=1, needs_review=1)
+    assert rollup.clearance_percent == 50
+
+
+def test_clearance_rollup_of_blocked_and_in_progress_is_twenty_five_percent():
+    items = [_item(state=TrackerState.BLOCKED), _item(state=TrackerState.IN_PROGRESS)]
+
+    assert clearance_rollup(items).clearance_percent == 25
+
+
+def test_clearance_rollup_needs_review_takes_priority_over_state():
+    items = [_item(state=TrackerState.CLEARED, needs_review=True)]
+
+    rollup = clearance_rollup(items)
+
+    assert rollup == ClearanceRollup(blocked=0, in_progress=0, cleared=0, needs_review=1)
+
+
+def test_clearance_rollup_halved_percentage_rounds_up_and_is_an_int():
+    items = [
+        _item(state=TrackerState.IN_PROGRESS, needs_review=True),
+        _item(state=TrackerState.BLOCKED),
+        _item(state=TrackerState.BLOCKED),
+        _item(state=TrackerState.BLOCKED),
+    ]
+
+    rollup = clearance_rollup(items)
+
+    assert rollup.clearance_percent == 13
+    assert isinstance(rollup.clearance_percent, int)

@@ -14,10 +14,10 @@ from typing import Any
 
 import pytest
 
+from clearcut.adapters.clickhouse.client import ClickHouseUnavailable
 from clearcut.adapters.clickhouse.tracker import (
     ClickHouseTrackerStore,
     TrackerItemNotFound,
-    TrackerUnavailable,
     _script_to_row,
     _tracker_item_to_row,
 )
@@ -351,7 +351,7 @@ def test_latest_script_returns_the_highest_version_per_project_in_unhelpful_orde
 def test_ensure_schema_wraps_a_client_error_as_tracker_unavailable() -> None:
     adapter = ClickHouseTrackerStore(ExplodingChClient())
 
-    with pytest.raises(TrackerUnavailable):
+    with pytest.raises(ClickHouseUnavailable):
         adapter.ensure_schema()
 
 
@@ -369,28 +369,28 @@ def test_latest_raises_not_found_naming_the_id_for_an_unknown_item() -> None:
 def test_save_wraps_a_client_error_as_tracker_unavailable() -> None:
     adapter = ClickHouseTrackerStore(ExplodingChClient())
 
-    with pytest.raises(TrackerUnavailable):
+    with pytest.raises(ClickHouseUnavailable):
         adapter.save([_item()])
 
 
 def test_latest_wraps_a_client_error_as_tracker_unavailable() -> None:
     adapter = ClickHouseTrackerStore(ExplodingChClient())
 
-    with pytest.raises(TrackerUnavailable):
+    with pytest.raises(ClickHouseUnavailable):
         adapter.latest("EVT-001")
 
 
 def test_record_script_wraps_a_client_error_as_tracker_unavailable() -> None:
     adapter = ClickHouseTrackerStore(ExplodingChClient())
 
-    with pytest.raises(TrackerUnavailable):
+    with pytest.raises(ClickHouseUnavailable):
         adapter.record_script(_script())
 
 
 def test_latest_script_wraps_a_client_error_as_tracker_unavailable() -> None:
     adapter = ClickHouseTrackerStore(ExplodingChClient())
 
-    with pytest.raises(TrackerUnavailable):
+    with pytest.raises(ClickHouseUnavailable):
         adapter.latest_script("proj-a")
 
 

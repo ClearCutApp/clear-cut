@@ -1,13 +1,10 @@
 """Persists tracker items and script versions over ClickHouse (docs/plan/sdd.md
 Section 3, docs/plan/infrastructure.md Section 6).
 
-`tracker_items` is a `ReplacingMergeTree` keyed on `item_id` and versioned by
-each row's `version` column, matching `TrackerItem`'s own frozen, versioned
-design (`domain/tracker.py`): every state transition is a new row, never a
-mutation, so the table's latest-wins read always resolves to the last
-producer action. `script_versions` follows the same shape, keyed on
-`project_id`, so `latest_script` resolves to the newest uploaded version
-without a live schema read.
+The DDL and the client protocol this store depends on live in
+`schema.py` and `client.py` respectively (CP-062) -- this module holds only
+the store itself, so a sibling store (a future `scripts.py` or `projects.py`)
+can share both without importing this one.
 
 `TrackerItem` carries its own `project_id` (CP-036, `.claude/CHECKPOINTS.md`
 Decision D24) rather than `TrackerStore.save` taking one as a parameter --
@@ -15,12 +12,6 @@ Decision D24) rather than `TrackerStore.save` taking one as a parameter --
 that already knows its project is the one that writes the column.
 `latest_for_project` filters on that column with a `WHERE` clause, the same
 shape `latest_script` already used for `script_versions`.
-
-Constructor parameters are typed against a narrow local `Protocol`
-(`_ChClient`) covering only the three `clickhouse_connect` client methods
-this adapter calls, rather than the concrete `Client` class -- the same
-pattern `BigQueryLoreStore` uses, so a hand-written unit-test fake never
-needs to open a real HTTPS connection (AGENT.md Section 5).
 """
 
 from __future__ import annotations
@@ -28,11 +19,13 @@ from __future__ import annotations
 import json
 import time
 from collections import Counter
-from typing import Any, Protocol
+from typing import Any
 
 from opentelemetry import metrics, trace
 
-from clearcut.domain.errors import RecordNotFound, SourceUnavailable
+from clearcut.adapters.clickhouse import client as ch_client
+from clearcut.adapters.clickhouse import schema
+from clearcut.domain.errors import RecordNotFound
 from clearcut.domain.script import Scene, Script
 from clearcut.domain.tracker import TrackerItem, TrackerState
 
@@ -57,37 +50,6 @@ def _refresh_tracker_items_gauge(items: list[TrackerItem]) -> None:
     for state, count in counts.items():
         gauge.set(count, {"state": state})
 
-
-_TRACKER_ITEMS_DDL = """\
-CREATE TABLE IF NOT EXISTS tracker_items (
-    item_id String,
-    project_id String,
-    finding_id String,
-    scene_numbers Array(UInt32),
-    state String,
-    needs_review UInt8,
-    required_document String,
-    contact String,
-    litigation_posture String,
-    draft_email Nullable(String),
-    note String,
-    updated_at String,
-    version UInt32
-) ENGINE = ReplacingMergeTree(version)
-ORDER BY item_id
-"""
-
-_SCRIPT_VERSIONS_DDL = """\
-CREATE TABLE IF NOT EXISTS script_versions (
-    script_id String,
-    project_id String,
-    version UInt32,
-    gcs_uri String,
-    jurisdiction_code String,
-    scenes String
-) ENGINE = ReplacingMergeTree(version)
-ORDER BY project_id
-"""
 
 _TRACKER_COLUMNS = [
     "item_id",
@@ -115,10 +77,6 @@ _SCRIPT_COLUMNS = [
 ]
 
 
-class TrackerUnavailable(SourceUnavailable):
-    """The ClickHouse client failed to execute a command, insert, or query."""
-
-
 class TrackerItemNotFound(RecordNotFound):
     """No stored row exists for the requested `item_id`."""
 
@@ -127,36 +85,14 @@ class TrackerItemNotFound(RecordNotFound):
         self.item_id = item_id
 
 
-class _QueryResult(Protocol):
-    """The subset of `clickhouse_connect.driver.query.QueryResult` this
-    adapter reads."""
-
-    result_rows: list[tuple[Any, ...]]
-
-
-class _ChClient(Protocol):
-    """The subset of `clickhouse_connect.driver.client.Client` this adapter
-    calls."""
-
-    def command(self, cmd: str) -> object: ...
-
-    def insert(self, table: str, data: list[list[Any]], column_names: list[str]) -> object: ...
-
-    def query(self, query: str, parameters: dict[str, Any] | None = None) -> _QueryResult: ...
-
-
 class ClickHouseTrackerStore:
     """Implements `TrackerStore` over a ClickHouse Cloud HTTPS connection."""
 
-    def __init__(self, client: _ChClient) -> None:
+    def __init__(self, client: ch_client._ChClient) -> None:
         self._client = client
 
     def ensure_schema(self) -> None:
-        try:
-            self._client.command(_TRACKER_ITEMS_DDL)
-            self._client.command(_SCRIPT_VERSIONS_DDL)
-        except Exception as exc:
-            raise TrackerUnavailable(f"failed to create tables: {exc}") from exc
+        schema.ensure_schema(self._client)
 
     def save(self, items: list[TrackerItem]) -> None:
         stage_start = time.perf_counter()
@@ -165,7 +101,9 @@ class ClickHouseTrackerStore:
             try:
                 self._client.insert("tracker_items", rows, _TRACKER_COLUMNS)
             except Exception as exc:
-                raise TrackerUnavailable(f"failed to save {len(items)} item(s): {exc}") from exc
+                raise ch_client.ClickHouseUnavailable(
+                    f"failed to save {len(items)} item(s): {exc}"
+                ) from exc
         _record_stage("track", stage_start)
         _refresh_tracker_items_gauge(items)
 
@@ -197,7 +135,7 @@ class ClickHouseTrackerStore:
         try:
             self._client.insert("script_versions", [row], _SCRIPT_COLUMNS)
         except Exception as exc:
-            raise TrackerUnavailable(
+            raise ch_client.ClickHouseUnavailable(
                 f"failed to record script {script.script_id!r}: {exc}"
             ) from exc
 
@@ -208,7 +146,7 @@ class ClickHouseTrackerStore:
                 {"project_id": project_id},
             )
         except Exception as exc:
-            raise TrackerUnavailable(
+            raise ch_client.ClickHouseUnavailable(
                 f"failed to read latest script for project {project_id!r}: {exc}"
             ) from exc
         rows = list(result.result_rows)
@@ -224,7 +162,7 @@ class ClickHouseTrackerStore:
         try:
             result = self._client.query(query, parameters)
         except Exception as exc:
-            raise TrackerUnavailable(f"failed to query tracker_items: {exc}") from exc
+            raise ch_client.ClickHouseUnavailable(f"failed to query tracker_items: {exc}") from exc
         return list(result.result_rows)
 
 

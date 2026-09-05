@@ -34,10 +34,8 @@ from typing import Any, cast
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 try:
-    from clearcut.adapters.clickhouse.tracker import (  # noqa: E402
-        ClickHouseTrackerStore,
-        _ChClient,
-    )
+    from clearcut.adapters.clickhouse.client import _ChClient  # noqa: E402
+    from clearcut.adapters.clickhouse.tracker import ClickHouseTrackerStore  # noqa: E402
 except ModuleNotFoundError as exc:  # pragma: no cover - depends on the interpreter
     # Unlike build_manifest.py, which touches only the stdlib-only domain layer,
     # this script reuses the adapter's DDL so the schema has exactly one
