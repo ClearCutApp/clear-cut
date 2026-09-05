@@ -1,7 +1,8 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import trackerData from "../fixtures/tracker.json";
+import { ItemDetailPanelHost } from "../features/item/ItemDetailPanelHost";
 import { stubFetch } from "../testing/fetchStub";
 import { renderWithProject } from "../testing/renderWithProject";
 import { OverviewView } from "./OverviewView";
@@ -39,12 +40,57 @@ describe("OverviewView", () => {
     );
   });
 
-  it("shows neither loading nor the empty state once rows exist", async () => {
+  it("renders the three fixture rows under one BLOCKED group once the tracker answers", async () => {
     stubFetch({ tracker: { status: 200, body: trackerData } });
 
     renderWithProject(<OverviewView />);
 
-    await waitFor(() => expect(screen.queryByText(/Loading the tracker/)).toBeNull());
+    expect(await screen.findByRole("heading", { name: "BLOCKED" })).toBeInTheDocument();
+    expect(screen.getAllByText(/^Open EVT-/)).toHaveLength(3);
+    expect(screen.queryByText(/Loading the tracker/)).toBeNull();
     expect(screen.queryByText(/No analysis has run yet/)).toBeNull();
+  });
+
+  it("narrows the table to the pill's state when a filter pill is clicked", async () => {
+    stubFetch({ tracker: { status: 200, body: trackerData } });
+
+    renderWithProject(<OverviewView />);
+    await screen.findByRole("heading", { name: "BLOCKED" });
+
+    fireEvent.click(screen.getByRole("button", { name: /needs review/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText("No items match the current filter.")).toBeInTheDocument(),
+    );
+  });
+
+  it("narrows the table to rows matching a search term", async () => {
+    stubFetch({ tracker: { status: 200, body: trackerData } });
+
+    renderWithProject(<OverviewView />);
+    await screen.findByRole("heading", { name: "BLOCKED" });
+
+    fireEvent.change(screen.getByLabelText(/search/i), {
+      target: { value: "warnerchappell" },
+    });
+
+    await waitFor(() => expect(screen.getAllByText(/^Open EVT-/)).toHaveLength(1));
+    expect(screen.getByRole("button", { name: "Open EVT-002" })).toBeInTheDocument();
+  });
+
+  it("opens the item detail panel when a row's Open button is clicked", async () => {
+    stubFetch({ tracker: { status: 200, body: trackerData } });
+
+    renderWithProject(
+      <>
+        <OverviewView />
+        <ItemDetailPanelHost />
+      </>,
+    );
+    await screen.findByRole("heading", { name: "BLOCKED" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Open EVT-001" }));
+
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 });

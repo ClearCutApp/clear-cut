@@ -6,3 +6,113 @@
   display: grid;
   gap: var(--space-5);
 }
+
+/* ----------------------------------------------------------------- stats */
+
+.tracker-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--space-3);
+}
+
+/* --------------------------------------------------------------- filters */
+
+.tracker-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tracker-filters__pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.tracker-filters__search {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.tracker-filters__search input {
+  padding: 6px 10px;
+  font: inherit;
+  color: var(--color-text);
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+}
+
+/* ----------------------------------------------------------------- table */
+
+.tracker-table {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.tracker-table__heading {
+  margin: 0 0 var(--space-2);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tracker-table__group {
+  display: grid;
+  gap: var(--space-2);
+}
+
+/* ------------------------------------------------------------------- row */
+
+.tracker-row {
+  position: relative;
+  display: grid;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-container);
+}
+
+.tracker-row__finding {
+  font-weight: 600;
+}
+
+.tracker-row__contact,
+.tracker-row__scene {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.tracker-row__open {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  padding: 0;
+  overflow: hidden;
+  color: transparent;
+  text-indent: -9999px;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-container);
+}
+
+.tracker-row__open:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+@container (width >= 40rem) {
+  .tracker-row {
+    grid-template-columns: auto auto 1fr auto auto auto;
+    align-items: center;
+  }
+}
