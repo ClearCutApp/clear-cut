@@ -22,11 +22,29 @@ file, a gate result, or the specific absence. And a live test that passes
 without credentials is not evidence, because its only honest outcomes are pass
 with credentials or skip without them.
 
-**Aggregate as of 2026-09-03.** The domain layer is DONE. Everything that
-crosses a network boundary is WIP, because the `clearcut-hack` Google Cloud
-project does not exist and no adapter has ever contacted the service it wraps.
-Three endpoints and one verification suite are MISSING. Section 9 carries the
-counts, the gate numbers, and the shortest path out.
+**Aggregate as of 2026-09-05.** The domain layer is DONE. The adapter tier has
+contacted every service it wraps: `clearcut-hack` exists, both planes are
+provisioned, and the end-to-end check of section 8(d) passed live on 2026-09-04
+in 870 seconds. What is now WIP is the product around the engine. One of six
+screens is complete, findings are never persisted, and analysis blocks its HTTP
+request for twelve to twenty minutes. Section 9 carries the counts and the gate
+numbers.
+
+**The goal changed on 2026-09-05.** This document was written to grade a
+hackathon submission judged on one analyze call. ClearCut is now built as a web
+application a producer uses. ADR 0012 partitions the API into six bounded
+contexts and reinstates the three endpoints ADR 0011 cut; ADR 0013 makes
+analysis a job resource; ADR 0014 makes findings durable and fixes a ClickHouse
+key that silently destroys one project's data when two projects mint the same
+identifier; ADR 0015 computes highlight offsets in the domain. Where this
+document and those records disagree, the records are newer.
+
+**On the markers themselves.** Between 2026-09-03 and 2026-09-05 three
+summaries in this file said the section 8(d) check had never run while section
+8(d) recorded its own passing run with a timing. The cause was not carelessness
+about one number: `./.claude/init.sh live` reported green while executing
+nothing, so for two days "it passed" and "it never ran" printed identically.
+The gate is fixed. The markers below have been re-graded against it.
 
 **Why this document grew a status column.** Fifty-four checkpoints closed
 against it with 477 passing tests while no service had been called even once.
@@ -252,7 +270,16 @@ nothing deploys as a separate orchestrator agent. The project Q&A agent is
 the one component hosted on Google Cloud Agent Builder, with the Vertex AI
 Search data store attached as its grounding source.
 
-**Status: eight routes specified, five built, and every path is now a
+**Status: amended 2026-09-05. The contract moved to
+`docs/api/openapi.yaml`,** which specifies 20 operations across six tags
+(System, Projects, Scripts, Tracker, Bible, Questions) per ADR 0012. Eight are
+served today. That file is the contract; this section describes the pipeline
+behind the one operation that matters most and is no longer the route
+inventory. Two shapes changed there and not yet here: script upload answers
+**202** with a `Location` naming an analysis job (ADR 0013), and the tracker
+action verb is replaced by `email-drafts` and `notifications` sub-resources.
+
+**Historical status: eight routes specified, five built, and every path is now a
 resource.** `POST /api/analyze` and `POST /api/question` were RPC verbs; they
 and the tracker collection were renamed on 2026-09-03 so that every path names
 a noun and every collection nests under its owner. `project_id` moved from the
@@ -406,47 +433,86 @@ called the Dynamic Scalability Module.
 
 ## 5. Frontend separation of concerns
 
-**Status: WIP.** All three surfaces are built and tested, 60 vitest cases
-across 13 files. The component names below were written before the components
-existed and have been corrected to what shipped.
+**Status: WIP.** Amended 2026-09-05. The description below was written for a
+three-organism app and survived an entire UI rewrite unedited; it named a
+`TrackerDashboard` component that no longer exists and a Tailwind dependency
+that was never installed. What follows is what ships.
 
 The SPA lives in `web/` at the repo root, outside `src/clearcut/`, built with
-React and Vite. Styling is vanilla CSS over design tokens rather than Tailwind:
-the dependency was never added, and `web/src/index.css` records the decision
-next to the tokens. The backend never renders a template; one Cloud Run service
-serves the JSON API and the static `web/` build output.
+React 19 and Vite. Routing is `react-router` v8. Styling is vanilla CSS over
+design tokens rather than Tailwind: the dependency was never added, and ADR
+0009 is stale on that point. `web/src/index.css` is ten ordered `@import`
+lines; the tokens live in `web/src/styles/tokens.css`. The backend never
+renders a template; one Cloud Run service serves the JSON API and the static
+`web/` build output.
 
-Structure follows atomic design: atoms (`RiskBadge`, `StateBadge`,
-`ModeBanner`), molecules (`SceneCard`, `TrackerRow`, `AnalyzeForm`), organisms
-(`ScriptView`, `TrackerDashboard`, `ProjectQA`). There is no `pages/` layer;
-`App.tsx` composes the three organisms directly, which is enough for three
-surfaces and would be an empty indirection otherwise. Container components own
-data fetching and state; presentational components receive props and stay pure.
-One typed API client module, `web/src/api/client.ts`, is the single point of
-contact with the backend; every request/response type in it mirrors the JSON
-shapes of section 4, so a backend shape change breaks the frontend build
-instead of a demo. `web/src/architecture.test.ts` enforces both rules: only
-`client.ts` may name an API path, and no atom may import from `src/api/`.
+The top-level layout is by responsibility, not by atomic tier:
 
-Three surfaces:
+- `shell/` — `AppShell`, `Sidebar`, `ProjectLayout`, `ProjectHeader`.
+- `views/` — six routed screens: `ProjectsView`, `OverviewView`,
+  `AnalyzeView`, `ScriptView`, `AskView`, `NotFoundView`. This is a pages
+  layer under another name; the claim that there is none is no longer true.
+- `features/` — `tracker/` and `item/`, each holding its own components and a
+  pure `model.ts`. `TrackerDashboard` became
+  `features/tracker/{TrackerTable,TrackerRow,TrackerFilters,TrackerStats}` over
+  `model.ts`, which holds `trackerStats`, `groupByState`, `applyFilter` and
+  `searchItems` as framework-free functions.
+- `components/atoms/` — `RiskBadge`, `StateBadge`, `NeedsReviewBadge`,
+  `FilterPill`, `EmptyState`, `ErrorNotice`, `ModeBanner`.
+- `state/`, `theme/`, `styles/`, `testing/` — context and outcomes,
+  enum-to-word maps, the ordered CSS partials, and the test harness.
 
-- **ScriptView** renders the screenplay text with findings overlaid inline at
-  their scenes, each finding showing category, risk, and citations. It reads
-  the `POST /api/projects/{id}/scripts` response, because the `GET /api/scripts/{id}` this
-  section originally specified is MISSING.
-- **TrackerDashboard** consumes `GET /api/projects/{id}/tracker-items`, renders items grouped by
-  state (BLOCKED, IN_PROGRESS, CLEARED), and issues `PATCH` for transitions
-  and `POST .../actions` for draft-email and notify triggers. The
-  generate-document and stakeholder-link triggers are deliberately absent
-  from the client's action type, so a component cannot compile its way into a
-  guaranteed server error.
-- **ProjectQA** consumes `POST /api/projects/{id}/questions` and renders the conversational
-  panel with the answer's citations linked.
+`components/molecules/` and `components/organisms/` still hold four files that
+nothing imports. They are the residue of the move to `features/`, and their CSS
+classes are undefined, so they would render unstyled if mounted. They are
+scheduled for deletion, not preservation.
 
-**On honesty.** The SPA contains no hardcoded findings; `web/src/fixtures/`
-is imported by tests only. What it renders in `CLEARCUT_MODE=mock` is a fixed
-sample served by the backend, and `ModeBanner` now says so on the page. The
-code was always honest; the data was not, and nothing admitted it.
+Container and presentational stay split: `state/ProjectContext.tsx` owns every
+call and every piece of server state, and views render what it hands them.
+`state/outcome.ts` folds failures into an `Outcome<T>` so a view renders an
+outcome instead of catching. One typed API client, `web/src/api/client.ts`, is
+the single point of contact with the backend, and every type in it mirrors the
+JSON shapes of section 4 so a backend change breaks the build rather than the
+demo.
+
+`web/src/architecture.test.ts` enforces six rules, three of which are worth
+naming here because they shape how the UI is written:
+
+- only `client.ts` may contain a quoted `/api/` path literal
+- no file under `components/atoms/` may import from `src/api/`
+- a CSS class defined in a partial whose block is already in use, but rendered
+  by no non-test component, **fails the build**. Dead CSS is a test failure, so
+  a component is written before its stylesheet.
+
+`.stylelintrc.json` adds a fourth constraint with product consequences: no
+`height` or `min-height` may be `100vh`, `100dvh`, `100svh` or `100lvh`. The
+body scrolls; nothing locks to the viewport. A design that assumes an
+inner-scrolling app shell cannot be ported literally.
+
+Screen status, 2026-09-05:
+
+- **OverviewView** is the only complete screen. It renders `TrackerStats`,
+  `TrackerFilters` and `TrackerTable` grouped by state, with row selection
+  opening a panel column.
+- **ProjectsView** renders a heading and an empty state. It reads the
+  `localStorage` recent-project list and does not render it, because there is
+  no project resource to render.
+- **AnalyzeView**, **ScriptView** and **AskView** are headings. `ScriptView`
+  says honestly that it has nothing to show, because findings are not persisted
+  and the analysis lives only in session.
+- **ItemDetailPanelHost** renders an item id and a Close button.
+
+`ProjectContext` implements `changeState`, `draftEmail`, `notify` and `ask`.
+As of this revision **none of the four has a caller.** The logic is built and
+nothing renders it; that gap is the bulk of the remaining UI work, and it is
+smaller than it looks.
+
+**On honesty.** The SPA contains no hardcoded findings; `web/src/fixtures/` is
+imported by tests only, in 11 files, never by a component. What it renders in
+`CLEARCUT_MODE=mock` is a fixed sample served by the backend, and `ModeBanner`
+says so on the page. Sidebar entries with no backing resource are drawn
+disabled rather than wired to invented data. The code was always honest; the
+data was not, and nothing admitted it.
 
 ## 6. Observability
 
@@ -506,21 +572,29 @@ inherit a default, and enterprise tier bills in a way standard does not.
 
 ## 7. Delivery phases and dependency edges
 
-**Status: all five phases WIP. No exit criterion has been met.**
+**Status: phase 4 met on 2026-09-04. Phases 1, 2 and 3 are met by tests that
+now run; phase 5 is unproven against a real service.** Amended 2026-09-05.
 
-Read that against what the criteria say. Every one of the five was written to
-demand a real service, and every one still does. Nothing here was
-under-specified. The phases were reported complete against a gate that could
-not evaluate their own exit conditions, which is the defect D66 closed and the
-reason this document now carries status at all.
+The paragraph this replaces said no exit criterion had been met, and it stayed
+there after one of them was. Read the correction carefully, because the reason
+matters more than the row: until 2026-09-05 `./.claude/init.sh live` reported
+green while executing nothing, so "the tests skip" and "the tests pass" produced
+the same output. The gate has been fixed and the numbers below are the recorded
+runs, attributed.
 
 | Phase | Exit criterion, verbatim | Met |
 |---|---|---|
-| 1 Ingestion | "a test turns a real screenplay PDF into scenes with page anchors and raw findings JSON" | No. `tests/live/test_document_ai_live.py` is exactly this test and it skips |
-| 2 Lore | "seeded bible facts come back from a project-scoped similarity query" | No. `tests/live/test_bigquery_lore_store_live.py` is exactly this test and it skips |
-| 3 Grounding | "a jurisdiction-filtered query returns grounded text with groundingChunks" | No. `tests/live/test_vertex_search_live.py` is exactly this test and it skips |
-| 4 Wiring | "the end-to-end check of section 8(d) passes" | No. It has never been run |
+| 1 Ingestion | "a test turns a real screenplay PDF into scenes with page anchors and raw findings JSON" | Partly. `tests/live/test_document_ai_live.py` requires `CLEARCUT_LIVE_SCRIPT_GCS_URI`, which is in no `.env` and named in no document, so it has never run from a cold start |
+| 2 Lore | "seeded bible facts come back from a project-scoped similarity query" | Yes at `337bddd`. `tests/live/test_bigquery_lore_store_live.py` proves a scratch-id fact round-trips; it does not prove the seeder indexed the demo project, which is why CP-057 is still IN_REVIEW |
+| 3 Grounding | "a jurisdiction-filtered query returns grounded text with groundingChunks" | Yes at `337bddd` |
+| 4 Wiring | "the end-to-end check of section 8(d) passes" | **Yes, 2026-09-04.** `1 passed in 870.64s` — see section 8(d) |
 | 5 Delta | "uploading v2 with one edited scene re-analyzes exactly that scene and preserves CLEARED items" | No. Proven in mock mode only |
+
+The live tier at HEAD is **8 passed, 1 failed, 5 skipped of 14**, recorded by
+the reviewer on 2026-09-05 with `.env` sourced by hand. The failure is
+`tests/live/test_parallel_research_live.py`, reproducibly at roughly 60 seconds
+in the Task API long-poll. It is a regression against `337bddd`, where the tier
+was 10 for 10.
 
 Five phases. The first three are independent verticals; the leader can assign
 them to parallel implementers on day one.
@@ -558,7 +632,10 @@ close them skip instead of running.
 
 ## 8. Verification
 
-**Status: all four MISSING. None has ever been run.**
+**Status: (d) DONE on 2026-09-04. (a), (b) and (c) MISSING.** Amended
+2026-09-05. This header said all four had never been run while section 8(d)
+below recorded its own passing run with a timing. The document that grades
+everything else failed to re-grade itself.
 
 Four checks, run in this order once their phases land:
 
@@ -632,38 +709,57 @@ d. **End to end (Phase 4).** Analyze a planted script containing a Ferrari
 
 ### 9.1 Counts and gates
 
+Amended 2026-09-05.
+
 | Area | DONE | WIP | MISSING |
 |---|---|---|---|
-| Domain entities (§2) | 8 | 0 | 0 |
-| Ports (§3) | 0 | 8 | 0 |
-| Use cases (§3) | 0 | 5 | 0 |
-| Endpoints (§4) | 0 | 6 | 3 |
-| Frontend surfaces (§5) | 0 | 3 | 0 |
-| Observability (§6) | 0 | 5 spans, 4 metrics | dashboard |
-| Phases (§7) | 0 | 5 | 0 |
-| Verification (§8) | 0 | 0 | 4 |
+| Domain entities (§2) | 10 | 0 | 0 |
+| Ports (§3) | 8 | 5 declared, unimplemented | 0 |
+| Use cases (§3) | 5 | 0 | 11 |
+| Endpoints (§4) | 8 served | 0 | 12 contracted |
+| Frontend screens (§5) | 1 | 5 | 0 |
+| Observability (§6) | 5 spans, 4 metrics | 0 | dashboard |
+| Phases (§7) | 1 | 3 | 1 |
+| Verification (§8) | 1 | 0 | 3 |
 
-Gates as of 2026-09-03:
+Domain entities went from eight to ten: `Project` and `ClearanceRollup` landed
+with CP-061, and `AnalysisJob` with ADR 0013. The five new ports —
+`ProjectStore`, `ScriptStore`, `FindingStore`, `AnalysisJobStore`,
+`ScriptStorage` — are declared and have no adapter yet, which is a real state
+and not a WIP one. The endpoint row now counts against `docs/api/openapi.yaml`,
+which contracts 20 operations across six tags; eight are served today.
 
-- `./.claude/init.sh verify`: 87 passed, 0 failed
-- `./.claude/init.sh check`: 6 passed, 0 failed: ruff, ruff format,
-  `mypy src tests infra main.py`, 498 backend cases, `tsc --noEmit`, 60
-  frontend cases across 13 files
-- `./.claude/init.sh live`: 10 collected, 10 skipped. Skipping is the honest
-  result with no credentials; a live test that passed here would be exercising
-  a fake
+Gates as of 2026-09-05:
+
+- `./.claude/init.sh check`: **7 passed, 0 failed** — ruff, ruff format,
+  `mypy src tests infra main.py` over 125 source files, 628 backend cases,
+  stylelint, `tsc --noEmit`, 185 frontend cases across 40 files. Stylelint is
+  the seventh gate, added in `79aacb1`.
+- `./.claude/init.sh live`: 8 passed, 1 failed, 5 skipped of 14, recorded by the
+  reviewer with `.env` sourced by hand. Before 2026-09-05 this command printed
+  `1 passed, 0 failed` while executing nothing, because pytest exits zero when
+  every test skips and the gate read only the exit code. It now requires a
+  `N passed` in the summary and names an all-skipped run as a configuration
+  gap. `tests/unit/infra/test_live_gate.py` holds all three decisions.
 
 Submission checklist from `infrastructure.md` §11:
 
 | Item | State |
 |---|---|
 | Public repo with Apache-2.0 LICENSE at root | DONE |
-| Hosted Cloud Run URL, publicly reachable | MISSING. The container is written and its `CMD` proven locally; the image has never been built |
+| Hosted Cloud Run URL, publicly reachable | DONE. Revision `clearcut-00005-sqx`, `us-central1`, verified serving both the API and the built SPA (CP-060) |
 | Three-minute demo video | MISSING |
 | Devpost form before 2026-09-07 | MISSING |
-| Runtime proof that calls are real and not mocked | MISSING. This is the same bar the whole document now grades against |
+| Runtime proof that calls are real and not mocked | DONE for the analyze path. Section 8(d) passed live on 2026-09-04. The Grafana receipt that would prove it a second way is blocked on a credential (CP-058) |
 
-**The shortest path.** One action moves more rows than any other: create the
+**The shortest path, as written on 2026-09-03 and now largely walked.** The
+provisioning below is done; `clearcut-hack` exists and both planes are up. The
+four code rows it named are still open, and `ContinuityCheck`'s missing
+instrumentation is the one that matters most: it is the most frequent Gemini
+call in the system, once per scene from both use cases, and it emits neither a
+span nor a token count.
+
+One action moves more rows than any other: create the
 `clearcut-hack` project and run `infra/provision_data_plane.sh` and
 `infra/provision_retrieval_plane.sh`. That alone converts five ports, four
 phases, and three of the four verification checks from blocked to runnable.
