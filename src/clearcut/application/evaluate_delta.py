@@ -43,6 +43,14 @@ Backlog with its cost, not built here.
 
 `record_script` is called for the version this run produces, after the
 tracker write, so a v3 upload has a v2 to diff against (D30).
+
+Findings are written to `FindingStore` in that same step (ADR 0014), keyed by
+this run's own `script_id`. Every finding the report carries is saved, not
+only the ones that minted a fresh `EVT-NNN`: a finding that matched an
+existing tracker item was still resolved against this version's text, and a
+producer opening version 3 asks what version 3 found. Storing only the newly
+minted ones would leave every carried-forward asset with no evidence at the
+version a reader is looking at.
 """
 
 import re
@@ -52,6 +60,7 @@ from clearcut.application.analyze_script import AnalysisReport
 from clearcut.application.grounding_query import grounding_query
 from clearcut.application.ports import (
     ContinuityCheck,
+    FindingStore,
     LegalGrounding,
     LoreStore,
     Notifier,
@@ -148,7 +157,15 @@ def _partition_existing(
 
 class EvaluateDelta:
     """`EvaluateDelta(ingestion, extractor, grounding, research, lore,
-    tracker, continuity, notifier)` (SDD Section 4.3, ADR 0007, D30)."""
+    tracker, continuity, notifier, findings)` (SDD Section 4.3, ADR 0007,
+    D30, ADR 0014).
+
+    Nine constructor parameters, against AGENT.md Section 4's soft guide of
+    four, for the reason `AnalyzeScript` gives: this is the pipeline, and
+    every parameter is a separate I/O boundary it crosses. The ninth is the
+    findings write ADR 0014 adds; the eighth is the webhook ADR 0007 fires
+    when a cleared scene changes underneath a producer.
+    """
 
     def __init__(
         self,
@@ -160,6 +177,7 @@ class EvaluateDelta:
         tracker: TrackerStore,
         continuity: ContinuityCheck,
         notifier: Notifier,
+        findings: FindingStore,
     ) -> None:
         self._ingestion = ingestion
         self._extractor = extractor
@@ -169,6 +187,7 @@ class EvaluateDelta:
         self._tracker = tracker
         self._continuity = continuity
         self._notifier = notifier
+        self._findings = findings
 
     def execute(
         self,
@@ -211,7 +230,7 @@ class EvaluateDelta:
         ]
 
         self._lore.index(project_id, list(reextract_scenes))
-        self._save_and_record(saved_items + leftover_items + removed_items, script)
+        self._save_and_record(saved_items + leftover_items + removed_items, findings, script)
 
         all_items = tuple(
             carried_items + passthrough_items + saved_items + leftover_items + removed_items
@@ -225,9 +244,20 @@ class EvaluateDelta:
         contradictions = self._continuity_findings(project_id, scenes)
         return dedupe_findings(extracted + contradictions)
 
-    def _save_and_record(self, to_save: list[TrackerItem], script: Script) -> None:
+    def _save_and_record(
+        self, to_save: list[TrackerItem], findings: list[Finding], script: Script
+    ) -> None:
+        """The one durable step: tracker items, then the findings behind
+        them, then the script version (ADR 0014, D30).
+
+        `to_save` is guarded because a delta run can legitimately change no
+        tracker item. `findings` is not: the store is keyed by
+        `(project_id, script_id)` and an empty save for a version that found
+        nothing is the record that it found nothing.
+        """
         if to_save:
             self._tracker.save(to_save)
+        self._findings.save(script.project_id, script.script_id, findings)
         self._tracker.record_script(script)
 
     def _carry_forward_leftover(self, item: TrackerItem, version: int, at: str) -> TrackerItem:

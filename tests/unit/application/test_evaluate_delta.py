@@ -1,6 +1,6 @@
 """Unit tests for `EvaluateDelta` (CP-028, docs/plan/sdd.md Section 4.3, ADR 0007).
 
-Hand-written fakes for all eight ports (AGENT.md Section 5) -- no
+Hand-written fakes for all nine ports (AGENT.md Section 5) -- no
 `unittest.mock`, no network, no clock read: `at` always arrives as an
 argument. The fakes mirror `test_analyze_script.py`'s, extended with a
 `Notifier` fake and a `_Tracker.latest_for_project`/`latest_script` that
@@ -17,6 +17,7 @@ from clearcut.application.grounding_query import _GROUNDING_TERMS
 from clearcut.application.ports import (
     Confidence,
     ContinuityCheck,
+    FindingStore,
     GroundedAnswer,
     LegalGrounding,
     LoreStore,
@@ -208,6 +209,22 @@ class _Notifier:
         self.calls.append((item, reason))
 
 
+class _FindingStore:
+    def __init__(self) -> None:
+        self.saved: list[tuple[str, str, list[Finding]]] = []
+
+    def save(self, project_id: str, script_id: str, findings: list[Finding]) -> None:
+        self.saved.append((project_id, script_id, list(findings)))
+
+    def for_script(self, project_id: str, script_id: str) -> list[Finding]:
+        return [
+            finding
+            for saved_project, saved_script, batch in self.saved
+            if saved_project == project_id and saved_script == script_id
+            for finding in batch
+        ]
+
+
 def _use_case(
     ingestion: _Ingestion | None = None,
     extractor: _Extractor | None = None,
@@ -217,6 +234,7 @@ def _use_case(
     tracker: _Tracker | None = None,
     continuity: _Continuity | None = None,
     notifier: _Notifier | None = None,
+    finding_store: _FindingStore | None = None,
 ) -> EvaluateDelta:
     return EvaluateDelta(
         ingestion=ingestion if ingestion is not None else _Ingestion([_scene()]),
@@ -227,6 +245,7 @@ def _use_case(
         tracker=tracker if tracker is not None else _Tracker(_script([_scene()])),
         continuity=continuity if continuity is not None else _Continuity(),
         notifier=notifier if notifier is not None else _Notifier(),
+        findings=finding_store if finding_store is not None else _FindingStore(),
     )
 
 
@@ -240,6 +259,7 @@ _lore_conforms: LoreStore = _LoreStore()
 _tracker_conforms: TrackerStore = _Tracker()
 _continuity_conforms: ContinuityCheck = _Continuity()
 _notifier_conforms: Notifier = _Notifier()
+_findings_conforms: FindingStore = _FindingStore()
 
 
 def test_fakes_satisfy_their_ports() -> None:
@@ -251,6 +271,59 @@ def test_fakes_satisfy_their_ports() -> None:
     assert isinstance(_tracker_conforms, TrackerStore)
     assert isinstance(_continuity_conforms, ContinuityCheck)
     assert isinstance(_notifier_conforms, Notifier)
+    assert isinstance(_findings_conforms, FindingStore)
+
+
+def test_every_finding_the_report_carries_is_saved_under_this_versions_script_id() -> None:
+    # ADR 0014. The matched finding keeps EVT-002 and the newly detected one
+    # mints EVT-003; both belong to the version being read back, so both are
+    # stored -- saving only the minted one would leave the carried-forward
+    # asset with no evidence at v2.
+    old_scenes = [_scene(2, text="old text")]
+    new_scenes = [_scene(2, text="new text"), _scene(4, heading="INT. NEW - DAY", text="added")]
+    tracker = _Tracker(
+        script=_script(old_scenes),
+        items=[_item(item_id="EVT-002", finding_id="EVT-002", scene_numbers=(2,))],
+    )
+    extractor = _Extractor(
+        findings=[
+            _finding(finding_id="uuid-a", raw_text="Quilmes", scene_number=2),
+            _finding(finding_id="uuid-b", raw_text="Ferrari", scene_number=4),
+        ]
+    )
+    store = _FindingStore()
+    use_case = _use_case(
+        ingestion=_Ingestion(new_scenes),
+        extractor=extractor,
+        tracker=tracker,
+        finding_store=store,
+    )
+
+    report = use_case.execute("proj-1", "scr-2", 2, "gs://bucket/v2.pdf", _MEXICO, _AT)
+
+    assert len(store.saved) == 1
+    project_id, script_id, saved = store.saved[0]
+    assert (project_id, script_id) == ("proj-1", "scr-2")
+    assert [finding.finding_id for finding in saved] == ["EVT-002", "EVT-003"]
+    assert saved == list(report.findings)
+
+
+def test_findings_are_saved_even_when_no_tracker_item_changed() -> None:
+    # `tracker.save` is skipped when a delta run changes no item, and the
+    # findings write must not ride on that guard: an empty list under this
+    # script_id is the record that the version found nothing.
+    scenes = [_scene(1, text="unchanged text")]
+    tracker = _Tracker(
+        script=_script(scenes),
+        items=[_item(item_id="EVT-001", finding_id="EVT-001", scene_numbers=(1,))],
+    )
+    store = _FindingStore()
+    use_case = _use_case(ingestion=_Ingestion(scenes), tracker=tracker, finding_store=store)
+
+    use_case.execute("proj-1", "scr-2", 2, "gs://bucket/v2.pdf", _MEXICO, _AT)
+
+    assert tracker.saved == []
+    assert store.saved == [("proj-1", "scr-2", [])]
 
 
 def test_no_previous_version_raises_an_error_subclassing_record_not_found() -> None:

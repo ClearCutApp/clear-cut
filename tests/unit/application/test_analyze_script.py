@@ -1,6 +1,6 @@
 """Unit tests for `AnalyzeScript` (CP-026, docs/plan/sdd.md Section 4.1).
 
-Hand-written fakes for all seven ports (AGENT.md Section 5) -- no
+Hand-written fakes for all eight ports (AGENT.md Section 5) -- no
 `unittest.mock`, no network, no clock read: `at` always arrives as an
 argument. `NoGroundedSource` and `NoRightsHolderFound` are imported from
 their adapter modules for realism only, the same precedent
@@ -19,6 +19,7 @@ from clearcut.application.grounding_query import _GROUNDING_TERMS
 from clearcut.application.ports import (
     Confidence,
     ContinuityCheck,
+    FindingStore,
     GroundedAnswer,
     LegalGrounding,
     LoreStore,
@@ -213,6 +214,25 @@ class _Tracker:
         return None
 
 
+class _FindingStore:
+    def __init__(self, log: list[str] | None = None) -> None:
+        self._log = log
+        self.saved: list[tuple[str, str, list[Finding]]] = []
+
+    def save(self, project_id: str, script_id: str, findings: list[Finding]) -> None:
+        if self._log is not None:
+            self._log.append("findings.save")
+        self.saved.append((project_id, script_id, list(findings)))
+
+    def for_script(self, project_id: str, script_id: str) -> list[Finding]:
+        return [
+            finding
+            for saved_project, saved_script, batch in self.saved
+            if saved_project == project_id and saved_script == script_id
+            for finding in batch
+        ]
+
+
 def _use_case(
     scenes: list[Scene] | None = None,
     findings: list[Finding] | None = None,
@@ -222,6 +242,7 @@ def _use_case(
     tracker: _Tracker | None = None,
     continuity: _Continuity | None = None,
     ingestion_error: Exception | None = None,
+    finding_store: _FindingStore | None = None,
 ) -> AnalyzeScript:
     return AnalyzeScript(
         ingestion=_Ingestion(scenes if scenes is not None else [_scene()], error=ingestion_error),
@@ -231,6 +252,7 @@ def _use_case(
         lore=lore if lore is not None else _LoreStore(),
         tracker=tracker if tracker is not None else _Tracker(),
         continuity=continuity if continuity is not None else _Continuity(),
+        findings=finding_store if finding_store is not None else _FindingStore(),
     )
 
 
@@ -243,6 +265,7 @@ _research_conforms: RightsResearch = _Research()
 _lore_conforms: LoreStore = _LoreStore()
 _tracker_conforms: TrackerStore = _Tracker()
 _continuity_conforms: ContinuityCheck = _Continuity()
+_findings_conforms: FindingStore = _FindingStore()
 
 
 def test_fakes_satisfy_their_ports() -> None:
@@ -253,6 +276,7 @@ def test_fakes_satisfy_their_ports() -> None:
     assert isinstance(_lore_conforms, LoreStore)
     assert isinstance(_tracker_conforms, TrackerStore)
     assert isinstance(_continuity_conforms, ContinuityCheck)
+    assert isinstance(_findings_conforms, FindingStore)
 
 
 def test_execute_returns_an_analysis_report_carrying_script_findings_and_tracker_items() -> None:
@@ -290,6 +314,7 @@ def test_extract_is_called_once_with_every_scene() -> None:
         lore=_LoreStore(),
         tracker=_Tracker(),
         continuity=_Continuity(),
+        findings=_FindingStore(),
     )
 
     use_case.execute("proj-1", "scr-1", 1, "gs://bucket/v1.pdf", _MEXICO, _AT)
@@ -616,6 +641,7 @@ def test_pipeline_runs_ports_in_sdd_order() -> None:
         lore=_LoreStore(log=log),
         tracker=_Tracker(log=log),
         continuity=_Continuity(log=log),
+        findings=_FindingStore(log=log),
     )
 
     use_case.execute("proj-1", "scr-1", 1, "gs://bucket/v1.pdf", _MEXICO, _AT)
@@ -627,7 +653,31 @@ def test_pipeline_runs_ports_in_sdd_order() -> None:
     assert log.index("ground") < log.index("research")
     assert log.index("research") < log.index("lore.index")
     assert log.index("lore.index") < log.index("tracker.save")
-    assert log.index("tracker.save") < log.index("record_script")
+    # The findings land between the tracker write and the script record: an
+    # item and the finding behind it are one fact (ADR 0014).
+    assert log.index("tracker.save") < log.index("findings.save")
+    assert log.index("findings.save") < log.index("record_script")
+
+
+def test_the_runs_findings_are_saved_under_its_own_project_and_script_id() -> None:
+    # ADR 0014: a tracker item carries no raw_text, category, page or
+    # citations, so the report's findings are the only evidence there is.
+    # They are keyed by the script version this run produced, never by the
+    # project alone -- reopening v2 has to show what v2 triggered.
+    store = _FindingStore()
+    quilmes = _finding(finding_id="uuid-a", raw_text="Quilmes", scene_number=1)
+    ferrari = _finding(finding_id="uuid-b", raw_text="Ferrari", scene_number=2)
+    use_case = _use_case(
+        scenes=[_scene(1), _scene(2)], findings=[quilmes, ferrari], finding_store=store
+    )
+
+    report = use_case.execute("proj-1", "scr-7", 2, "gs://bucket/v2.pdf", _MEXICO, _AT)
+
+    assert len(store.saved) == 1
+    project_id, script_id, saved = store.saved[0]
+    assert (project_id, script_id) == ("proj-1", "scr-7")
+    assert [finding.finding_id for finding in saved] == ["EVT-001", "EVT-002"]
+    assert saved == list(report.findings)
 
 
 class _PositionalOnlyIngestion:
@@ -695,8 +745,19 @@ class _PositionalOnlyContinuity:
         return None
 
 
+class _PositionalOnlyFindingStore:
+    def __init__(self) -> None:
+        self.saved: list[tuple[str, str, list[Finding]]] = []
+
+    def save(self, a: str, b: str, c: list[Finding]) -> None:
+        self.saved.append((a, b, list(c)))
+
+    def for_script(self, a: str, b: str) -> list[Finding]:
+        return []
+
+
 def test_port_methods_are_called_positionally() -> None:
-    """D15: a keyword call through any of these seven fakes raises `TypeError`."""
+    """D15: a keyword call through any of these eight fakes raises `TypeError`."""
     tracker = _PositionalOnlyTracker()
     use_case = AnalyzeScript(
         ingestion=_PositionalOnlyIngestion([_scene()]),
@@ -706,6 +767,7 @@ def test_port_methods_are_called_positionally() -> None:
         lore=_PositionalOnlyLoreStore(),
         tracker=tracker,
         continuity=_PositionalOnlyContinuity(),
+        findings=_PositionalOnlyFindingStore(),
     )
 
     report = use_case.execute("proj-1", "scr-1", 1, "gs://bucket/v1.pdf", _MEXICO, _AT)
