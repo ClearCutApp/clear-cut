@@ -39,6 +39,9 @@ def load_script() -> ModuleType:
     return module
 
 
+ALL_TABLES = ("tracker_items", "script_versions", "projects", "findings", "analysis_jobs")
+
+
 class RecordingChClient:
     """Records every DDL statement, returns nothing. The seam `create_tables`
     takes, so this test needs no ClickHouse service."""
@@ -66,7 +69,7 @@ def test_creates_every_table_the_adapters_read() -> None:
 
     joined = "\n".join(client.commands)
     assert len(client.commands) == 5
-    for table in ("tracker_items", "script_versions", "projects", "findings", "analysis_jobs"):
+    for table in ALL_TABLES:
         assert table in joined, table
 
 
@@ -118,5 +121,99 @@ def test_dry_run_prints_the_ddl_without_connecting() -> None:
 
     assert result.returncode == 0, result.stderr
     assert result.stdout.count("CREATE TABLE IF NOT EXISTS") == 5
-    for table in ("tracker_items", "script_versions", "projects", "findings", "analysis_jobs"):
+    assert "DROP TABLE" not in result.stdout
+    for table in ALL_TABLES:
         assert table in result.stdout, table
+
+
+# --- The destructive path (ADR 0014) ----------------------------------------
+#
+# ClickHouse cannot re-key a MergeTree in place: ORDER BY is part of the
+# table's physical layout. Re-keying `tracker_items` and `script_versions`
+# therefore means dropping them, which takes the deployed demo project's
+# clearance state with it. That is a decision for a human, so the script
+# refuses to make it on its own.
+
+
+def _run(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(SCRIPT), *args],
+        capture_output=True,
+        text=True,
+        env={"PATH": "/usr/bin:/bin"},
+        check=False,
+    )
+
+
+def test_recreate_drops_every_table_before_creating_it() -> None:
+    client = RecordingChClient()
+
+    load_script().recreate_tables(client)
+
+    assert len(client.commands) == 10
+    drops = [cmd for cmd in client.commands if cmd.startswith("DROP TABLE")]
+    assert len(drops) == 5
+    for table in ALL_TABLES:
+        drop_index = next(
+            i
+            for i, cmd in enumerate(client.commands)
+            if cmd.strip() == f"DROP TABLE IF EXISTS {table}"
+        )
+        create_index = next(
+            i
+            for i, cmd in enumerate(client.commands)
+            if cmd.startswith(f"CREATE TABLE IF NOT EXISTS {table}")
+        )
+        assert drop_index < create_index, table
+
+
+def test_recreate_without_force_destroys_nothing() -> None:
+    """The guard is in `main`, not in `recreate_tables`, so this exercises the
+    entry point a human actually types."""
+    result = _run("--recreate")
+
+    assert result.returncode != 0
+    assert "DROP TABLE" not in result.stdout
+
+
+def test_recreate_without_force_names_every_table_it_would_destroy() -> None:
+    """A refusal that does not say what is at stake is a refusal a human
+    re-runs with the override without reading it."""
+    result = _run("--recreate")
+
+    printed = result.stdout + result.stderr
+    for table in ALL_TABLES:
+        assert table in printed, table
+    assert "--force" in printed
+
+
+def test_the_override_alone_is_refused_rather_than_ignored() -> None:
+    """Typing the override alone reads as "I have armed the destructive
+    path". Silently doing the safe thing leaves the operator believing they
+    ran a migration they did not."""
+    result = _run("--force")
+
+    assert result.returncode != 0
+    assert "--recreate" in result.stdout + result.stderr
+
+
+def test_recreate_dry_run_prints_the_drops_and_the_creates() -> None:
+    """The one rehearsal a reviewer can run with no ClickHouse account: it
+    connects to nothing and shows exactly the statements a real run issues."""
+    result = _run("--recreate", "--force", "--dry-run")
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.count("DROP TABLE IF EXISTS") == 5
+    assert result.stdout.count("CREATE TABLE IF NOT EXISTS") == 5
+    for table in ALL_TABLES:
+        assert table in result.stdout, table
+
+
+def test_recreate_dry_run_without_the_override_still_refuses() -> None:
+    """`--dry-run` shows what a real run would do, so it has to show the
+    refusal too. Printing the migration here would tell the operator the
+    command works, and the real run would then refuse."""
+    result = _run("--recreate", "--dry-run")
+
+    assert result.returncode != 0
+    assert "DROP TABLE" not in result.stdout

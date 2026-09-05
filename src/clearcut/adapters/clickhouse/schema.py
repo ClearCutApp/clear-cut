@@ -112,6 +112,14 @@ DDL = (
     _ANALYSIS_JOBS_DDL,
 )
 
+# ClickHouse cannot re-key a `MergeTree` in place -- `ORDER BY` is part of the
+# table's physical layout -- so the only way to fix a wrong key is to drop the
+# table and take its rows with it (ADR 0014). These statements live here, next
+# to the ones that create the tables, so the two lists cannot name a different
+# set of tables. Nothing in `src/` issues them; `infra/provision_tracker_
+# schema.py --recreate` does, and only after a human confirms.
+DROP_DDL = tuple(f"DROP TABLE IF EXISTS {table}" for table in TABLES)
+
 
 def ensure_schema(client: ch_client._ChClient) -> None:
     try:

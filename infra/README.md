@@ -51,10 +51,11 @@ authenticated (`gcloud auth login`), and pointed at that project
    `tests/unit/test_environment_contract.py` fails if the name appears in
    `.env.example`.
 8. `.venv/bin/python infra/provision_tracker_schema.py --dry-run` — review the
-   two `CREATE TABLE IF NOT EXISTS` statements, then drop `--dry-run` to create
-   `tracker_items` and `script_versions` in ClickHouse Cloud. It reads
-   `CLICKHOUSE_HOST`, `CLICKHOUSE_USER` and `CLICKHOUSE_PASSWORD` from the
-   environment and exits naming any that are missing.
+   five `CREATE TABLE IF NOT EXISTS` statements, then drop `--dry-run` to create
+   `tracker_items`, `script_versions`, `projects`, `findings` and
+   `analysis_jobs` in ClickHouse Cloud. It reads `CLICKHOUSE_HOST`,
+   `CLICKHOUSE_USER` and `CLICKHOUSE_PASSWORD` from the environment and exits
+   naming any that are missing.
 
    It needs the project interpreter, not a bare `python3`: it reuses
    `ClickHouseTrackerStore.ensure_schema()` so the schema has one definition
@@ -63,14 +64,23 @@ authenticated (`gcloud auth login`), and pointed at that project
    ClickHouse Cloud itself is still created by hand — this script provisions
    the tables inside a service that already exists.
 
+   On a service provisioned before ADR 0014, `tracker_items` and
+   `script_versions` carry the old keys and `CREATE TABLE IF NOT EXISTS` leaves
+   them alone. ClickHouse cannot re-key a `MergeTree` in place, so correcting
+   them means `--recreate`, which drops all five tables and every row in them.
+   Rehearse it with `--recreate --force --dry-run`; without `--force` the
+   script prints what it would destroy and stops. The demo project comes back
+   from `infra/seed_project_bible.py` and one analyze call.
+
 9. `.venv/bin/python infra/seed_project_bible.py --dry-run` — review the fact
    it would index, then drop `--dry-run` to write it into the BigQuery lore
    table. It reads `GOOGLE_CLOUD_PROJECT` and exits naming it if absent.
 
    The fact comes from `adapters/demo/scenario.py`, so what this seeds and what
-   mock mode serves cannot disagree about which fact scene 3 contradicts. It is
-   additive: running it twice indexes the fact twice, because `LoreStore` has
-   no way to remove a row (SDD section 4.3).
+   mock mode serves cannot disagree about which fact scene 3 contradicts.
+   Running it twice indexes nothing the second time: it reads the project's
+   facts first and matches on the hash of the text, which it has to, because
+   `LoreStore` has no way to remove a row (SDD section 4.3).
 
 10. `.venv/bin/python infra/fetch_legal_corpus.py AR --dry-run` — review the
     searches, then drop `--dry-run` to ask Parallel for each category's statute.
