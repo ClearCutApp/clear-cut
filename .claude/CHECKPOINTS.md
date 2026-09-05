@@ -2475,8 +2475,8 @@ paths, or a Notifier live test. Do not supersede CP-058: the obstacle is a
 credential, not mixed scope. The web-product-ui plan does not touch this board.
 
 ### CP-055 — Provision every Google Cloud resource the live graph reads
-- Status: IN_REVIEW
-- Attempts: 0/3
+- Status: TODO
+- Attempts: 1/3
 - Depth: 0
 - Layer: infra
 - Depends on: -
@@ -2567,9 +2567,65 @@ credential, not mixed scope. The web-product-ui plan does not touch this board.
   CP-059's skip, not this gate (the ten adapter tests do not build the
   notifier).
 
+  **CHANGES_REQUESTED 2026-09-05 (reviewer).** The 337bddd evidence was real
+  when recorded; it no longer holds at HEAD. Gates re-run: `init.sh check` 7
+  passed / 0 failed (564 passed, 14 deselected). Live re-run twice, and the two
+  runs disagree — which is the finding.
+
+  1. *Criterion 6 fails as written.* `./.claude/init.sh live`, run verbatim,
+     executed **zero** live tests: `14 skipped, 564 deselected`, every skip
+     citing `GOOGLE_CLOUD_PROJECT` / `CLICKHOUSE_*` / `PARALLEL_API_KEY` as
+     unset. The script still printed `Result: 1 passed, 0 failed`. Cause:
+     `.claude/init.sh:281-291` activates `.venv` but never loads `.env`, and
+     `tests/live/conftest.py:30` reads `os.environ` only. No file in the repo
+     documents sourcing `.env` first. The gate this criterion names therefore
+     reports green having contacted nothing — the §5 failure the live tier
+     exists to close. Required change: make the credentials reach the gate the
+     criterion names (load `.env` in `live()`, or document and criterion-name
+     the exact sourcing command), so the gate cannot be green on zero contact.
+  2. *The count is wrong even with credentials.* With `set -a; . ./.env`:
+     **8 passed, 1 failed, 5 skipped** of 14 — not "10 tests". Verified
+     passing against real services: both BigQuery, all three ClickHouse, the
+     Gemini extractor, both Vertex Search. Failing:
+     `test_parallel_research_live.py` — `ResearchUnavailable: Parallel Task API
+     request failed: Connection error`, reproducibly at ~60s inside the
+     `task_run.result` long-poll, while `task_run.create` succeeded. Auth and
+     reachability are fine, so this reads as a 60s idle cut rather than a code
+     defect — but it cannot be shown green here, and criterion 6 requires that
+     it is. Required change: establish the live tier green under the credential
+     set the criterion claims, or re-scope the criterion to the tests CP-055
+     actually provisions and name the Parallel poll as a separate checkpoint.
+  3. *Criterion 4 fails.* `.env` does not carry every variable the live tier
+     needs: `CLEARCUT_LIVE_SCRIPT_GCS_URI` is unset, and it alone skips
+     `test_document_ai_live.py`. The Document AI processor is a resource
+     **this** checkpoint provisioned, and no live test has exercised it in this
+     run. Required change: put `CLEARCUT_LIVE_SCRIPT_GCS_URI` in `.env` (and in
+     `.env.example`, which omits it) pointing at the planted screenplay.
+  4. *The `NOTIFY_WEBHOOK_URL` claim is half right.* It is true it does not
+     affect the eight tests that ran. It is not the only thing skipping
+     `test_end_to_end_live.py` — that skip cites `NOTIFY_WEBHOOK_URL,
+     CLEARCUT_LIVE_SCRIPT_GCS_URI`, and the second one is CP-055's, not
+     CP-059's. Required change: correct the note, or close finding 3 which
+     removes it.
+
+  Verified sound, needing no action: criterion 1 — `gcloud alpha bq datasets
+  list --project=clearcut-hack` returns `clearcut-hack:clearcut` (and
+  `clearcut_temp`). Criterion 3 — the three ClickHouse live tests passed, so
+  `tracker_items` and `script_versions` exist. Criterion 5 — substance holds:
+  `test_a_jurisdiction_with_no_documents_grounds_nothing` passed, the KR filter
+  genuinely raised `EnrichmentMissing`, which is an assertion no fake satisfies.
+  Non-blocking: that criterion cites `test_vertex_search_live.py:55`, but line
+  55 is the citation test; the zero-result test is at line 71.
+
+  Non-blocking, for the leader: `live()` in `.claude/init.sh` counts an
+  all-skipped pytest run as `1 passed` in its Result line, contradicting its own
+  comment at lines 276-280 that an all-skipped run is "reported as such rather
+  than counted as proof". Separate checkpoint — it is init.sh's defect, wider
+  than CP-055.
+
 ### CP-056 — Translate every SDK exception the three bare adapters can raise
-- Status: IN_REVIEW
-- Attempts: 0/3
+- Status: TODO
+- Attempts: 1/3
 - Depth: 0
 - Layer: adapters
 - Depends on: -
@@ -2633,6 +2689,59 @@ credential, not mixed scope. The web-product-ui plan does not touch this board.
   risk is therefore narrower than written and still open: an
   `APIResponseValidationError` from the result call would still reach a 500.
   Recording it here rather than shipping untestable breadth.
+
+  **Reviewed 2026-09-05 — CHANGES_REQUESTED (1 blocking).** Gates green:
+  `./.claude/init.sh check` 7 passed, 0 failed (564 passed, 14 deselected).
+  Criteria 1, 2, 3, 4, 6 and 7 verified against the code, not the block: the
+  three `try`/`except` sites exist, each new test asserts the new subclass and
+  so fails without it, and `tests/unit/test_error_boundaries.py`'s walk
+  classifies the three new classes automatically.
+
+  **Ruling on the `[~]`.** The criterion is unsatisfiable as written, and for a
+  stronger reason than the implementer gave. `APIResponseValidationError` is
+  not merely untestable through `httpx.MockTransport` — it is unreachable in
+  production. The SDK raises it in exactly two places:
+  `parallel/_response.py:253`, behind `if self._client._strict_response_validation`,
+  and `parallel/_base_client.py:657`, on a `pydantic.ValidationError` out of
+  `construct_type`, which is documented as loose coercion that returns a
+  non-matching value as-is. `research.py:100` constructs `Parallel(...)`
+  without `_strict_response_validation`, whose default is `False`
+  (`parallel/_client.py:100`). Catching it would be dead code. Do not ship the
+  clause; the leader should rewrite this criterion rather than have anyone
+  satisfy it.
+
+  **Blocking: `src/clearcut/adapters/parallel/research.py:116` — the
+  substitution does not meet the criterion's intent.** Loose construction is
+  precisely why a malformed 2xx arrives as a raw `str`, `list` or `None`
+  instead of a `TaskRun`, so `run.run_id` — the guard itself — raises
+  `AttributeError`, which `routes.py:106` maps to 500. Verified against the
+  installed SDK through the seam already in the test file: a run-create
+  answering 200 `[1, 2]` gives `AttributeError: 'list' object has no attribute
+  'run_id'`, and one answering 200 `text/plain` with a non-JSON body gives
+  `'str' object has no attribute 'run_id'`. The second is the realistic one — a
+  proxy or WAF interstitial served as 200 text. The same class sits at
+  `research.py:133`: `_first_cited_claim` reads `result.output`, which raises
+  `AttributeError` on the same shapes.
+
+  Required change: guard on the constructed type, not on the attribute, at both
+  call sites — reject a `run` that is not a `TaskRun` and a `result` that is not
+  a `TaskRunResult`, raising `ResearchUnavailable` — and add one test per site
+  driving a 200 whose body the SDK cannot construct (a `text/plain` non-JSON
+  body is enough for both), asserting `ResearchUnavailable` and that no
+  `AttributeError` escapes. Both fail against the current code.
+
+  Non-blocking, for the leader: criterion 5's text still names
+  `APIResponseValidationError` and asserts it "currently escapes to a 500". It
+  cannot arise at all under a non-strict client. Rewrite it to name the
+  reachable defect — a 2xx the SDK cannot construct must cross the port as
+  `ResearchUnavailable` — so the next attempt is not judged against a false
+  premise.
+
+  `./.claude/init.sh check` was run twice. The first run was red (5 passed, 2
+  failed) on `web/src/features/tracker/TrackerRow.test.tsx` failing to resolve
+  `./TrackerRow`; `web/src/features/tracker/` was being written concurrently by
+  other work and is untracked. The re-run is the green one above. CP-056
+  touches no `web/` file, so that transient is not this checkpoint's.
 
 ### CP-057 — Seed the demo project's bible facts through infrastructure
 - Status: IN_REVIEW
@@ -2814,7 +2923,7 @@ credential, not mixed scope. The web-product-ui plan does not touch this board.
   point it at that PDF).
 
 ### CP-060 — Build the image and deploy it to Cloud Run
-- Status: IN_REVIEW
+- Status: DONE
 - Attempts: 0/3
 - Depth: 0
 - Layer: infra
@@ -2833,10 +2942,13 @@ credential, not mixed scope. The web-product-ui plan does not touch this board.
   - [x] `GET /api/health` on that URL reports `live`, not `mock`. A deployment
         that silently serves the demo scenario is the failure this criterion
         exists to catch.
-  - [~] Failure path: a revision missing a required variable fails at startup
+  - [x] Failure path: a revision missing a required variable fails at startup
         naming it, rather than serving and 500ing on the first request.
-        `composition.py:176` already does this; the criterion is that the
-        deployed revision demonstrates it.
+        `composition.py:176` already does this; the reviewer ruled (2026-09-05)
+        that the ten parametrized cases in
+        `tests/unit/test_composition.py:476` plus
+        `tests/unit/test_entrypoint.py:51` close this at the level this
+        checkpoint operates at. No second, deliberately broken deploy.
 - Files: `Dockerfile` if the build reveals a problem,
   `docs/plan/infrastructure.md` section 9
 - Notes: The `CMD` is already proven without an image: gunicorn loaded
@@ -2853,6 +2965,42 @@ credential, not mixed scope. The web-product-ui plan does not touch this board.
   *deployed* revision; do not widen into a second deploy unless the reviewer
   requires it. `NOTIFY_WEBHOOK_URL` is empty locally; if that revision serves
   `live`, the secret is set there even though `.env` is not.
+
+  **Reviewed 2026-09-05 — PASS, 0 blocking.** Verified, not assumed:
+  `GET https://clearcut-eflcclvn7a-uc.a.run.app/api/health` -> 200
+  `{"mode":"live"}`; `GET /` -> 200 serving the built SPA, whose
+  `/assets/index-DJ387NV1.js` and `/assets/index-DhF37qvF.css` are Vite output
+  hashes, so `web/dist` is in the image (criteria 1, 2, 4).
+  `gcloud run services describe` reports `clearcut-00005-sqx` ready and serving
+  in `us-central1`, with `PARALLEL_API_KEY`, `CLICKHOUSE_*`, `NOTIFY_WEBHOOK_URL`
+  and both `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_HEADERS` mounted
+  through `secretKeyRef`; a ready revision means the accessor role resolves
+  (criterion 3). `./.claude/init.sh check` -> 7 passed, 0 failed
+  (564 passed / 14 deselected, web 185 passed). `live` not run: a concurrent
+  reviewer held the tier, and this checkpoint changes no adapter.
+
+  **Ruling on the fifth criterion: the second deploy is not required.** The
+  behaviour it names is entirely ours and entirely covered.
+  `_required_env` raises inside `create_app()`, `main.py` binds `app` at import,
+  and `test_import_builds_a_flask_app_with_no_socket_opened` proves that
+  binding — so `gunicorn main:app` cannot reach a listening state with a
+  variable missing. The ten parametrized cases of
+  `test_live_wiring_fails_at_startup_naming_a_missing_required_variable` cover
+  every required variable and match on its name, so deleting the raise fails
+  ten tests. What a sixth, deliberately broken revision would add is Cloud Run's
+  own contract — a container whose process exits at start is not routed traffic
+  — which is the platform's documented behaviour, not ClearCut code. Its
+  assertion would be on a GCP error string. Section 5's live tier exists to
+  prove our adapters reached a real service, not to re-test the provider, and
+  Section 4 forbids ceremony that proves nothing new. Against that, the cost is
+  real: mutating a service other checkpoints and a running live tier depend on.
+  All five revisions in the service's history deployed successfully, so no
+  existing failure evidence could be read instead.
+
+  Non-blocking, for the leader: `_LIVE_ENV_VALUES` (`tests/unit/test_composition.py:255`)
+  is hand-maintained and currently matches the ten `_required_env` calls in
+  `composition.py`, but nothing enforces that. An eleventh required variable
+  would silently drop out of the parametrized failure coverage.
 
 ---
 
