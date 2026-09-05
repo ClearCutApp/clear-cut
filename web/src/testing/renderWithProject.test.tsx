@@ -2,13 +2,11 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { Link } from "react-router";
 import { describe, expect, it } from "vitest";
 
-import type { AnalyzeResponse } from "../api/client";
-import analyzeData from "../fixtures/analyze.json";
+import { SCRIPT_FIXTURE } from "../fixtures";
 import { useProject } from "../state/ProjectContext";
 import { stubFetch } from "./fetchStub";
 import { renderWithProject } from "./renderWithProject";
 
-const analyzeFixture = analyzeData as AnalyzeResponse;
 
 function Probe() {
   const { projectId, analysis, selectedItemId, tracker } = useProject();
@@ -37,7 +35,7 @@ describe("renderWithProject", () => {
   it("preloads an analysis and a selection when asked", async () => {
     stubFetch({ tracker: { status: 200, body: [] } });
 
-    renderWithProject(<Probe />, { analysis: analyzeFixture, selectedItemId: "EVT-001" });
+    renderWithProject(<Probe />, { analysis: SCRIPT_FIXTURE, selectedItemId: "EVT-001" });
 
     expect(screen.getByText("version 1")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("selected EVT-001")).toBeInTheDocument());

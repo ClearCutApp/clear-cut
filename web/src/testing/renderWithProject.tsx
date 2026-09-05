@@ -2,7 +2,7 @@ import { render, type RenderResult } from "@testing-library/react";
 import { useEffect, type ReactElement } from "react";
 import { MemoryRouter, useLocation } from "react-router";
 
-import type { AnalyzeResponse } from "../api/client";
+import type { Script } from "../api/client";
 import { ProjectProvider, useProject } from "../state/ProjectContext";
 
 export interface RenderWithProjectOptions {
@@ -10,8 +10,8 @@ export interface RenderWithProjectOptions {
   projectId?: string;
   /** The router's starting location; defaults to the project's overview. */
   path?: string;
-  /** An analysis already in session, as if a POST had run. */
-  analysis?: AnalyzeResponse | null;
+  /** A script already loaded, as if the mount GET had answered. */
+  analysis?: Script | null;
   /** An item already selected, as if a row had been opened. */
   selectedItemId?: string | null;
 }

@@ -1,16 +1,14 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import type { TrackerItem } from "../../api/client";
-import trackerData from "../../fixtures/tracker.json";
+import { TRACKER_FIXTURE } from "../../fixtures";
 import { TrackerFacts } from "./TrackerFacts";
 
-const trackerFixture = trackerData as TrackerItem[];
 
 describe("TrackerFacts", () => {
   it("shows the state, contact, posture, note and version of the item", () => {
     const { container } = render(
-      <TrackerFacts item={trackerFixture[0]} pending={false} onStateChange={vi.fn()} />,
+      <TrackerFacts item={TRACKER_FIXTURE[0]} pending={false} onStateChange={vi.fn()} />,
     );
 
     const select = screen.getByLabelText("State");
@@ -28,12 +26,12 @@ describe("TrackerFacts", () => {
     expect(screen.getByText(/Version 1, updated/)).toBeInTheDocument();
     expect(container.querySelector("time")).toHaveAttribute(
       "datetime",
-      trackerFixture[0].updated_at,
+      TRACKER_FIXTURE[0].updated_at,
     );
   });
 
   it("words the empty fields rather than leaving them blank", () => {
-    render(<TrackerFacts item={trackerFixture[2]} pending={false} onStateChange={vi.fn()} />);
+    render(<TrackerFacts item={TRACKER_FIXTURE[2]} pending={false} onStateChange={vi.fn()} />);
 
     expect(screen.getByText("no contact on file")).toBeInTheDocument();
     expect(screen.getByText("no litigation history on file")).toBeInTheDocument();
@@ -43,7 +41,7 @@ describe("TrackerFacts", () => {
   it("reports the chosen state and lets every transition through", () => {
     const onStateChange = vi.fn();
     render(
-      <TrackerFacts item={trackerFixture[0]} pending={false} onStateChange={onStateChange} />,
+      <TrackerFacts item={TRACKER_FIXTURE[0]} pending={false} onStateChange={onStateChange} />,
     );
 
     fireEvent.change(screen.getByLabelText("State"), { target: { value: "CLEARED" } });
@@ -53,7 +51,7 @@ describe("TrackerFacts", () => {
 
   it("shows the draft email verbatim once one exists", () => {
     const drafted = {
-      ...trackerFixture[0],
+      ...TRACKER_FIXTURE[0],
       draft_email: "Subject: Rights clearance request\n\nDear Ferrari S.p.A.,",
     };
     render(<TrackerFacts item={drafted} pending={false} onStateChange={vi.fn()} />);
@@ -65,13 +63,13 @@ describe("TrackerFacts", () => {
   });
 
   it("shows no draft email section before one is generated", () => {
-    render(<TrackerFacts item={trackerFixture[0]} pending={false} onStateChange={vi.fn()} />);
+    render(<TrackerFacts item={TRACKER_FIXTURE[0]} pending={false} onStateChange={vi.fn()} />);
 
     expect(screen.queryByText("Draft email")).toBeNull();
   });
 
   it("disables the state select while a mutation is in flight", () => {
-    render(<TrackerFacts item={trackerFixture[0]} pending onStateChange={vi.fn()} />);
+    render(<TrackerFacts item={TRACKER_FIXTURE[0]} pending onStateChange={vi.fn()} />);
 
     expect(screen.getByLabelText("State")).toBeDisabled();
   });

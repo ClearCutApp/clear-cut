@@ -88,7 +88,7 @@ export function ItemDetailPanelHost(): ReactElement | null {
       error={messageFor(id)}
       onStateChange={(state) => void record(id, project.changeState(id, state))}
       onDraftEmail={() => void record(id, project.draftEmail(id))}
-      onNotify={() => void record(id, project.notify(id))}
+      onNotify={(reason) => void record(id, project.notify(id, reason))}
       onClose={close}
     />
   );

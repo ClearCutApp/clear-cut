@@ -2,21 +2,17 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 
-import type { AnalyzeResponse, TrackerItem } from "../../api/client";
-import analyzeData from "../../fixtures/analyze.json";
-import trackerData from "../../fixtures/tracker.json";
+import { SCRIPT_FIXTURE, TRACKER_FIXTURE } from "../../fixtures";
 import { ItemDetailPanel, type ItemDetailPanelProps } from "./ItemDetailPanel";
 
-const analyzeFixture = analyzeData as AnalyzeResponse;
-const trackerFixture = trackerData as TrackerItem[];
 
 const UNSERVED_ACTION =
   /assign|suggest|request authorization|find rights holder|mark as resolved|download/i;
 
 function renderPanel(overrides: Partial<ItemDetailPanelProps> = {}): ItemDetailPanelProps {
   const props: ItemDetailPanelProps = {
-    item: trackerFixture[0],
-    finding: analyzeFixture.findings[0],
+    item: TRACKER_FIXTURE[0],
+    finding: SCRIPT_FIXTURE.findings[0],
     jurisdictionName: "Argentina",
     pending: false,
     error: null,
@@ -108,11 +104,14 @@ describe("ItemDetailPanel", () => {
 
     fireEvent.change(screen.getByLabelText("State"), { target: { value: "IN_PROGRESS" } });
     fireEvent.click(screen.getByRole("button", { name: "Draft email" }));
+    fireEvent.change(screen.getByLabelText("Reason to notify the producer"), {
+      target: { value: "no answer in 14 days" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Notify" }));
 
     expect(onStateChange).toHaveBeenCalledWith("IN_PROGRESS");
     expect(onDraftEmail).toHaveBeenCalledTimes(1);
-    expect(onNotify).toHaveBeenCalledTimes(1);
+    expect(onNotify).toHaveBeenCalledWith("no answer in 14 days");
   });
 
   it("draws no button the API cannot serve", () => {

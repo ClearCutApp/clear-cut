@@ -1,13 +1,11 @@
 import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import type { AnalyzeResponse } from "../api/client";
-import analyzeData from "../fixtures/analyze.json";
+import { SCRIPT_FIXTURE } from "../fixtures";
 import { rememberProject } from "../state/recentProjects";
 import { renderWithProject } from "../testing/renderWithProject";
 import { ProjectHeader } from "./ProjectHeader";
 
-const analyzeFixture = analyzeData as AnalyzeResponse;
 
 describe("ProjectHeader", () => {
   it("shows the project id and the jurisdiction's name", () => {
@@ -30,7 +28,7 @@ describe("ProjectHeader", () => {
   });
 
   it("shows Script v1 and offers a new version once an analysis is in session", () => {
-    renderWithProject(<ProjectHeader />, { analysis: analyzeFixture });
+    renderWithProject(<ProjectHeader />, { analysis: SCRIPT_FIXTURE });
 
     expect(screen.getByText("Script v1")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Upload new version" })).toBeInTheDocument();

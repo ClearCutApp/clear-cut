@@ -1,12 +1,11 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import type { TrackerItem } from "../../api/client";
-import trackerFixture from "../../fixtures/tracker.json";
+import { TRACKER_FIXTURE } from "../../fixtures";
 import { groupByState } from "./model";
 import { TrackerTable } from "./TrackerTable";
 
-const items = trackerFixture as TrackerItem[];
+const items = TRACKER_FIXTURE;
 
 describe("TrackerTable", () => {
   it("renders the three fixture rows under one BLOCKED heading", () => {

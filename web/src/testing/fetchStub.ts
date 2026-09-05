@@ -1,15 +1,29 @@
 /**
- * A `fetch` stand-in for tests. It tells requests apart by method, body and
- * the bare word "health", never by path: `architecture.test.ts` reserves
- * API path literals to `client.ts`, so no test may spell one out either.
- * Every call is recorded so a test can assert on what a handler sent.
+ * A `fetch` stand-in for tests. It tells requests apart by method and by
+ * the bare collection words a route is named after, never by a whole path:
+ * `architecture.test.ts` reserves API path literals to `client.ts`, so no
+ * test may spell one out either. Every call is recorded so a test can
+ * assert on what a handler sent.
+ *
+ * A collection and one of its members are separate kinds ("tracker" and
+ * "tracker-item", "scripts" and "script"), because a test that stubs the
+ * list must not accidentally answer a read of one row.
  */
 export type RouteKind =
   | "health"
+  | "jurisdictions"
+  | "projects"
+  | "project"
+  | "create-project"
+  | "scripts"
+  | "script"
+  | "create-script"
+  | "analysis"
   | "tracker"
-  | "analyze"
+  | "tracker-item"
   | "patch"
-  | "action"
+  | "email-draft"
+  | "notification"
   | "question";
 
 export interface StubResponse {
@@ -34,22 +48,48 @@ export interface FetchStub {
   restore: () => void;
 }
 
+/** The path segment following `collection`, or "" when the collection is
+ * the last segment -- which is what tells a list read from a member read. */
+function segmentAfter(url: string, collection: string): string {
+  const segments = url.split("/").filter(Boolean);
+  const index = segments.indexOf(collection);
+  return index === -1 ? "" : (segments[index + 1] ?? "");
+}
+
 function classify(input: RequestInfo | URL, init?: RequestInit): RouteKind {
   const method = (init?.method ?? "GET").toUpperCase();
-  if (method === "GET") {
-    return String(input).includes("health") ? "health" : "tracker";
-  }
+  const url = String(input);
   if (method === "PATCH") {
     return "patch";
   }
-  const body = typeof init?.body === "string" ? init.body : "";
-  if (body.includes('"action"')) {
-    return "action";
+  if (method === "POST") {
+    if (url.includes("email-drafts")) {
+      return "email-draft";
+    }
+    if (url.includes("notifications")) {
+      return "notification";
+    }
+    if (url.includes("questions")) {
+      return "question";
+    }
+    return url.includes("scripts") ? "create-script" : "create-project";
   }
-  if (body.includes('"question"')) {
-    return "question";
+  if (url.includes("health")) {
+    return "health";
   }
-  return "analyze";
+  if (url.includes("jurisdictions")) {
+    return "jurisdictions";
+  }
+  if (url.includes("analyses")) {
+    return "analysis";
+  }
+  if (url.includes("tracker-items")) {
+    return segmentAfter(url, "tracker-items") === "" ? "tracker" : "tracker-item";
+  }
+  if (url.includes("scripts")) {
+    return segmentAfter(url, "scripts") === "" ? "scripts" : "script";
+  }
+  return segmentAfter(url, "projects") === "" ? "projects" : "project";
 }
 
 function parseBody(init?: RequestInit): unknown {

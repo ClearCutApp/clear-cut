@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type ReactElement } from "react";
 
-import type { AnalyzeRequest } from "../../api/client";
+import type { ScriptCreate } from "../../api/client";
 
 export interface AnalyzeFormProps {
   initialProjectId: string;
@@ -9,7 +9,7 @@ export interface AnalyzeFormProps {
   initialVersion: number;
   submitting: boolean;
   error: string | null;
-  onSubmit: (request: AnalyzeRequest) => void;
+  onSubmit: (request: ScriptCreate) => void;
 }
 
 /**

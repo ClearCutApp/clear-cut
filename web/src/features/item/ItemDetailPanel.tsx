@@ -101,7 +101,7 @@ export interface ItemDetailPanelProps {
   error: string | null;
   onStateChange: (state: TrackerState) => void;
   onDraftEmail: () => void;
-  onNotify: () => void;
+  onNotify: (reason: string) => void;
   onClose: () => void;
 }
 

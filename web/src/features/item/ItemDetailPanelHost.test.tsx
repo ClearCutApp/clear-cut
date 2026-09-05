@@ -1,17 +1,13 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import type { AnalyzeResponse, TrackerItem } from "../../api/client";
 import { DEMO_PROJECT } from "../../app/demo";
-import analyzeData from "../../fixtures/analyze.json";
-import trackerData from "../../fixtures/tracker.json";
+import { SCRIPT_FIXTURE, TRACKER_FIXTURE } from "../../fixtures";
 import { stubFetch } from "../../testing/fetchStub";
 import { renderWithProject } from "../../testing/renderWithProject";
 import { jurisdictionName } from "../../theme/jurisdictions";
 import { ItemDetailPanelHost } from "./ItemDetailPanelHost";
 
-const analyzeFixture = analyzeData as AnalyzeResponse;
-const trackerFixture = trackerData as TrackerItem[];
 
 function ok(body: unknown) {
   return { status: 200, body };
@@ -19,7 +15,7 @@ function ok(body: unknown) {
 
 describe("ItemDetailPanelHost", () => {
   it("renders nothing while no item is selected", () => {
-    stubFetch({ tracker: ok(trackerFixture) });
+    stubFetch({ tracker: ok(TRACKER_FIXTURE) });
 
     renderWithProject(<ItemDetailPanelHost />);
 
@@ -27,7 +23,7 @@ describe("ItemDetailPanelHost", () => {
   });
 
   it("names the selected item and closes on request", async () => {
-    stubFetch({ tracker: ok(trackerFixture) });
+    stubFetch({ tracker: ok(TRACKER_FIXTURE) });
 
     renderWithProject(<ItemDetailPanelHost />, { selectedItemId: "EVT-002" });
 
@@ -40,10 +36,10 @@ describe("ItemDetailPanelHost", () => {
   });
 
   it("shows the finding and tracker facts of the selected item with the analysis in session", async () => {
-    stubFetch({ tracker: ok(trackerFixture) });
+    stubFetch({ tracker: ok(TRACKER_FIXTURE) });
 
     renderWithProject(<ItemDetailPanelHost />, {
-      analysis: analyzeFixture,
+      analysis: SCRIPT_FIXTURE,
       selectedItemId: "EVT-001",
     });
 
@@ -57,7 +53,7 @@ describe("ItemDetailPanelHost", () => {
   });
 
   it("says the finding is unavailable without an analysis in session", async () => {
-    stubFetch({ tracker: ok(trackerFixture) });
+    stubFetch({ tracker: ok(TRACKER_FIXTURE) });
 
     renderWithProject(<ItemDetailPanelHost />, { selectedItemId: "EVT-001" });
 
@@ -70,11 +66,11 @@ describe("ItemDetailPanelHost", () => {
   });
 
   it("replaces the row from the PATCH response when the state changes", async () => {
-    const patched = { ...trackerFixture[0], state: "IN_PROGRESS" as const, version: 2 };
-    const { calls } = stubFetch({ tracker: ok(trackerFixture), patch: ok(patched) });
+    const patched = { ...TRACKER_FIXTURE[0], state: "IN_PROGRESS" as const, version: 2 };
+    const { calls } = stubFetch({ tracker: ok(TRACKER_FIXTURE), patch: ok(patched) });
 
     renderWithProject(<ItemDetailPanelHost />, {
-      analysis: analyzeFixture,
+      analysis: SCRIPT_FIXTURE,
       selectedItemId: "EVT-001",
     });
 
@@ -91,10 +87,10 @@ describe("ItemDetailPanelHost", () => {
   });
 
   it("shows a PATCH failure inside the panel and keeps the row as it was", async () => {
-    stubFetch({ tracker: ok(trackerFixture), patch: { status: 404, body: "not found" } });
+    stubFetch({ tracker: ok(TRACKER_FIXTURE), patch: { status: 404, body: "not found" } });
 
     renderWithProject(<ItemDetailPanelHost />, {
-      analysis: analyzeFixture,
+      analysis: SCRIPT_FIXTURE,
       selectedItemId: "EVT-001",
     });
 
@@ -110,13 +106,13 @@ describe("ItemDetailPanelHost", () => {
 
   it("shows the returned draft email after Draft email", async () => {
     const drafted = {
-      ...trackerFixture[0],
+      ...TRACKER_FIXTURE[0],
       draft_email: "Subject: Rights clearance request -- Trademark Clearance Form",
     };
-    const { calls } = stubFetch({ tracker: ok(trackerFixture), action: ok(drafted) });
+    const { calls } = stubFetch({ tracker: ok(TRACKER_FIXTURE), "email-draft": ok(drafted) });
 
     renderWithProject(<ItemDetailPanelHost />, {
-      analysis: analyzeFixture,
+      analysis: SCRIPT_FIXTURE,
       selectedItemId: "EVT-001",
     });
 
@@ -125,18 +121,26 @@ describe("ItemDetailPanelHost", () => {
     const draft = await screen.findByText(/Subject: Rights clearance request/);
     expect(draft.tagName).toBe("PRE");
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(calls.find((call) => call.kind === "action")?.body).toEqual({ action: "draft_email" });
+    expect(calls.find((call) => call.kind === "email-draft")?.method).toBe("POST");
   });
 
-  it("leaves the row unchanged and shows no error after Notify", async () => {
-    const { calls } = stubFetch({ tracker: ok(trackerFixture), action: ok(trackerFixture[2]) });
+  it("sends the typed reason with Notify and leaves the row as the server returned it", async () => {
+    const { calls } = stubFetch({
+      tracker: ok(TRACKER_FIXTURE),
+      notification: ok(TRACKER_FIXTURE[2]),
+    });
 
     renderWithProject(<ItemDetailPanelHost />, { selectedItemId: "EVT-003" });
 
-    fireEvent.click(await screen.findByRole("button", { name: "Notify" }));
+    fireEvent.change(await screen.findByLabelText("Reason to notify the producer"), {
+      target: { value: "no answer in 14 days" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Notify" }));
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Notify" })).toBeEnabled());
-    expect(calls.find((call) => call.kind === "action")?.body).toEqual({ action: "notify" });
+    expect(calls.find((call) => call.kind === "notification")?.body).toEqual({
+      reason: "no answer in 14 days",
+    });
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getByText("no contact on file")).toBeInTheDocument();
     expect(screen.getByText(/Version 1/)).toBeInTheDocument();

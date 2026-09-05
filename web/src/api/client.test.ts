@@ -3,12 +3,21 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   API_DOCS_PATH,
   ApiError,
-  fetchTracker,
-  patchTrackerState,
-  postAnalyze,
-  postQuestion,
-  postTrackerAction,
-  type AnalyzeRequest,
+  askProjectQuestion,
+  createProject,
+  createScript,
+  createTrackerItemEmailDraft,
+  createTrackerItemNotification,
+  getAnalysis,
+  getProject,
+  getScript,
+  getTrackerItem,
+  listJurisdictions,
+  listProjects,
+  listScripts,
+  listTrackerItems,
+  updateTrackerItemState,
+  type ScriptCreate,
 } from "./client";
 
 const originalFetch = globalThis.fetch;
@@ -22,21 +31,23 @@ function respondWith(status: number, body: string): typeof fetch {
 }
 
 interface CapturedRequest {
+  url: string;
   init: RequestInit | undefined;
 }
 
-/** A `fetch` stub that records every call and answers with `responseBody`,
- * so a test can assert on the method and body a client function sent
- * through `requestJson`'s new `init` parameter. It deliberately ignores the
- * request path: `architecture.test.ts` reserves API path literals to
- * `client.ts`, so no other file -- including this one -- may spell one out. */
+/**
+ * A `fetch` stub that records every call and answers with `responseBody`.
+ * The recorded url is asserted on by the segments a reader would name a
+ * route by ("tracker-items", an id): `architecture.test.ts` reserves API
+ * path literals to `client.ts`, so no test may spell a whole path out.
+ */
 function captureRequest(responseBody: unknown): {
   fetchStub: typeof fetch;
   captured: CapturedRequest[];
 } {
   const captured: CapturedRequest[] = [];
-  const fetchStub = ((_input: RequestInfo | URL, init?: RequestInit) => {
-    captured.push({ init });
+  const fetchStub = ((input: RequestInfo | URL, init?: RequestInit) => {
+    captured.push({ url: String(input), init });
     return Promise.resolve(
       new Response(JSON.stringify(responseBody), { status: 200 }),
     );
@@ -44,22 +55,105 @@ function captureRequest(responseBody: unknown): {
   return { fetchStub, captured };
 }
 
-describe("fetchTracker", () => {
+describe("listTrackerItems", () => {
   it("maps a non-2xx response to a typed ApiError instead of a partial payload", async () => {
     globalThis.fetch = respondWith(404, "not found");
 
-    await expect(fetchTracker("proj_1")).rejects.toBeInstanceOf(ApiError);
+    await expect(listTrackerItems("proj_1")).rejects.toBeInstanceOf(ApiError);
   });
 
   it("rethrows malformed JSON inside a 200 response as ApiError, not a raw SyntaxError", async () => {
     globalThis.fetch = respondWith(200, "not json");
 
-    await expect(fetchTracker("proj_1")).rejects.toBeInstanceOf(ApiError);
+    await expect(listTrackerItems("proj_1")).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it("reads the project's own tracker collection", async () => {
+    const { fetchStub, captured } = captureRequest([]);
+    globalThis.fetch = fetchStub;
+
+    await listTrackerItems("proj 1");
+
+    expect(captured[0].url).toContain("tracker-items");
+    expect(captured[0].url).toContain(encodeURIComponent("proj 1"));
   });
 });
 
-describe("postAnalyze", () => {
-  const request: AnalyzeRequest = {
+describe("getTrackerItem", () => {
+  it("reads one item under its project", async () => {
+    const { fetchStub, captured } = captureRequest({});
+    globalThis.fetch = fetchStub;
+
+    await getTrackerItem("proj_1", "item_1");
+
+    expect(captured[0].url).toContain("tracker-items");
+    expect(captured[0].url.endsWith("item_1")).toBe(true);
+  });
+});
+
+describe("listProjects", () => {
+  it("maps a non-2xx response to a typed ApiError carrying the status", async () => {
+    globalThis.fetch = respondWith(500, "internal error");
+
+    const failure = listProjects().catch((error: unknown) => error);
+
+    await expect(failure).resolves.toMatchObject({ status: 500 });
+  });
+});
+
+describe("createProject", () => {
+  it("posts the title and jurisdiction the form collected", async () => {
+    const { fetchStub, captured } = captureRequest({});
+    globalThis.fetch = fetchStub;
+
+    await createProject({ title: "El Ultimo Verano", jurisdiction_code: "AR" });
+
+    expect(captured[0].init?.method).toBe("POST");
+    expect(JSON.parse(String(captured[0].init?.body))).toEqual({
+      title: "El Ultimo Verano",
+      jurisdiction_code: "AR",
+    });
+  });
+
+  it("maps a rejected body to a typed ApiError carrying the status", async () => {
+    globalThis.fetch = respondWith(400, "title is required");
+
+    const failure = createProject({ title: "", jurisdiction_code: "AR" }).catch(
+      (error: unknown) => error,
+    );
+
+    await expect(failure).resolves.toMatchObject({
+      status: 400,
+      message: "title is required",
+    });
+  });
+});
+
+describe("getProject", () => {
+  it("escapes a project id that is not url safe", async () => {
+    const { fetchStub, captured } = captureRequest({});
+    globalThis.fetch = fetchStub;
+
+    await getProject("proj/1");
+
+    expect(captured[0].url.endsWith(encodeURIComponent("proj/1"))).toBe(true);
+  });
+});
+
+describe("listJurisdictions", () => {
+  it("reads the codes every jurisdiction field accepts", async () => {
+    const { fetchStub, captured } = captureRequest([]);
+    globalThis.fetch = fetchStub;
+
+    await listJurisdictions();
+
+    expect(captured[0].url).toContain("jurisdictions");
+    expect(captured[0].init).toBeUndefined();
+  });
+});
+
+describe("createScript", () => {
+  const request: ScriptCreate = {
     gcs_uri: "gs://bucket/script.pdf",
     version: 1,
     jurisdiction_code: "US",
@@ -69,7 +163,7 @@ describe("postAnalyze", () => {
     const { fetchStub, captured } = captureRequest({});
     globalThis.fetch = fetchStub;
 
-    await postAnalyze("proj_1", request);
+    await createScript("proj_1", request);
 
     expect(captured[0].init?.method).toBe("POST");
     expect(JSON.parse(String(captured[0].init?.body))).toEqual(request);
@@ -78,19 +172,46 @@ describe("postAnalyze", () => {
   it("maps a non-2xx response to a typed ApiError carrying the status", async () => {
     globalThis.fetch = respondWith(400, "bad request");
 
-    const failure = postAnalyze("proj_1", request).catch((error: unknown) => error);
+    const failure = createScript("proj_1", request).catch(
+      (error: unknown) => error,
+    );
 
     await expect(failure).resolves.toBeInstanceOf(ApiError);
     await expect(failure).resolves.toMatchObject({ status: 400 });
   });
 });
 
-describe("patchTrackerState", () => {
-  it("patches the state to /api/tracker/:itemId", async () => {
+describe("listScripts and getScript", () => {
+  it("reads the version list without an id and one version with it", async () => {
+    const { fetchStub, captured } = captureRequest([]);
+    globalThis.fetch = fetchStub;
+
+    await listScripts("proj_1");
+    await getScript("proj_1", "scr_1");
+
+    expect(captured[0].url.endsWith("scripts")).toBe(true);
+    expect(captured[1].url.endsWith("scr_1")).toBe(true);
+  });
+});
+
+describe("getAnalysis", () => {
+  it("reads the queued job by the id the 202 handed back", async () => {
     const { fetchStub, captured } = captureRequest({});
     globalThis.fetch = fetchStub;
 
-    await patchTrackerState("item_1", "CLEARED");
+    await getAnalysis("proj_1", "ana_1");
+
+    expect(captured[0].url).toContain("analyses");
+    expect(captured[0].url.endsWith("ana_1")).toBe(true);
+  });
+});
+
+describe("updateTrackerItemState", () => {
+  it("patches the state on the item under its project", async () => {
+    const { fetchStub, captured } = captureRequest({});
+    globalThis.fetch = fetchStub;
+
+    await updateTrackerItemState("proj_1", "item_1", "CLEARED");
 
     expect(captured[0].init?.method).toBe("PATCH");
     expect(JSON.parse(String(captured[0].init?.body))).toEqual({
@@ -101,58 +222,60 @@ describe("patchTrackerState", () => {
   it("maps a non-2xx response to a typed ApiError carrying the status", async () => {
     globalThis.fetch = respondWith(404, "not found");
 
-    const failure = patchTrackerState("item_1", "CLEARED").catch(
+    const failure = updateTrackerItemState("proj_1", "item_1", "CLEARED").catch(
       (error: unknown) => error,
     );
 
-    await expect(failure).resolves.toBeInstanceOf(ApiError);
     await expect(failure).resolves.toMatchObject({ status: 404 });
   });
 });
 
-describe("postTrackerAction", () => {
-  it("posts the action, omitting reason when none is given", async () => {
+describe("createTrackerItemEmailDraft", () => {
+  it("posts to the item's own draft collection with no body", async () => {
     const { fetchStub, captured } = captureRequest({});
     globalThis.fetch = fetchStub;
 
-    await postTrackerAction("item_1", "draft_email");
+    await createTrackerItemEmailDraft("proj_1", "item_1");
 
     expect(captured[0].init?.method).toBe("POST");
-    expect(JSON.parse(String(captured[0].init?.body))).toEqual({
-      action: "draft_email",
-    });
-  });
-
-  it("includes reason when given", async () => {
-    const { fetchStub, captured } = captureRequest({});
-    globalThis.fetch = fetchStub;
-
-    await postTrackerAction("item_1", "notify", "escalated to legal");
-
-    expect(JSON.parse(String(captured[0].init?.body))).toEqual({
-      action: "notify",
-      reason: "escalated to legal",
-    });
-  });
-
-  it("maps a non-2xx response to a typed ApiError carrying the status", async () => {
-    globalThis.fetch = respondWith(500, "internal error");
-
-    const failure = postTrackerAction("item_1", "notify").catch(
-      (error: unknown) => error,
-    );
-
-    await expect(failure).resolves.toBeInstanceOf(ApiError);
-    await expect(failure).resolves.toMatchObject({ status: 500 });
+    expect(captured[0].init?.body).toBeUndefined();
+    expect(captured[0].url).toContain("email-drafts");
   });
 });
 
-describe("postQuestion", () => {
+describe("createTrackerItemNotification", () => {
+  it("posts the reason the producer is being told", async () => {
+    const { fetchStub, captured } = captureRequest({});
+    globalThis.fetch = fetchStub;
+
+    await createTrackerItemNotification("proj_1", "item_1", "no answer in 14 days");
+
+    expect(captured[0].url).toContain("notifications");
+    expect(JSON.parse(String(captured[0].init?.body))).toEqual({
+      reason: "no answer in 14 days",
+    });
+  });
+
+  it("surfaces the server's own sentence when the reason is refused", async () => {
+    globalThis.fetch = respondWith(400, "reason is required");
+
+    const failure = createTrackerItemNotification("proj_1", "item_1", " ").catch(
+      (error: unknown) => error,
+    );
+
+    await expect(failure).resolves.toMatchObject({
+      status: 400,
+      message: "reason is required",
+    });
+  });
+});
+
+describe("askProjectQuestion", () => {
   it("posts jurisdiction and question to the project questions collection", async () => {
     const { fetchStub, captured } = captureRequest({});
     globalThis.fetch = fetchStub;
 
-    await postQuestion("proj_1", "US", "Can we use this song?");
+    await askProjectQuestion("proj_1", "US", "Can we use this song?");
 
     expect(captured[0].init?.method).toBe("POST");
     // No project_id in the body: it is the collection in the path now.
@@ -165,7 +288,7 @@ describe("postQuestion", () => {
   it("maps a non-2xx response to a typed ApiError carrying the status", async () => {
     globalThis.fetch = respondWith(502, "bad gateway");
 
-    const failure = postQuestion("proj_1", "US", "question?").catch(
+    const failure = askProjectQuestion("proj_1", "US", "question?").catch(
       (error: unknown) => error,
     );
 

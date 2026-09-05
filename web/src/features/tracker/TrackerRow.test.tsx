@@ -2,11 +2,11 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { TrackerItem } from "../../api/client";
-import trackerFixture from "../../fixtures/tracker.json";
+import { TRACKER_FIXTURE } from "../../fixtures";
 import { TrackerRow } from "./TrackerRow";
 
-const ferrariItem = trackerFixture[0] as TrackerItem;
-const continuityItem = trackerFixture[2] as TrackerItem;
+const ferrariItem = TRACKER_FIXTURE[0] as TrackerItem;
+const continuityItem = TRACKER_FIXTURE[2] as TrackerItem;
 
 describe("TrackerRow", () => {
   it("renders the state badge, finding id, document, contact and scene label", () => {

@@ -1,8 +1,8 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import trackerData from "../fixtures/tracker.json";
 import { ItemDetailPanelHost } from "../features/item/ItemDetailPanelHost";
+import { TRACKER_FIXTURE } from "../fixtures";
 import { stubFetch } from "../testing/fetchStub";
 import { renderWithProject } from "../testing/renderWithProject";
 import { OverviewView } from "./OverviewView";
@@ -41,7 +41,7 @@ describe("OverviewView", () => {
   });
 
   it("renders the three fixture rows under one BLOCKED group once the tracker answers", async () => {
-    stubFetch({ tracker: { status: 200, body: trackerData } });
+    stubFetch({ tracker: { status: 200, body: TRACKER_FIXTURE } });
 
     renderWithProject(<OverviewView />);
 
@@ -52,7 +52,7 @@ describe("OverviewView", () => {
   });
 
   it("narrows the table to the pill's state when a filter pill is clicked", async () => {
-    stubFetch({ tracker: { status: 200, body: trackerData } });
+    stubFetch({ tracker: { status: 200, body: TRACKER_FIXTURE } });
 
     renderWithProject(<OverviewView />);
     await screen.findByRole("heading", { name: "BLOCKED" });
@@ -65,7 +65,7 @@ describe("OverviewView", () => {
   });
 
   it("narrows the table to rows matching a search term", async () => {
-    stubFetch({ tracker: { status: 200, body: trackerData } });
+    stubFetch({ tracker: { status: 200, body: TRACKER_FIXTURE } });
 
     renderWithProject(<OverviewView />);
     await screen.findByRole("heading", { name: "BLOCKED" });
@@ -79,7 +79,7 @@ describe("OverviewView", () => {
   });
 
   it("opens the item detail panel when a row's Open button is clicked", async () => {
-    stubFetch({ tracker: { status: 200, body: trackerData } });
+    stubFetch({ tracker: { status: 200, body: TRACKER_FIXTURE } });
 
     renderWithProject(
       <>

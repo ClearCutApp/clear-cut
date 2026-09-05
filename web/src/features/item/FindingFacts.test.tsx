@@ -1,12 +1,10 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import type { AnalyzeResponse } from "../../api/client";
-import analyzeData from "../../fixtures/analyze.json";
+import { SCRIPT_FIXTURE } from "../../fixtures";
 import { FindingFacts } from "./FindingFacts";
 
-const analyzeFixture = analyzeData as AnalyzeResponse;
-const [brandFinding, , continuityFinding] = analyzeFixture.findings;
+const [brandFinding, , continuityFinding] = SCRIPT_FIXTURE.findings;
 
 describe("FindingFacts", () => {
   it("lists the finding's facts as words with its legal references", () => {
