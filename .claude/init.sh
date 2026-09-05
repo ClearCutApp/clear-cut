@@ -282,7 +282,20 @@ live() {
   sec "Live service gates"
   [ -d "$ROOT/.venv" ] && . "$ROOT/.venv/bin/activate"
   if command -v pytest >/dev/null 2>&1 && [ -d "$ROOT/tests/live" ]; then
-    (cd "$ROOT" && pytest -m live -q -rs) && ok "pytest -m live" || no "pytest -m live"
+    # `pytest` exits 0 when every test skips, so the exit code alone cannot
+    # tell "ten services answered" from "nothing was contacted". Both were
+    # reported as a pass until 2026-09-05, which is how a reconciliation came
+    # to cite ten live passes that had never run. Read the summary too.
+    live_status=0
+    live_out="$(cd "$ROOT" && pytest -m live -q -rs 2>&1)" || live_status=$?
+    printf '%s\n' "$live_out"
+    if [ "$live_status" -ne 0 ]; then
+      no "pytest -m live"
+    elif printf '%s' "$live_out" | grep -Eq '[0-9]+ passed'; then
+      ok "pytest -m live"
+    else
+      no "pytest -m live contacted nothing — every live test skipped, so this run is a configuration gap, not proof. The reasons above name the variables each test wanted."
+    fi
   else
     no "pytest not installed or tests/live/ missing — run ./.claude/init.sh first"
   fi

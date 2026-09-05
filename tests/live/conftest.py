@@ -8,17 +8,28 @@ monkeypatched, because nothing needs to be: section 5 already forbids
 A live test has two honest outcomes. It passes with credentials present, or it
 skips because they are absent. It must never pass without them -- that would
 mean it reached nothing, which is the failure the tier exists to catch.
+
+`load_dotenv()` runs at import for the same reason `main.py` calls it before
+`create_app()`: `requires()` below reads `os.environ`, and the credentials this
+tier needs live in a local env file. Without this the entire tier skips on a
+fully configured machine, and an all-skipped run is indistinguishable from a
+configured one -- which is exactly how CP-055 was reconciled against evidence
+that had never been produced. Values already in the environment win, so a
+deployed or CI environment is unaffected.
 """
 
 import os
 import uuid
 
 import pytest
+from dotenv import load_dotenv
 
 # Re-exported so the live tier can read back the spans and metrics a real call
 # recorded. Fixtures are directory-scoped, so importing the name here is what
 # makes `isolated_otel` resolvable from `tests/live/`.
 from tests.unit.conftest import isolated_otel  # noqa: F401
+
+load_dotenv()
 
 
 def requires(*names: str) -> pytest.MarkDecorator:
