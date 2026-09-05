@@ -15,6 +15,7 @@ import pytest
 from clearcut.adapters.demo import in_memory, scenario
 from clearcut.adapters.demo.in_memory import (
     InMemoryContinuityCheck,
+    InMemoryFindingStore,
     InMemoryLegalGrounding,
     InMemoryLoreStore,
     InMemoryNotifier,
@@ -75,6 +76,7 @@ def _use_case(tracker: InMemoryTrackerStore | None = None) -> AnalyzeScript:
         lore=InMemoryLoreStore(),
         tracker=tracker if tracker is not None else InMemoryTrackerStore(),
         continuity=InMemoryContinuityCheck(),
+        findings=InMemoryFindingStore(),
     )
 
 

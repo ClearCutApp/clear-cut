@@ -92,6 +92,18 @@ def test_adapter_exception_walk_is_not_vacuously_empty() -> None:
 
 _DISALLOWED_EXCEPT_NAMES = {"Exception", "BaseException"}
 
+# The one place `application/` may catch broadly, named rather than inferred
+# so adding a second costs a decision (ADR 0013).
+#
+# `StartAnalysis` runs the pipeline on a background thread. There is no caller
+# left to raise to: an exception that escaped would kill the thread silently
+# and leave the job row saying RUNNING until a read reaped it half an hour
+# later. Catching only the domain errors would do exactly that for a bug,
+# which is the failure a producer most needs told about. The catch records the
+# reason on the job and stops -- it swallows nothing, it writes the failure
+# down where the browser polling for it can read it.
+_BROAD_CATCH_EXEMPTIONS = frozenset({"src/clearcut/application/start_analysis.py"})
+
 
 def _is_disallowed_except(node: ast.ExceptHandler) -> bool:
     """True for `except:`, `except Exception`/`BaseException`, and either
@@ -112,15 +124,32 @@ def _is_disallowed_except(node: ast.ExceptHandler) -> bool:
 def _application_files_catching_disallowed_except() -> list[str]:
     violations = []
     for path in APPLICATION_DIR.rglob("*.py"):
+        relative = str(path.relative_to(REPO_ROOT))
+        if relative in _BROAD_CATCH_EXEMPTIONS:
+            continue
         tree = ast.parse(path.read_text())
         for node in ast.walk(tree):
             if isinstance(node, ast.ExceptHandler) and _is_disallowed_except(node):
-                violations.append(str(path.relative_to(REPO_ROOT)))
+                violations.append(relative)
     return violations
 
 
 def test_no_application_module_catches_a_bare_or_broad_exception() -> None:
     assert _application_files_catching_disallowed_except() == []
+
+
+def test_the_exempt_module_is_the_only_one_that_needs_the_exemption() -> None:
+    """An exemption that outlives its reason is worse than none.
+
+    `start_analysis.py` must still contain the broad catch the exemption was
+    written for. If the background worker ever stops needing it -- a durable
+    queue with its own retry, say -- this fails and the exemption goes with
+    it, rather than quietly widening the guard's blind spot.
+    """
+    exempt = REPO_ROOT / next(iter(_BROAD_CATCH_EXEMPTIONS))
+    handlers = _except_handlers(exempt.read_text())
+
+    assert any(_is_disallowed_except(node) for node in handlers)
 
 
 def _except_handlers(source: str) -> list[ast.ExceptHandler]:

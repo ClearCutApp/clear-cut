@@ -25,15 +25,15 @@ from typing import Any
 JsonDict = dict[str, Any]
 
 
-class DuplicateSchemaName(Exception):
-    """Two domains define a schema under the same name."""
-
-    def __init__(self, name: str) -> None:
-        super().__init__(
-            f"schema {name!r} is defined by more than one domain; "
-            "move it to schemas.SHARED or rename one of them"
-        )
-        self.name = name
+def _duplicate_schema_name(name: str) -> ValueError:
+    """A plain `ValueError`, for the reason `openapi.py` records: an error
+    class defined in an adapter module must classify under one of the three
+    domain error types, and a document that describes one shape twice is a
+    startup failure rather than a failed request."""
+    return ValueError(
+        f"schema {name!r} is defined by more than one domain; "
+        "move it to schemas.SHARED or rename one of them"
+    )
 
 
 def ref(name: str) -> JsonDict:
@@ -173,6 +173,6 @@ def merge_schemas(sources: Iterable[Mapping[str, JsonDict]]) -> JsonDict:
     for source in sources:
         for name, schema in source.items():
             if name in merged:
-                raise DuplicateSchemaName(name)
+                raise _duplicate_schema_name(name)
             merged[name] = schema
     return merged

@@ -74,16 +74,21 @@ INFO: JsonDict = {
 }
 
 
-class DuplicateOperation(Exception):
-    """Two domains declare the same path and method."""
+def _duplicate_operation(path: str, method: str) -> ValueError:
+    """A plain `ValueError`, not an error class of this package's own.
 
-    def __init__(self, path: str, method: str) -> None:
-        super().__init__(
-            f"{method.upper()} {path} is declared by more than one domain; "
-            "two blueprints answering one request leaves registration order deciding"
-        )
-        self.path = path
-        self.method = method
+    Every exception type an adapter module defines has to subclass exactly
+    one of the three types in `domain/errors.py`, so that `application/` can
+    catch it by name without importing an adapter
+    (`tests/unit/test_error_boundaries.py`). None of the three fits: this is
+    not a record that is missing or a source that is down, it is two modules
+    disagreeing about who serves a request, found while the document is
+    built. It reaches no handler and no client -- it stops startup.
+    """
+    return ValueError(
+        f"{method.upper()} {path} is declared by more than one domain; "
+        "two blueprints answering one request leaves registration order deciding"
+    )
 
 
 def merge_paths(sources: Iterable[JsonDict]) -> JsonDict:
@@ -99,7 +104,7 @@ def merge_paths(sources: Iterable[JsonDict]) -> JsonDict:
             existing = merged.setdefault(path, {})
             for method, operation in operations.items():
                 if method in existing:
-                    raise DuplicateOperation(path, method)
+                    raise _duplicate_operation(path, method)
                 existing[method] = operation
     return merged
 
