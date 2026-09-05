@@ -100,11 +100,19 @@ class RightsResearch(Protocol):
 
 @runtime_checkable
 class LoreStore(Protocol):
-    """Indexes and retrieves project-scoped bible facts and scenes."""
+    """Indexes and retrieves project-scoped bible facts and scenes.
+
+    `facts` is a separate read from `search` because listing a bible has no
+    query to embed: `GET /api/projects/{project_id}/bible` shows the producer
+    every fact, and a similarity search would rank and truncate a list they
+    expect whole.
+    """
 
     def index(self, project_id: str, records: list[BibleFact | Scene]) -> None: ...
 
     def search(self, project_id: str, query: str, limit: int) -> list[BibleFact]: ...
+
+    def facts(self, project_id: str) -> list[BibleFact]: ...
 
 
 @runtime_checkable

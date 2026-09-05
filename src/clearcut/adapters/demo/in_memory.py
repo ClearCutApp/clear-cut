@@ -135,9 +135,11 @@ class InMemoryLoreStore:
         self._records.setdefault(project_id, []).extend(records)
 
     def search(self, project_id: str, query: str, limit: int) -> list[BibleFact]:
+        return self.facts(project_id)[:limit]
+
+    def facts(self, project_id: str) -> list[BibleFact]:
         records = self._records.get(project_id, [])
-        facts = [record for record in records if isinstance(record, BibleFact)]
-        return facts[:limit]
+        return [record for record in records if isinstance(record, BibleFact)]
 
 
 class InMemoryTrackerStore:

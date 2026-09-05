@@ -455,6 +455,9 @@ class _PositionalOnlyLoreStore:
     def index(self, a: str, b: list[BibleFact | Scene]) -> None:
         raise NotImplementedError
 
+    def facts(self, a: str) -> list[BibleFact]:
+        raise NotImplementedError
+
     def search(self, a: str, b: str, c: int) -> list[BibleFact]:
         return []
 

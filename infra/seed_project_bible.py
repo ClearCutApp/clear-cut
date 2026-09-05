@@ -58,9 +58,6 @@ _LOCATION = "us-central1"
 _DATASET = "clearcut"
 _TABLE = "lore_vectors"
 _EMBEDDING_MODEL = "text-embedding-005"
-# Enough neighbours that an already-seeded fact is found even once the corpus
-# holds other facts for the same project.
-_SEARCH_LIMIT = 20
 
 
 def seed(store: Any) -> bool:
@@ -73,19 +70,26 @@ def seed(store: Any) -> bool:
     second run leaves two copies of the fact in the corpus permanently, and
     duplicates crowd the continuity check's top-k retrieval.
 
-    **Matched on the content hash, not on `fact_id`.** What comes back from
-    BigQuery is not what went in. `_bible_fact_from` rebuilds `fact_id` from
-    the stored `content_hash` column, so the fact indexed as `FACT-001`
-    answers to a hex digest afterwards. A guard comparing `fact_id` would
-    never match and would re-index on every run while looking correct.
+    **Matched on the hash of the text, not on `fact_id`.** The corpus holds
+    rows of two shapes. A row written since ADR 0014 carries its own
+    `fact_id`, so it reads back as `FACT-001`. A row written before that
+    carries none, so `_bible_fact_from` rebuilds `fact_id` from the stored
+    content hash and it answers to a hex digest instead. Hashing the text of
+    whatever came back recognises the fact under either identity, and a guard
+    comparing `fact_id` would miss one of the two and re-index on every run
+    while looking correct.
+
+    Reads `facts` rather than `search`: listing the bible is exact, where a
+    similarity search returns the k nearest and could push an already-seeded
+    fact past the cutoff once the project holds enough others.
 
     Takes the store rather than building one, which is the seam that lets a
     test assert what was indexed without a BigQuery dataset.
     """
     fact = scenario.BIBLE_FACT
     wanted = content_hash(fact.text)
-    existing = store.search(scenario.PROJECT_ID, fact.text, _SEARCH_LIMIT)
-    if any(found.fact_id == wanted for found in existing):
+    existing = store.facts(scenario.PROJECT_ID)
+    if any(content_hash(found.text) == wanted for found in existing):
         return False
     store.index(scenario.PROJECT_ID, [fact])
     return True

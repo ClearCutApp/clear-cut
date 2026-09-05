@@ -170,6 +170,9 @@ class _LoreStore:
         self.searched.append((project_id, query, limit))
         return list(self._facts)
 
+    def facts(self, project_id: str) -> list[BibleFact]:
+        return list(self._facts)
+
 
 class _Continuity:
     def __init__(self, finding: Finding | None = None, log: list[str] | None = None) -> None:
@@ -661,6 +664,9 @@ class _PositionalOnlyLoreStore:
         return None
 
     def search(self, a: str, b: str, c: int) -> list[BibleFact]:
+        return []
+
+    def facts(self, a: str) -> list[BibleFact]:
         return []
 
 
