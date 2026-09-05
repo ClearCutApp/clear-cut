@@ -56,15 +56,18 @@ class RecordingChClient:
         raise AssertionError("provisioning must not read rows")
 
 
-def test_creates_both_tracker_tables() -> None:
+def test_creates_every_table_the_adapters_read() -> None:
+    """Five tables, not the original two. `projects`, `findings` and
+    `analysis_jobs` arrived with ADR 0014, and a provisioner that creates
+    three of five fails on the first read of the other two."""
     client = RecordingChClient()
 
     load_script().create_tables(client)
 
-    assert len(client.commands) == 2
     joined = "\n".join(client.commands)
-    assert "tracker_items" in joined
-    assert "script_versions" in joined
+    assert len(client.commands) == 5
+    for table in ("tracker_items", "script_versions", "projects", "findings", "analysis_jobs"):
+        assert table in joined, table
 
 
 def test_every_statement_is_idempotent() -> None:
@@ -114,6 +117,6 @@ def test_dry_run_prints_the_ddl_without_connecting() -> None:
     )
 
     assert result.returncode == 0, result.stderr
-    assert result.stdout.count("CREATE TABLE IF NOT EXISTS") == 2
-    assert "tracker_items" in result.stdout
-    assert "script_versions" in result.stdout
+    assert result.stdout.count("CREATE TABLE IF NOT EXISTS") == 5
+    for table in ("tracker_items", "script_versions", "projects", "findings", "analysis_jobs"):
+        assert table in result.stdout, table

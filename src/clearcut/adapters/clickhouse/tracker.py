@@ -12,11 +12,16 @@ Decision D24) rather than `TrackerStore.save` taking one as a parameter --
 that already knows its project is the one that writes the column.
 `latest_for_project` filters on that column with a `WHERE` clause, the same
 shape `latest_script` already used for `script_versions`.
+
+`record_script` and `latest_script` read and write the table `scripts.py`
+owns, and borrow that module's row mapping rather than keeping a second copy.
+`EvaluateDelta` still calls them, so moving this half of the port onto
+`ScriptStore` is its own migration (ADR 0014); until then both stores have to
+agree byte for byte about the JSON a scene is stored as.
 """
 
 from __future__ import annotations
 
-import json
 import time
 from collections import Counter
 from typing import Any
@@ -24,9 +29,9 @@ from typing import Any
 from opentelemetry import metrics, trace
 
 from clearcut.adapters.clickhouse import client as ch_client
-from clearcut.adapters.clickhouse import schema
+from clearcut.adapters.clickhouse import schema, scripts
 from clearcut.domain.errors import RecordNotFound
-from clearcut.domain.script import Scene, Script
+from clearcut.domain.script import Script
 from clearcut.domain.tracker import TrackerItem, TrackerState
 
 
@@ -65,15 +70,6 @@ _TRACKER_COLUMNS = [
     "note",
     "updated_at",
     "version",
-]
-
-_SCRIPT_COLUMNS = [
-    "script_id",
-    "project_id",
-    "version",
-    "gcs_uri",
-    "jurisdiction_code",
-    "scenes",
 ]
 
 
@@ -142,9 +138,9 @@ class ClickHouseTrackerStore:
         return [_row_to_tracker_item(row) for _item_id, row in sorted(latest_by_item_id.items())]
 
     def record_script(self, script: Script) -> None:
-        row = _script_to_row(script)
+        row = scripts.script_to_row(script)
         try:
-            self._client.insert("script_versions", [row], _SCRIPT_COLUMNS)
+            self._client.insert("script_versions", [row], scripts.SCRIPT_COLUMNS)
         except Exception as exc:
             raise ch_client.ClickHouseUnavailable(
                 f"failed to record script {script.script_id!r}: {exc}"
@@ -163,9 +159,9 @@ class ClickHouseTrackerStore:
         rows = list(result.result_rows)
         if not rows:
             return None
-        version_index = _SCRIPT_COLUMNS.index("version")
+        version_index = scripts.SCRIPT_COLUMNS.index("version")
         latest_row = max(rows, key=lambda row: row[version_index])
-        return _row_to_script(latest_row)
+        return scripts.row_to_script(latest_row)
 
     def _query_tracker_rows(
         self, query: str, parameters: dict[str, Any] | None
@@ -211,47 +207,4 @@ def _row_to_tracker_item(row: tuple[Any, ...]) -> TrackerItem:
         note=values["note"],
         updated_at=values["updated_at"],
         version=int(values["version"]),
-    )
-
-
-def _script_to_row(script: Script) -> list[Any]:
-    scenes = [
-        {
-            "number": scene.number,
-            "heading": scene.heading,
-            "page_start": scene.page_start,
-            "page_end": scene.page_end,
-            "text": scene.text,
-        }
-        for scene in script.scenes
-    ]
-    return [
-        script.script_id,
-        script.project_id,
-        script.version,
-        script.gcs_uri,
-        script.jurisdiction_code,
-        json.dumps(scenes),
-    ]
-
-
-def _row_to_script(row: tuple[Any, ...]) -> Script:
-    values = dict(zip(_SCRIPT_COLUMNS, row, strict=True))
-    scenes = [
-        Scene(
-            number=raw["number"],
-            heading=raw["heading"],
-            page_start=raw["page_start"],
-            page_end=raw["page_end"],
-            text=raw["text"],
-        )
-        for raw in json.loads(values["scenes"])
-    ]
-    return Script(
-        script_id=values["script_id"],
-        project_id=values["project_id"],
-        version=int(values["version"]),
-        gcs_uri=values["gcs_uri"],
-        jurisdiction_code=values["jurisdiction_code"],
-        scenes=scenes,
     )

@@ -15,10 +15,10 @@ from typing import Any
 import pytest
 
 from clearcut.adapters.clickhouse.client import ClickHouseUnavailable
+from clearcut.adapters.clickhouse.scripts import script_to_row as _script_to_row
 from clearcut.adapters.clickhouse.tracker import (
     ClickHouseTrackerStore,
     TrackerItemNotFound,
-    _script_to_row,
     _tracker_item_to_row,
 )
 from clearcut.application.ports import TrackerStore

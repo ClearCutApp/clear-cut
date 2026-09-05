@@ -14,9 +14,15 @@ the version argument, because a script version is a distinct row to keep
 rather than an older copy of one -- collapsing it left a single row per
 project and nothing for the delta path to diff against.
 
+`analysis_jobs.created_at` and `updated_at` are `DateTime64(3, 'UTC')` rather
+than the ISO strings `tracker_items.updated_at` holds. `AnalysisJob.is_stale`
+subtracts two datetimes, so a string column would put a parse -- and a date
+format -- on every read; the millisecond precision is what the column stores,
+and the store rounds to it on the way in.
+
 `ensure_schema` is not repeated per store. It holds the only copy of the DDL,
 so `infra/provision_tracker_schema.py` and every store's own `ensure_schema`
-method issue the exact same statements.
+method issue the exact same five statements.
 """
 
 from __future__ import annotations
@@ -54,9 +60,57 @@ CREATE TABLE IF NOT EXISTS script_versions (
 ORDER BY (project_id, script_id)
 """
 
-TABLES = ("tracker_items", "script_versions")
+_PROJECTS_DDL = """\
+CREATE TABLE IF NOT EXISTS projects (
+    project_id String,
+    title String,
+    jurisdiction_code String,
+    created_at String
+) ENGINE = ReplacingMergeTree
+ORDER BY project_id
+"""
 
-DDL = (_TRACKER_ITEMS_DDL, _SCRIPT_VERSIONS_DDL)
+_FINDINGS_DDL = """\
+CREATE TABLE IF NOT EXISTS findings (
+    project_id String,
+    script_id String,
+    finding_id String,
+    scene_number UInt32,
+    page UInt32,
+    raw_text String,
+    category String,
+    ner_label Nullable(String),
+    risk_level String,
+    required_document String,
+    citations String,
+    contradicts Nullable(String)
+) ENGINE = ReplacingMergeTree
+ORDER BY (project_id, script_id, finding_id)
+"""
+
+_ANALYSIS_JOBS_DDL = """\
+CREATE TABLE IF NOT EXISTS analysis_jobs (
+    analysis_id String,
+    project_id String,
+    script_id String,
+    state String,
+    created_at DateTime64(3, 'UTC'),
+    updated_at DateTime64(3, 'UTC'),
+    error String,
+    version UInt32
+) ENGINE = ReplacingMergeTree(version)
+ORDER BY (project_id, analysis_id)
+"""
+
+TABLES = ("tracker_items", "script_versions", "projects", "findings", "analysis_jobs")
+
+DDL = (
+    _TRACKER_ITEMS_DDL,
+    _SCRIPT_VERSIONS_DDL,
+    _PROJECTS_DDL,
+    _FINDINGS_DDL,
+    _ANALYSIS_JOBS_DDL,
+)
 
 
 def ensure_schema(client: ch_client._ChClient) -> None:
