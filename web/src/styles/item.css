@@ -1,11 +1,224 @@
-/* Item detail panel: the second grid column from 1024px up (sticky), a
-   fixed bottom sheet with a backdrop below it (`max-height: 85dvh` with
-   internal scroll, never a height lock). Owned by the item feature; this
-   file starts with the root rule only. */
+/* Item detail panel. Mobile-first: a fixed bottom sheet with a backdrop
+   below 1024px (`max-height: 85dvh` with internal scroll, never a height
+   lock); from 1024px up the second grid column the shell opens
+   (`project-layout--panel-open`), sticky under the top edge. The panel is
+   an inline-size container so its fact rows answer to the width they have
+   (a full-width sheet on a tablet, a narrow column on a desktop), not to
+   the viewport. */
 
 .item-panel {
+  position: fixed;
+  inset: auto 0 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-height: 85dvh;
   padding: var(--space-5);
+  overflow: auto;
   background: var(--color-card);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-container);
+  border-radius: var(--radius-container) var(--radius-container) 0 0;
+  container-type: inline-size;
+}
+
+/* Painted with the ground token at partial opacity rather than a raw
+   color, so the scrim follows the theme. */
+.item-panel__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  background: var(--color-ground);
+  opacity: 0.7;
+}
+
+/* -------------------------------------------------------------- header */
+
+.item-panel__header {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.item-panel__identity {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.item-panel__title {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+
+.item-panel__document {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.item-panel__close {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  transition:
+    color var(--transition-fast),
+    background var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.item-panel__close:hover {
+  color: var(--color-text);
+  background: var(--color-card-hover);
+  border-color: var(--color-border-focus);
+}
+
+.item-panel__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.item-panel__note {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+/* --------------------------------------------------------------- facts */
+
+.item-facts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+.item-facts__title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.item-facts__list {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.item-facts__row {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.item-facts__row dt {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.item-facts__row dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.item-facts__meta {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-dim);
+}
+
+.item-facts__draft {
+  margin: 0;
+  padding: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--color-ground);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+}
+
+/* ----------------------------------------------------------- citations */
+
+.item-citations {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item-citations__item {
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--color-border);
+}
+
+.item-citations__link {
+  display: inline-flex;
+  gap: var(--space-1);
+  align-items: center;
+  font-weight: 500;
+}
+
+.item-citations__snippet {
+  margin: var(--space-1) 0 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+/* ------------------------------------------------------------- actions */
+
+.item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+/* ------------------------------------------------------- wide fact rows */
+
+/* A sheet wide enough (a tablet, a phone in landscape) puts the label
+   beside its value; the desktop column stays stacked. */
+@container (width >= 40rem) {
+  .item-facts__row {
+    grid-template-columns: 10rem minmax(0, 1fr);
+  }
+}
+
+/* --------------------------------------------------------- wide layout */
+
+@media (width >= 1024px) {
+  .item-panel {
+    position: sticky;
+    inset: auto;
+    top: var(--space-4);
+    z-index: auto;
+    align-self: start;
+    max-height: calc(100dvh - var(--space-6));
+    border-radius: var(--radius-container);
+  }
+
+  .item-panel__backdrop {
+    display: none;
+  }
 }
