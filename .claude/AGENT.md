@@ -410,3 +410,68 @@ not.** When they disagree, this list wins.
    external skill supplies them.
 4. **`.atl/` is machine-local and gitignored.** Never commit it, and never cite it
    as evidence in a PR.
+
+## 13. Subagent economics
+
+A subagent is a second budget, not a free hand. Every one runs its own requests
+against its own context window, and a session that spawns nine of them pays nine
+times, whatever they were asked to do.
+
+This section exists because of a measured session, not a theory. On 2026-09-05
+one session ran nine Opus subagents -- four of which only read files and
+reported back -- and hit the session limit with two workers mid-flight, both
+killed at 429. The breakdown afterwards: 91% of usage from subagent-heavy
+sessions, 70% above 150k context, 49% from `general-purpose` alone.
+
+### Model by job
+
+Cost tracks the model, and most delegated work does not need the expensive one.
+
+| The job | Model |
+|---|---|
+| Read files and report what is there | `haiku` |
+| Search, map, summarize, audit a directory | `sonnet` |
+| Run a gate, apply a mechanical edit, reap a worktree | do it inline, no agent |
+| Write code that holds a design in its head | `opus` |
+| Review code against this contract | `opus` |
+
+`general-purpose` has no default. Pass `model:` explicitly every time, and treat
+an omitted one as a defect in the brief.
+
+The tell for `haiku` or `sonnet` is that the answer is a *finding*, not a
+*judgment*: "which files import this", "what does this doc claim", "does this
+directory match that structure". The tell for `opus` is that a wrong answer
+produces plausible code that has to be unpicked later.
+
+### Do not delegate
+
+- Anything one Bash call answers. `./.claude/init.sh check` is one call; an
+  agent asked to "verify the gates" costs a hundred times that and reports the
+  same line.
+- Reading one to three files to decide something.
+- A mechanical edit already understood.
+- Verifying a worker's own report. Trust it, then check with a command.
+
+### One writer at a time
+
+Parallel writers are for genuinely disjoint file sets, and they still cost a
+budget each. Two lanes that must merge in order are not parallel; running them
+that way pays twice and then throws one away when the first lane changes a
+signature the second was building against.
+
+Before spawning a second writer, name the exact file sets and confirm they do
+not intersect. If naming them is hard, they intersect.
+
+### Brief once, not four times
+
+Four workers each told to read `AGENT.md`, `WRITING.md` and the same four traps
+pay for that reading four times. Put the shared half in
+`.claude/prompts/worker-preamble.md`, point at it, and spend the brief on what
+differs.
+
+### Keep the board small
+
+`.claude/CHECKPOINTS.md` is read by every agent that touches the loop. An
+archive left inline is paid for on every one of those reads. Move `## Archive`
+out when the file passes roughly 5,000 lines; the working board is the Active
+section and its decisions, and nothing else.
