@@ -18,6 +18,7 @@ from clearcut.application.ports import Confidence, GroundedAnswer, RightsClaim
 from clearcut.domain.bible import BibleFact, FactKind
 from clearcut.domain.finding import Category, Citation, Finding, NerLabel, RiskLevel
 from clearcut.domain.jurisdiction import jurisdiction_for
+from clearcut.domain.project import Project
 from clearcut.domain.script import Scene, Script
 
 # --- Identity: the one demo project this seed answers for (D36's fourth
@@ -60,6 +61,16 @@ SCENES: tuple[Scene, ...] = (
     Scene(
         number=3, heading="INT. LOLA'S HOUSE - DAY", page_start=8, page_end=8, text=_SCENE_3_TEXT
     ),
+)
+
+# The project every other record here hangs off. `GET /api/projects` is the
+# first screen the SPA draws, and a demo that opens on an empty list tells a
+# reader the instance is broken rather than planted.
+SEEDED_PROJECT = Project(
+    project_id=PROJECT_ID,
+    title="El Ultimo Verano",
+    jurisdiction_code=JURISDICTION.code,
+    created_at="2026-09-01T00:00:00Z",
 )
 
 SEEDED_SCRIPT = Script(

@@ -3,23 +3,36 @@ Cloud Run entry point `gcloud run deploy --source .` starts.
 
 `CLEARCUT_MODE` selects the wiring (CHECKPOINTS.md Decision D36): `mock`
 builds CP-043's in-memory demo adapters over the SDD Section 8(d) scenario and
-reads no credential at all; `live` delegates to the eight-adapter graph
-CP-049 fills, the seam Decision D38 chose (a plain constructor argument with a
+reads no credential at all; `live` delegates to the adapter graph CP-049
+fills, the seam Decision D38 chose (a plain constructor argument with a
 real, eager-connecting default, not a lazy wrapper). An absent variable means
 `live`, so a deployment that forgot to set it never serves planted data
 instead of a loud startup failure. An unrecognized value is fatal at startup
 too, naming the variable and both accepted values -- the fallback nobody
 notices is the one that ships.
 
-One `if`, one wiring function per branch, the same route factory
-(`create_blueprint`, CP-029) below both -- plain constructor injection, no DI
-container, no service locator, no module-level singleton, no registry (AGENT.md
-Section 4). Nothing is built at import time: two `create_app()` calls each
-build a fresh `_UseCaseGraph`, so they never share state.
+One `if`, one wiring function per branch, the same six route factories below
+both -- plain constructor injection, no DI container, no service locator, no
+module-level singleton, no registry (AGENT.md Section 4). Nothing is built at
+import time: two `create_app()` calls each build a fresh `_UseCaseGraph`, so
+they never share state.
+
+`_register_api` is the one piece of structure this module grew when the HTTP
+adapter was partitioned into six domains (ADR 0012). It is a mechanical
+extraction inside this file, not a second wiring module: D79 keeps wiring in
+one place, and six `register_blueprint` calls in the middle of `create_app`
+buried the mode switch they sit under.
+
+The analysis runner is the other addition (ADR 0013). The pipeline now runs on
+a background thread, so the request that queued it returns before the work
+starts and the route can no longer hold the root trace span open across it.
+The span is opened inside the runner instead, and the runner is supplied here
+because `application/` may not import opentelemetry.
 """
 
 import logging
 import os
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -29,6 +42,7 @@ import httpx
 from flask import Flask
 from google import genai
 from google.cloud import documentai_v1 as documentai
+from google.cloud import storage
 from langchain_google_community import BigQueryVectorStore  # type: ignore[import-untyped]
 from langchain_google_vertexai import VertexAIEmbeddings
 from opentelemetry import metrics, trace
@@ -40,33 +54,58 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from clearcut.adapters.bigquery.lore_store import BigQueryLoreStore, _VectorStore
+from clearcut.adapters.clickhouse.analyses import ClickHouseAnalysisJobStore
 from clearcut.adapters.clickhouse.client import _ChClient
+from clearcut.adapters.clickhouse.findings import ClickHouseFindingStore
+from clearcut.adapters.clickhouse.projects import ClickHouseProjectStore
+from clearcut.adapters.clickhouse.scripts import ClickHouseScriptStore
 from clearcut.adapters.clickhouse.tracker import ClickHouseTrackerStore
 from clearcut.adapters.demo.in_memory import (
+    InMemoryAnalysisJobStore,
     InMemoryContinuityCheck,
+    InMemoryFindingStore,
     InMemoryLegalGrounding,
     InMemoryLoreStore,
     InMemoryNotifier,
+    InMemoryProjectStore,
     InMemoryRightsResearch,
     InMemorySceneExtractor,
     InMemoryScriptIngestion,
+    InMemoryScriptStorage,
+    InMemoryScriptStore,
     InMemoryTrackerStore,
 )
 from clearcut.adapters.gcp.document_ai import DocumentAIIngestion
+from clearcut.adapters.gcp.storage import GcsScriptStorage, _StorageClient
 from clearcut.adapters.gcp.vertex_search import VertexSearchGrounding
 from clearcut.adapters.gemini.continuity import GeminiContinuityCheck
 from clearcut.adapters.gemini.extractor import GeminiSceneExtractor
-from clearcut.adapters.http.docs import create_docs_blueprint
-from clearcut.adapters.http.health import create_health_blueprint
-from clearcut.adapters.http.routes import create_blueprint
+from clearcut.adapters.http.bible import create_bible_blueprint
+from clearcut.adapters.http.openapi import build_spec
+from clearcut.adapters.http.projects import create_projects_blueprint
+from clearcut.adapters.http.questions import create_questions_blueprint
+from clearcut.adapters.http.scripts import create_scripts_blueprint
 from clearcut.adapters.http.spa import create_spa_blueprint
+from clearcut.adapters.http.system import create_system_blueprint
+from clearcut.adapters.http.tracker import create_tracker_blueprint
 from clearcut.adapters.notify.webhook import WebhookNotifier
 from clearcut.adapters.parallel.research import ParallelRightsResearch
+from clearcut.application.add_bible_facts import AddBibleFacts
 from clearcut.application.analyze_script import AnalyzeScript
 from clearcut.application.answer_project_question import AnswerProjectQuestion
+from clearcut.application.create_project import CreateProject
 from clearcut.application.evaluate_delta import EvaluateDelta
+from clearcut.application.get_analysis import GetAnalysis
+from clearcut.application.get_bible import GetBible
+from clearcut.application.get_project import GetProject
+from clearcut.application.get_script import GetScript
+from clearcut.application.get_tracker_item import GetTrackerItem
+from clearcut.application.list_projects import ListProjects
+from clearcut.application.list_scripts import ListScripts
 from clearcut.application.list_tracker_items import ListTrackerItems
 from clearcut.application.resolve_finding import ResolveFinding
+from clearcut.application.start_analysis import Runner, StartAnalysis, Work
+from clearcut.application.upload_script_file import UploadScriptFile
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +131,8 @@ _MOCK_MODE = "mock"
 _LIVE_MODE = "live"
 
 _OTEL_ENDPOINT_ENV_VAR = "OTEL_EXPORTER_OTLP_ENDPOINT"
+
+_ANALYSIS_SPAN = "analyze"
 
 
 def _span_exporter() -> OTLPSpanExporter | None:
@@ -139,40 +180,96 @@ def _configure_telemetry() -> None:
     metrics.set_meter_provider(MeterProvider(metric_readers=metric_readers))
 
 
+def run_traced(script_id: str, work: Work) -> None:
+    """Runs one analysis under a root span carrying its `script_id`.
+
+    The five stage spans the adapters open nest under this one and share its
+    trace id, which is what makes a run readable in Grafana as a single
+    trace. `trace.get_tracer(__name__)` is looked up on every call rather
+    than cached at import time -- a module-level `ProxyTracer` resolved
+    before `_configure_telemetry` installs the real provider caches that
+    first resolution permanently.
+    """
+    with trace.get_tracer(__name__).start_as_current_span(_ANALYSIS_SPAN) as span:
+        span.set_attribute("script_id", script_id)
+        work()
+
+
+def run_traced_in_background(script_id: str, work: Work) -> None:
+    """`run_traced` on a daemon thread, so the request that queued the run
+    returns while it is still going (ADR 0013).
+
+    Daemon rather than joined: the job row in ClickHouse is the source of
+    truth, and a process shutting down mid-run leaves a row the next read
+    reaps as stale. A non-daemon thread would instead hold the container
+    open for the twenty minutes the run takes.
+    """
+    threading.Thread(target=lambda: run_traced(script_id, work), daemon=True).start()
+
+
 @dataclass(frozen=True)
 class _UseCaseGraph:
-    """The five use-case instances `create_blueprint` (CP-029) mounts onto
-    the five demo-path routes -- one graph per mode branch, same shape."""
+    """Every use case the six route factories mount -- one graph per mode
+    branch, same shape, so a route cannot depend on which branch built it."""
 
     analyze_script: AnalyzeScript
     evaluate_delta: EvaluateDelta
+    start_analysis: StartAnalysis
+    get_analysis: GetAnalysis
+    create_project: CreateProject
+    list_projects: ListProjects
+    get_project: GetProject
+    upload_script_file: UploadScriptFile
+    list_scripts: ListScripts
+    get_script: GetScript
     list_tracker_items: ListTrackerItems
+    get_tracker_item: GetTrackerItem
     resolve_finding: ResolveFinding
+    get_bible: GetBible
+    add_bible_facts: AddBibleFacts
     answer_project_question: AnswerProjectQuestion
 
 
-def _build_mock_use_cases() -> _UseCaseGraph:
-    """Wires CP-043's demo adapters into the five use cases: no credential
-    read, no vendor client built, no socket opened. `lore`, `tracker`, and
-    `notifier` are shared across use cases so a write from one route (a
-    `POST /api/analyze`) is visible to another (a `GET /api/tracker`)."""
+def _build_mock_use_cases(runner: Runner) -> _UseCaseGraph:
+    """Wires CP-043's demo adapters into every use case: no credential read,
+    no vendor client built, no socket opened. Each store is shared across the
+    use cases that need it, so a write from one route (a queued analysis) is
+    visible to another (a tracker or script read)."""
     ingestion = InMemoryScriptIngestion()
     extractor = InMemorySceneExtractor()
     grounding = InMemoryLegalGrounding()
     research = InMemoryRightsResearch()
     continuity = InMemoryContinuityCheck()
     lore = InMemoryLoreStore()
-    tracker = InMemoryTrackerStore()
+    scripts = InMemoryScriptStore()
+    tracker = InMemoryTrackerStore(scripts)
     notifier = InMemoryNotifier()
+    projects = InMemoryProjectStore()
+    findings = InMemoryFindingStore()
+    jobs = InMemoryAnalysisJobStore()
+    script_storage = InMemoryScriptStorage()
+    analyze_script = AnalyzeScript(
+        ingestion, extractor, grounding, research, lore, tracker, continuity, findings
+    )
+    evaluate_delta = EvaluateDelta(
+        ingestion, extractor, grounding, research, lore, tracker, continuity, notifier, findings
+    )
     return _UseCaseGraph(
-        analyze_script=AnalyzeScript(
-            ingestion, extractor, grounding, research, lore, tracker, continuity
-        ),
-        evaluate_delta=EvaluateDelta(
-            ingestion, extractor, grounding, research, lore, tracker, continuity, notifier
-        ),
+        analyze_script=analyze_script,
+        evaluate_delta=evaluate_delta,
+        start_analysis=StartAnalysis(jobs, analyze_script, evaluate_delta, runner=runner),
+        get_analysis=GetAnalysis(jobs),
+        create_project=CreateProject(projects),
+        list_projects=ListProjects(projects),
+        get_project=GetProject(projects),
+        upload_script_file=UploadScriptFile(script_storage),
+        list_scripts=ListScripts(scripts, findings),
+        get_script=GetScript(scripts, findings),
         list_tracker_items=ListTrackerItems(tracker),
+        get_tracker_item=GetTrackerItem(tracker),
         resolve_finding=ResolveFinding(tracker, notifier),
+        get_bible=GetBible(lore),
+        add_bible_facts=AddBibleFacts(lore),
         answer_project_question=AnswerProjectQuestion(lore, grounding, tracker),
     )
 
@@ -212,18 +309,25 @@ def _required_env(name: str) -> str:
 
 def _build_live_use_cases(
     *,
+    runner: Runner = run_traced_in_background,
     ch_client: _ChClient | None = None,
     vector_store: _VectorStore | None = None,
+    storage_client: _StorageClient | None = None,
 ) -> _UseCaseGraph:
-    """The live wiring seam CP-049 fills (Decision D38): the eight live
-    adapters, built from environment-read credentials, with the two vendor
-    clients that connect during construction --
-    `clickhouse_connect.get_client` and `BigQueryVectorStore` -- accepted as
-    plain keyword arguments whose default builds the real, connected thing.
-    A unit test injects a fake for either and builds the rest of the graph
-    for real, with no network; production omits both and gets eager,
-    fail-loud construction, so a bad credential fails the Cloud Run revision
-    rather than a request."""
+    """The live wiring seam CP-049 fills (Decision D38): the live adapters,
+    built from environment-read credentials, with the vendor clients that
+    connect or resolve credentials during construction accepted as plain
+    keyword arguments whose default builds the real, connected thing. A unit
+    test injects a fake for any of them and builds the rest of the graph for
+    real, with no network; production omits them and gets eager, fail-loud
+    construction, so a bad credential fails the Cloud Run revision rather
+    than a request.
+
+    The four ClickHouse stores share one client. They are separate ports
+    because a route that reads scripts has no business holding the tracker's
+    writes (AGENT.md Section 3, ISP), but they are one connection, and
+    `script_versions` is one table `ClickHouseScriptStore` and
+    `ClickHouseTrackerStore` both address."""
     project = _required_env("GOOGLE_CLOUD_PROJECT")
     processor_id = _required_env("DOCAI_PROCESSOR_ID")
     gemini_model = _required_env("GEMINI_MODEL")
@@ -234,6 +338,7 @@ def _build_live_use_cases(
     clickhouse_password = _required_env("CLICKHOUSE_PASSWORD")
     data_store_id = _required_env("VERTEX_SEARCH_DATA_STORE_ID")
     webhook_url = _required_env("NOTIFY_WEBHOOK_URL")
+    intake_bucket = _required_env("SCRIPTS_INTAKE_BUCKET")
 
     if ch_client is None:
         # cast: `Client.query` returns `Sequence[Sequence[Any]]` rows, one
@@ -258,6 +363,8 @@ def _build_live_use_cases(
             table_name=_BIGQUERY_LORE_TABLE,
             location=_GCP_LOCATION,
         )
+    if storage_client is None:
+        storage_client = storage.Client(project=project)
 
     genai_client = genai.Client(vertexai=True, project=project, location=_GENAI_LOCATION)
     documentai_client = documentai.DocumentProcessorServiceClient()
@@ -270,16 +377,34 @@ def _build_live_use_cases(
     lore = BigQueryLoreStore(vector_store, embeddings)
     tracker = ClickHouseTrackerStore(ch_client)
     notifier = WebhookNotifier(httpx.Client(), webhook_url)
+    projects = ClickHouseProjectStore(ch_client)
+    scripts = ClickHouseScriptStore(ch_client)
+    findings = ClickHouseFindingStore(ch_client)
+    jobs = ClickHouseAnalysisJobStore(ch_client)
+    script_storage = GcsScriptStorage(storage_client, intake_bucket)
 
+    analyze_script = AnalyzeScript(
+        ingestion, extractor, grounding, research, lore, tracker, continuity, findings
+    )
+    evaluate_delta = EvaluateDelta(
+        ingestion, extractor, grounding, research, lore, tracker, continuity, notifier, findings
+    )
     return _UseCaseGraph(
-        analyze_script=AnalyzeScript(
-            ingestion, extractor, grounding, research, lore, tracker, continuity
-        ),
-        evaluate_delta=EvaluateDelta(
-            ingestion, extractor, grounding, research, lore, tracker, continuity, notifier
-        ),
+        analyze_script=analyze_script,
+        evaluate_delta=evaluate_delta,
+        start_analysis=StartAnalysis(jobs, analyze_script, evaluate_delta, runner=runner),
+        get_analysis=GetAnalysis(jobs),
+        create_project=CreateProject(projects),
+        list_projects=ListProjects(projects),
+        get_project=GetProject(projects),
+        upload_script_file=UploadScriptFile(script_storage),
+        list_scripts=ListScripts(scripts, findings),
+        get_script=GetScript(scripts, findings),
         list_tracker_items=ListTrackerItems(tracker),
+        get_tracker_item=GetTrackerItem(tracker),
         resolve_finding=ResolveFinding(tracker, notifier),
+        get_bible=GetBible(lore),
+        add_bible_facts=AddBibleFacts(lore),
         answer_project_question=AnswerProjectQuestion(lore, grounding, tracker),
     )
 
@@ -309,21 +434,59 @@ def _default_build_dir() -> Path:
     return Path(__file__).resolve().parent.parent.parent / "web" / "dist"
 
 
-def create_app(build_dir: Path | None = None) -> Flask:
+def _register_api(app: Flask, graph: _UseCaseGraph, mode: str, build_dir: Path) -> None:
+    """Mounts the six domain blueprints, then the SPA.
+
+    Order is load-bearing and is the reason this is one function rather than
+    six calls scattered through `create_app`: the SPA blueprint answers every
+    unmatched path, so a domain registered after it would resolve to the
+    SPA's JSON 404 for `/api` paths. It goes last, once.
+    """
+    app.register_blueprint(create_system_blueprint(mode, build_spec))
+    app.register_blueprint(
+        create_projects_blueprint(graph.create_project, graph.list_projects, graph.get_project)
+    )
+    app.register_blueprint(
+        create_scripts_blueprint(
+            graph.upload_script_file,
+            graph.list_scripts,
+            graph.get_script,
+            graph.start_analysis,
+            graph.get_analysis,
+        )
+    )
+    app.register_blueprint(
+        create_tracker_blueprint(
+            graph.list_tracker_items, graph.get_tracker_item, graph.resolve_finding
+        )
+    )
+    app.register_blueprint(create_bible_blueprint(graph.get_bible, graph.add_bible_facts))
+    app.register_blueprint(create_questions_blueprint(graph.answer_project_question))
+    app.register_blueprint(create_spa_blueprint(build_dir))
+
+
+def create_app(build_dir: Path | None = None, *, analysis_runner: Runner | None = None) -> Flask:
     """The Cloud Run entry point. Builds a fresh `_UseCaseGraph` per call and
-    mounts it through CP-029's frozen five-argument `create_blueprint`,
-    alongside CP-046's SPA blueprint serving `build_dir` (default
-    `web/dist`) -- one origin for the JSON API and the static build (ADR
-    0010), so no CORS configuration is ever needed."""
+    mounts it through the six domain blueprints, alongside CP-046's SPA
+    blueprint serving `build_dir` (default `web/dist`) -- one origin for the
+    JSON API and the static build (ADR 0010), so no CORS configuration is
+    ever needed.
+
+    `analysis_runner` is the same kind of seam D38 chose for the vendor
+    clients: production omits it and gets the background thread ADR 0013
+    specifies, and a test passes `run_traced` to run the pipeline inside the
+    request instead, so it can assert on what the run produced without
+    polling a thread."""
     _configure_telemetry()
+    runner = analysis_runner if analysis_runner is not None else run_traced_in_background
     mode = os.environ.get(_MODE_ENV_VAR, _LIVE_MODE)
     if mode == _MOCK_MODE:
         logger.warning(
             "CLEARCUT_MODE=mock: serving the planted demo scenario, no live service is connected"
         )
-        use_cases = _build_mock_use_cases()
+        use_cases = _build_mock_use_cases(runner)
     elif mode == _LIVE_MODE:
-        use_cases = _build_live_use_cases()
+        use_cases = _build_live_use_cases(runner=runner)
     else:
         raise ValueError(
             f"{_MODE_ENV_VAR}={mode!r} is not recognized; set it to "
@@ -331,20 +494,7 @@ def create_app(build_dir: Path | None = None) -> Flask:
         )
 
     app = Flask(__name__)
-    app.register_blueprint(
-        create_blueprint(
-            use_cases.analyze_script,
-            use_cases.evaluate_delta,
-            use_cases.list_tracker_items,
-            use_cases.resolve_finding,
-            use_cases.answer_project_question,
-        )
-    )
-    # Before the SPA blueprint, which answers every unmatched path: registered
-    # after it, `/api/health` would resolve to the SPA's JSON 404 instead.
-    app.register_blueprint(create_health_blueprint(mode))
-    app.register_blueprint(create_docs_blueprint())
-    app.register_blueprint(
-        create_spa_blueprint(build_dir if build_dir is not None else _default_build_dir())
+    _register_api(
+        app, use_cases, mode, build_dir if build_dir is not None else _default_build_dir()
     )
     return app

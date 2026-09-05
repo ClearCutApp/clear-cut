@@ -245,6 +245,7 @@ Secret Manager entries mounted as environment variables. The full set:
 | `GEMINI_MODEL_LITE` | `gemini-3.1-flash-lite` |
 | `VERTEX_SEARCH_DATA_STORE_ID` | data store from section 5, as a full resource name: `projects/clearcut-hack/locations/global/collections/default_collection/dataStores/clearcut-legal-corpus` |
 | `NOTIFY_WEBHOOK_URL` | outbound webhook the Notifier posts to |
+| `SCRIPTS_INTAKE_BUCKET` | bucket an uploaded screenplay is written to, `clearcut-scripts`; Document AI reads the object back out of it |
 
 The Notifier delivers every notification as an HTTP POST to
 `NOTIFY_WEBHOOK_URL`; SMTP is deliberately out of scope for the demo, so the

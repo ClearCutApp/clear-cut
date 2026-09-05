@@ -1,14 +1,20 @@
 """In-memory adapters over the CP-043 seed, wired in for `CLEARCUT_MODE=mock`
 (D36).
 
-Each class below implements one of the eight application ports directly over
-`scenario.py`'s planted data -- no service behind them, no I/O, no clock, no
-environment read. `LoreStore` and `TrackerStore` alone carry mutable state (an
-in-process dict), because a producer's PATCH request and `EvaluateDelta`'s
-carry-forward join need a store that remembers a write, not a canned
-response; the other six classes echo `scenario.py`'s data back unconditionally
--- the same shape `tests/unit/fakes.py` already established for the five
-read-only ports.
+Each class below implements one of the thirteen application ports directly
+over `scenario.py`'s planted data -- no service behind them, no I/O, no clock,
+no environment read. The stores carry mutable state (an in-process dict or
+list), because a producer's PATCH request, `EvaluateDelta`'s carry-forward
+join and a script read after an analysis all need a store that remembers a
+write, not a canned response; the six read-only adapters echo `scenario.py`'s
+data back unconditionally -- the same shape `tests/unit/fakes.py` already
+established.
+
+The six stores are not a second implementation of the ClickHouse ones: they
+answer the same questions with the same error types, so a route cannot behave
+differently by mode. Where two live stores share a table -- `script_versions`,
+written through `TrackerStore.record_script` and read through `ScriptStore` --
+the two classes here share one list, for the same reason.
 
 This package is production code for the demo image, not a test double:
 `composition.py` cannot import from `tests/`, so these classes are what
@@ -30,12 +36,18 @@ from opentelemetry import metrics, trace
 
 from clearcut.adapters.demo import scenario
 from clearcut.application.ports import GroundedAnswer, RightsClaim
+from clearcut.domain.analysis import AnalysisJob
 from clearcut.domain.bible import BibleFact
 from clearcut.domain.errors import RecordNotFound
 from clearcut.domain.finding import Category, Finding
 from clearcut.domain.jurisdiction import Jurisdiction
+from clearcut.domain.project import Project
 from clearcut.domain.script import Scene, Script
 from clearcut.domain.tracker import TrackerItem
+
+# The bucket `scenario.GCS_URI` already names. Mock mode writes nowhere,
+# so this is the shape of a URI rather than a real location.
+_DEMO_BUCKET = "clearcut-demo"
 
 
 # CP-031 (ADR 0008, SDD Section 6): the same five pipeline-stage spans and
@@ -142,28 +154,145 @@ class InMemoryLoreStore:
         return [record for record in records if isinstance(record, BibleFact)]
 
 
-class InMemoryTrackerStore:
-    """Implements `TrackerStore` over two in-process dicts, so a transition
-    written with `save` comes back from `latest` and `latest_for_project` in
-    the state it was written -- the property `PATCH /api/tracker/{item_id}`
-    needs. `latest_script` is pre-seeded with the demo project's planted
-    version 1 (D36's fourth criterion) and empty for every other project."""
+class InMemoryProjectStore:
+    """Implements `ProjectStore`, pre-seeded with the demo project.
+
+    Every other project id answers `RecordNotFound`, the same shape
+    `ClickHouseProjectStore` gives an id nothing was written under.
+    """
 
     def __init__(self) -> None:
-        self._items: dict[str, TrackerItem] = {}
-        self._scripts: dict[str, Script] = {scenario.PROJECT_ID: scenario.SEEDED_SCRIPT}
+        self._projects: dict[str, Project] = {
+            scenario.PROJECT_ID: scenario.SEEDED_PROJECT,
+        }
+
+    def save(self, project: Project) -> None:
+        self._projects[project.project_id] = project
+
+    def get(self, project_id: str) -> Project:
+        project = self._projects.get(project_id)
+        if project is None:
+            raise RecordNotFound(f"no project found for project_id={project_id!r}")
+        return project
+
+    def all(self) -> list[Project]:
+        return list(self._projects.values())
+
+
+class InMemoryScriptStore:
+    """Implements `ScriptStore` over one in-process list, pre-seeded with the
+    demo project's planted version 1 (D36's fourth criterion).
+
+    `InMemoryTrackerStore` writes and reads the same rows through
+    `record_script` / `latest_script`, exactly as the two ClickHouse stores
+    share the `script_versions` table: two in-memory copies would let a
+    version written by an analysis be invisible to the read that serves it.
+    """
+
+    def __init__(self) -> None:
+        self._scripts: list[Script] = [scenario.SEEDED_SCRIPT]
+
+    def save(self, script: Script) -> None:
+        self._scripts.append(script)
+
+    def get(self, project_id: str, script_id: str) -> Script:
+        for script in self._scripts:
+            if script.project_id == project_id and script.script_id == script_id:
+                return script
+        raise RecordNotFound(
+            f"no script found for project_id={project_id!r} script_id={script_id!r}"
+        )
+
+    def for_project(self, project_id: str) -> list[Script]:
+        found = [script for script in self._scripts if script.project_id == project_id]
+        return sorted(found, key=lambda script: script.version)
+
+    def latest(self, project_id: str) -> Script | None:
+        versions = self.for_project(project_id)
+        return versions[-1] if versions else None
+
+
+class InMemoryFindingStore:
+    """Implements `FindingStore`, keyed by script version like the real one.
+
+    Nothing is pre-seeded: the planted findings are what an analysis
+    produces, and pre-loading them would make a script that was never
+    analyzed read as though it had been.
+    """
+
+    def __init__(self) -> None:
+        self._by_script: dict[tuple[str, str], list[Finding]] = {}
+
+    def save(self, project_id: str, script_id: str, findings: list[Finding]) -> None:
+        self._by_script.setdefault((project_id, script_id), []).extend(findings)
+
+    def for_script(self, project_id: str, script_id: str) -> list[Finding]:
+        return list(self._by_script.get((project_id, script_id), []))
+
+
+class InMemoryAnalysisJobStore:
+    """Implements `AnalysisJobStore`: latest write wins per `(project, analysis)`.
+
+    The real table keeps every version and reads the highest; keeping only
+    the newest is the same answer for a store nothing reads history out of.
+    """
+
+    def __init__(self) -> None:
+        self._jobs: dict[tuple[str, str], AnalysisJob] = {}
+
+    def save(self, job: AnalysisJob) -> None:
+        self._jobs[(job.project_id, job.analysis_id)] = job
+
+    def get(self, project_id: str, analysis_id: str) -> AnalysisJob:
+        job = self._jobs.get((project_id, analysis_id))
+        if job is None:
+            raise RecordNotFound(
+                f"no analysis found for project_id={project_id!r} analysis_id={analysis_id!r}"
+            )
+        return job
+
+
+class InMemoryScriptStorage:
+    """Implements `ScriptStorage`: keeps the bytes in memory and answers with
+    a `gs://` URI shaped like the one Cloud Storage returns.
+
+    The demo bucket name is the same one `scenario.GCS_URI` uses, so an
+    upload in mock mode produces a URI the planted ingestion recognises.
+    """
+
+    def __init__(self) -> None:
+        self.stored: list[tuple[str, str, bytes]] = []
+
+    def store(self, project_id: str, filename: str, content: bytes) -> str:
+        self.stored.append((project_id, filename, content))
+        return f"gs://{_DEMO_BUCKET}/{project_id}/{filename}"
+
+
+class InMemoryTrackerStore:
+    """Implements `TrackerStore` over an in-process dict plus the script rows
+    `InMemoryScriptStore` owns, so a transition written with `save` comes back
+    from `latest` and `latest_for_project` in the state it was written -- the
+    property `PATCH .../tracker-items/{item_id}` needs.
+
+    `latest` is keyed by `(project_id, item_id)`: item ids are unique only
+    inside their project, so a lookup on the id alone would answer with
+    whichever project wrote `EVT-001` last (ADR 0014)."""
+
+    def __init__(self, scripts: InMemoryScriptStore | None = None) -> None:
+        self._items: dict[tuple[str, str], TrackerItem] = {}
+        self._scripts = scripts if scripts is not None else InMemoryScriptStore()
 
     def save(self, items: list[TrackerItem]) -> None:
         start = time.perf_counter()
         with _tracer().start_as_current_span("track"):
             for item in items:
-                self._items[item.item_id] = item
+                self._items[(item.project_id, item.item_id)] = item
         _record_stage("track", start)
         _refresh_tracker_items_gauge(items)
 
     def latest(self, project_id: str, item_id: str) -> TrackerItem:
-        item = self._items.get(item_id)
-        if item is None or item.project_id != project_id:
+        item = self._items.get((project_id, item_id))
+        if item is None:
             raise RecordNotFound(
                 f"no tracker item found for project_id={project_id!r} item_id={item_id!r}"
             )
@@ -173,10 +302,10 @@ class InMemoryTrackerStore:
         return [item for item in self._items.values() if item.project_id == project_id]
 
     def record_script(self, script: Script) -> None:
-        self._scripts[script.project_id] = script
+        self._scripts.save(script)
 
     def latest_script(self, project_id: str) -> Script | None:
-        return self._scripts.get(project_id)
+        return self._scripts.latest(project_id)
 
 
 class InMemoryNotifier:
