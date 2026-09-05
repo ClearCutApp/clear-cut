@@ -18,6 +18,26 @@
   border-radius: var(--radius-badge);
 }
 
+/* The state badge is the design's pill with a leading dot. The dot takes
+   the badge's own color, so it repeats the tone the word already carries
+   and adds no meaning of its own -- a colored circle is never the only
+   thing saying what state an item is in (.claude/WRITING.md Section 2). */
+.state-badge {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
+.state-badge::before {
+  width: 6px;
+  height: 6px;
+  content: "";
+  background: currentcolor;
+  border-radius: 50%;
+}
+
 .state-badge--blocked {
   color: var(--color-state-blocked);
   background: var(--color-state-blocked-glow);
