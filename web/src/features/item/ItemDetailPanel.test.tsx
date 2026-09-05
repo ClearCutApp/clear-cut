@@ -5,7 +5,6 @@ import { describe, expect, it, vi } from "vitest";
 import { SCRIPT_FIXTURE, TRACKER_FIXTURE } from "../../fixtures";
 import { ItemDetailPanel, type ItemDetailPanelProps } from "./ItemDetailPanel";
 
-
 const UNSERVED_ACTION =
   /assign|suggest|request authorization|find rights holder|mark as resolved|download/i;
 

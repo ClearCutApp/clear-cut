@@ -8,7 +8,6 @@ import { renderWithProject } from "../../testing/renderWithProject";
 import { jurisdictionName } from "../../theme/jurisdictions";
 import { ItemDetailPanelHost } from "./ItemDetailPanelHost";
 
-
 function ok(body: unknown) {
   return { status: 200, body };
 }

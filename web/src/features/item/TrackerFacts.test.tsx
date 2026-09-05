@@ -4,7 +4,6 @@ import { describe, expect, it, vi } from "vitest";
 import { TRACKER_FIXTURE } from "../../fixtures";
 import { TrackerFacts } from "./TrackerFacts";
 
-
 describe("TrackerFacts", () => {
   it("shows the state, contact, posture, note and version of the item", () => {
     const { container } = render(

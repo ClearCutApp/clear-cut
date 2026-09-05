@@ -6,7 +6,6 @@ import { stubFetch } from "../testing/fetchStub";
 import { renderWithProject } from "../testing/renderWithProject";
 import { ScriptView } from "./ScriptView";
 
-
 describe("ScriptView", () => {
   it("offers Run analysis in a worded empty state when no analysis is in session", () => {
     stubFetch({ tracker: { status: 200, body: [] } });

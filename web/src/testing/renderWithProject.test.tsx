@@ -7,7 +7,6 @@ import { useProject } from "../state/ProjectContext";
 import { stubFetch } from "./fetchStub";
 import { renderWithProject } from "./renderWithProject";
 
-
 function Probe() {
   const { projectId, analysis, selectedItemId, tracker } = useProject();
   return (
