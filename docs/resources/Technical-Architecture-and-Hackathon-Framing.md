@@ -1,3 +1,11 @@
+> **Superseded source material.** This document predates the current build and is kept for its research and its history. Where it disagrees with a record in `docs/plan/adr/`, the ADR is right. See `docs/plan/adr/README.md`.
+>
+> **Explicitly superseded by `docs/plan/sdd.md` Section 1.** Names Gemini
+> 1.5/2.0 (ADR 0002), Replit hosting (ADR 0010 drops it), and IBM watsonx as a
+> component (ADR 0003 entered the Parallel track instead; no watsonx code
+> exists). Its computer vision and audio fingerprinting pipelines are ruled
+> out of scope by `docs/plan/sdd.md` Section 1.
+
 # **[https://agentic-cinema.devpost.com/](https://agentic-cinema.devpost.com/)**
 
 # **Technical Architecture and Framing for the "Agentic Cinema" Hackathon**

@@ -1,3 +1,10 @@
+> **The authoritative rights taxonomy.** The six IP categories, the eleven NER
+> labels and the `EVT-NNN` identifier shape in `domain/finding.py` and
+> `domain/taxonomy.py` implement this document faithfully. The domain carries
+> eight categories, not six: CONTINUITY and POLICY are ours, not this file's.
+> Its coloured status circles predate `.claude/WRITING.md`, which requires the
+> words BLOCKED, IN_PROGRESS and CLEARED instead.
+
 # **Artificial Intelligence Architecture for IP Management and Local/Global Actionability**
 
 For the AI model to process the script or attached material and act as

@@ -2610,9 +2610,12 @@ and a test client cannot see it.
 second time in its history.**
 
 The goal is ADR 0011: run the analyze path live for the 2026-09-07 submission.
-`clearcut-hack` exists (number `813918777633`). The live adapter tier is 10/10
-against real services (`337bddd`). Four checkpoints sit IN_REVIEW (CP-055,
-CP-056, CP-057, CP-060) and may still close. CP-058 is BLOCKED waiting on a
+`clearcut-hack` exists (number `813918777633`). The live adapter tier was 10/10
+against real services at `337bddd`, and that evidence no longer holds at HEAD.
+The 2026-09-05 re-run found the gate reporting green having contacted nothing,
+and with `.env` actually sourced the tier is 8 passed, 1 failed, 5 skipped of
+14. CP-055 and CP-056 were returned CHANGES_REQUESTED that day and are back at
+TODO, 1/3. CP-057 sits IN_REVIEW. CP-060 is DONE. CP-058 is BLOCKED waiting on a
 human Grafana Cloud service account (`GRAFANA_URL`, `GRAFANA_TOKEN`); the OTLP
 write pair cannot provision or query the dashboard (D73). Independent reviews
 continue while that waits. CP-059 stays TODO until CP-058 is DONE; it also
@@ -2622,7 +2625,7 @@ Do not widen CP-056 to ContinuityCheck instrumentation, EvaluateDelta failure
 paths, or a Notifier live test. Do not supersede CP-058: the obstacle is a
 credential, not mixed scope. The web-product-ui plan does not touch this board.
 
-**Twenty-three checkpoints, from 2026-09-04. The board reopened a third time,
+**Seventeen checkpoints, from 2026-09-04. The board reopened a third time,
 on a second human goal, while the first one is still IN_REVIEW.** CP-061
 through CP-077 come from the approved plan "ClearCut API by domain: RESTful
 partition and MVP coverage": the API, its OpenAPI document and

@@ -1,3 +1,11 @@
+> **Superseded source material.** This document predates the current build and is kept for its research and its history. Where it disagrees with a record in `docs/plan/adr/`, the ADR is right. See `docs/plan/adr/README.md`.
+>
+> **The compliance table marks requirements Met that were never met of this
+> repository.** It claims `gemini-1.5-pro` in `app.py` (ADR 0002 pins the
+> Gemini 3 family), ClickHouse as the vector database (ADR 0004 puts lore in
+> BigQuery), a ten-country dropdown and a bible context box in the interface
+> (neither exists). `docs/plan/sdd.md` Section 9 carries the honest checklist.
+
 ### **Hackathon Requirements Compliance Summary (Devpost & Rules)**
 
 +-----------------+--------------+--------------------------------------+

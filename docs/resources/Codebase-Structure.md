@@ -1,3 +1,12 @@
+> **Superseded source material.** This document predates the current build and is kept for its research and its history. Where it disagrees with a record in `docs/plan/adr/`, the ADR is right. See `docs/plan/adr/README.md`.
+>
+> **Describes a codebase that was never built.** A flat `app.py` with
+> `templates/index.html`, run by `python app.py`. The real layout is the
+> hexagonal `src/clearcut/` split, and ADR 0006 supersedes this file
+> explicitly and entirely. It also pins `gemini-1.5-pro` in three places
+> (retired, see ADR 0002) and queries ClickHouse for lore vectors (they live
+> in BigQuery, see ADR 0004).
+
 ### **Technical Proposal & Implementation Guide**
 
 Below is the structured technical documentation as requested for your

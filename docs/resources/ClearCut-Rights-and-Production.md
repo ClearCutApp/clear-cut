@@ -1,3 +1,9 @@
+> **Superseded source material.** This document predates the current build and is kept for its research and its history. Where it disagrees with a record in `docs/plan/adr/`, the ADR is right. See `docs/plan/adr/README.md`.
+>
+> Aspirational pitch. The IP Passport and IP Health Index are post-MVP; see
+> `docs/plan/proposal.md`, which places them on the roadmap rather than in
+> the build.
+
 # ClearCut
 
 **IP and Rights Management Agent for Independent Producers**

@@ -1,3 +1,9 @@
+> **Superseded source material.** This document predates the current build and is kept for its research and its history. Where it disagrees with a record in `docs/plan/adr/`, the ADR is right. See `docs/plan/adr/README.md`.
+>
+> The continuity feature this specifies is built, but not over the storage it
+> names: ADR 0004 moved lore vectors from ClickHouse to BigQuery. The three
+> micro-agents became one `ContinuityCheck` port (D11).
+
 The **"Internal Compliance, Project Bible, and Narrative Coherence"**
 feature transforms your idea into a comprehensive audiovisual project
 management solution. It goes from being just a legal tool to becoming

@@ -8,7 +8,7 @@ The single source of truth for **how** work is done in this repo. Every agent
 
 ## 1. Project
 
-**ClearCut / IP Guardian** — an agentic script-clearance engine for independent
+**ClearCut** — an agentic script-clearance engine for independent
 film production. It extracts IP entities from a screenplay (copyright,
 trademarks, music, personality rights, locations, conexity rights), resolves
 rights holders per jurisdiction, and audits narrative continuity against a

@@ -1,3 +1,10 @@
+> **Superseded source material.** This document predates the current build and is kept for its research and its history. Where it disagrees with a record in `docs/plan/adr/`, the ADR is right. See `docs/plan/adr/README.md`.
+>
+> Historical one-pager, under the former product name (ADR 0001). Names
+> `gemini-1.5-pro` (retired, ADR 0002), ClickHouse as the vector memory
+> database (BigQuery, ADR 0004), and `python app.py` on `localhost:5000`
+> (Cloud Run on port 8080, ADR 0010).
+
  GOOGLE CLOUD GEMINI 1.5 PRO             PARALLEL SEARCH API      CLICKHOUSE ENGINE
 
 

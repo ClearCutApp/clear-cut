@@ -1,3 +1,7 @@
+> Still current as source material. `docs/plan/proposal.md` restates it
+> accurately. The single project clearance percentage it builds the value
+> proposition on is now real: `clearance_rollup` in `domain/tracker.py`.
+
 # **Global Benchmarking Study**
 
 ### **1. Market Diagnosis: Does This Exact Solution Exist Today?**

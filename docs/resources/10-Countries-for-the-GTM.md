@@ -1,3 +1,8 @@
+> Still current as source material. The market sizes and litigation costs in
+> `docs/plan/proposal.md` trace back to this file. Where the pitch deck
+> (`IP-Guardian-Agentic-Cinema-Clearance.md`) gives larger numbers, these are
+> the ones the proposal uses.
+
 The ideal sweet spot for commercializing this SaaS is markets where
 **the annual production rate is very high**, but the bulk of the
 volume comes from **small/medium production houses (SMEs), independent

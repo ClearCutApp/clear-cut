@@ -1,3 +1,10 @@
+> **Superseded source material.** This document predates the current build and is kept for its research and its history. Where it disagrees with a record in `docs/plan/adr/`, the ADR is right. See `docs/plan/adr/README.md`.
+>
+> Historical pitch deck, under the former product name (ADR 0001). Its market
+> sizes run five to forty times above `10-Countries-for-the-GTM.md`, and its
+> litigation range compresses a two-stage figure into one. `docs/plan/
+> proposal.md` uses the GTM numbers; do not reuse these.
+
 ## Slide 1
 
 ![image.png](ppt/media/image1.png "Picture 1")
