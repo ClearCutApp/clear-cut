@@ -1,7 +1,7 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import type { QuestionResponse } from "../api/client";
+import type { QuestionAnswer } from "../api/client";
 import { DEMO_PROJECT } from "../app/demo";
 import { EXAMPLE_QUESTIONS } from "../features/ask/model";
 import { stubFetch } from "../testing/fetchStub";
@@ -9,7 +9,7 @@ import { renderWithProject } from "../testing/renderWithProject";
 import { jurisdictionName } from "../theme/jurisdictions";
 import { AskView } from "./AskView";
 
-const answer: QuestionResponse = {
+const answer: QuestionAnswer = {
   text: "Blocked in Argentina: EVT-002 needs a synchronization license.",
   facts: [
     {

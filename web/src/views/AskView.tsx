@@ -1,6 +1,6 @@
 import { useState, type ReactElement } from "react";
 
-import type { QuestionResponse } from "../api/client";
+import type { QuestionAnswer } from "../api/client";
 import { AnswerPanel } from "../features/ask/AnswerPanel";
 import { EXAMPLE_QUESTIONS } from "../features/ask/model";
 import { QuestionForm } from "../features/ask/QuestionForm";
@@ -16,7 +16,7 @@ import { jurisdictionName } from "../theme/jurisdictions";
  */
 export function AskView(): ReactElement {
   const { ask, jurisdictionCode } = useProject();
-  const [answer, setAnswer] = useState<QuestionResponse | null>(null);
+  const [answer, setAnswer] = useState<QuestionAnswer | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

@@ -44,7 +44,7 @@ describe("App routes", () => {
     unmountScript();
 
     renderAt("/projects/p/ask");
-    expect(await screen.findByRole("heading", { name: "Ask" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Ask ClearCut" })).toBeInTheDocument();
   });
 
   it("answers an unknown path with the not-found view", () => {

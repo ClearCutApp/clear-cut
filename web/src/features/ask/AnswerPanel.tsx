@@ -1,11 +1,11 @@
 import { ExternalLink } from "lucide-react";
 import type { ReactElement } from "react";
 
-import type { BibleFact, Citation, QuestionResponse } from "../../api/client";
+import type { BibleFact, Citation, QuestionAnswer } from "../../api/client";
 import { FACT_KIND_LABELS } from "../../theme/labels";
 
 export interface AnswerPanelProps {
-  answer: QuestionResponse;
+  answer: QuestionAnswer;
 }
 
 function FactItem({ fact }: { fact: BibleFact }): ReactElement {

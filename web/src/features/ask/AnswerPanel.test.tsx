@@ -1,10 +1,10 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import type { QuestionResponse } from "../../api/client";
+import type { QuestionAnswer } from "../../api/client";
 import { AnswerPanel } from "./AnswerPanel";
 
-const grounded: QuestionResponse = {
+const grounded: QuestionAnswer = {
   text: "Blocked in Argentina:\nEVT-002 needs a synchronization license.",
   facts: [
     {
