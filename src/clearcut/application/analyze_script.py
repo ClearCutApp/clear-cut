@@ -39,6 +39,7 @@ script that never parsed would be a lie.
 
 from dataclasses import dataclass, replace
 
+from clearcut.application.concurrency import ContextBinder, map_bounded, run_unbound
 from clearcut.application.grounding_query import grounding_query
 from clearcut.application.ports import (
     ContinuityCheck,
@@ -126,6 +127,14 @@ class AnalyzeScript:
     Grouping them behind a parameter object would name no concept a reader
     already has; it would be a bag called `Ports` whose only purpose is to
     make this signature shorter.
+
+    `bind` is a ninth parameter of a different kind, and keyword-only to say
+    so: it is not a collaborator this use case calls for work, it is the one
+    thing the layer rule forbids this module from doing for itself. The
+    per-finding lookups now run on a thread pool, and carrying the trace
+    context onto those threads means touching `opentelemetry`, which
+    `application/` may not import (AGENT.md Section 2 rule 2). It defaults to
+    the identity binder, so a caller that traces nothing wires nothing.
     """
 
     def __init__(
@@ -138,6 +147,8 @@ class AnalyzeScript:
         tracker: TrackerStore,
         continuity: ContinuityCheck,
         findings: FindingStore,
+        *,
+        bind: ContextBinder = run_unbound,
     ) -> None:
         self._ingestion = ingestion
         self._extractor = extractor
@@ -147,6 +158,7 @@ class AnalyzeScript:
         self._tracker = tracker
         self._continuity = continuity
         self._findings = findings
+        self._bind = bind
 
     def execute(
         self,
@@ -202,12 +214,22 @@ class AnalyzeScript:
         jurisdiction: Jurisdiction,
         at: str,
     ) -> tuple[list[Finding], list[TrackerItem]]:
+        # The two lookups are the only part of this loop that waits on the
+        # network, and one finding's pair shares nothing with another's, so
+        # they run first, overlapped. Everything after -- minting `EVT-NNN`,
+        # the risk rule, the tracker item -- stays on this thread in input
+        # order, which is what keeps a finding's id tied to its position
+        # rather than to how fast its lookup answered (Decision D13).
+        enriched = map_bounded(
+            lambda entry: self._lookup(entry[0], jurisdiction), deduped, self._bind
+        )
+
         findings: list[Finding] = []
         items: list[TrackerItem] = []
-        for index, (finding, scene_numbers) in enumerate(deduped, start=1):
+        for index, ((finding, scene_numbers), (citations, claim)) in enumerate(
+            zip(deduped, enriched, strict=True), start=1
+        ):
             finding_id = f"EVT-{index:03d}"
-            citations = self._citations_for(finding, jurisdiction)
-            claim = self._claim_for(finding, jurisdiction)
             risk_level, needs_review = _resolve(finding, claim)
             resolved = replace(
                 finding, finding_id=finding_id, citations=citations, risk_level=risk_level
@@ -217,6 +239,14 @@ class AnalyzeScript:
                 _tracker_item(resolved, project_id, scene_numbers, claim, needs_review, at)
             )
         return findings, items
+
+    def _lookup(
+        self, finding: Finding, jurisdiction: Jurisdiction
+    ) -> tuple[tuple[Citation, ...], RightsClaim | None]:
+        """One finding's two enrichment calls, as a single unit of work for
+        the pool. Both keep their own `except EnrichmentMissing` below, so
+        D23's degrade-one-finding rule is unchanged by where this runs."""
+        return self._citations_for(finding, jurisdiction), self._claim_for(finding, jurisdiction)
 
     def _citations_for(self, finding: Finding, jurisdiction: Jurisdiction) -> tuple[Citation, ...]:
         if finding.category in _NO_LOOKUP_CATEGORIES:

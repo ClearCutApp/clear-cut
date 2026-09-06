@@ -33,9 +33,10 @@ because `application/` may not import opentelemetry.
 import logging
 import os
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import TypeVar, cast
 
 import clickhouse_connect
 import httpx
@@ -45,6 +46,7 @@ from google.cloud import documentai_v1 as documentai
 from google.cloud import storage
 from langchain_google_community import BigQueryVectorStore  # type: ignore[import-untyped]
 from langchain_google_vertexai import VertexAIEmbeddings
+from opentelemetry import context as otel_context
 from opentelemetry import metrics, trace
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -135,6 +137,10 @@ _OTEL_ENDPOINT_ENV_VAR = "OTEL_EXPORTER_OTLP_ENDPOINT"
 
 _ANALYSIS_SPAN = "analyze"
 
+# What `bind_context` hands back, unchanged: it wraps a callable, it does not
+# decide what that callable returns.
+_R = TypeVar("_R")
+
 
 def _span_exporter() -> OTLPSpanExporter | None:
     """The trace half of the OTLP exporter ADR 0008 sends to Grafana Cloud,
@@ -216,6 +222,34 @@ def run_traced(script_id: str, work: Work) -> None:
         work()
 
 
+def bind_context(work: Callable[[], _R]) -> Callable[[], _R]:
+    """Carries this thread's OpenTelemetry context onto whichever thread runs
+    `work`, so a span opened inside it nests under the caller's span instead
+    of starting a trace of its own.
+
+    Here rather than in `application/concurrency.py` for the same reason
+    `run_traced` is here rather than in a use case: `application/` may not
+    import opentelemetry (AGENT.md Section 2 rule 2). Without this, the
+    per-finding `ground` and `research` spans the adapters open on a pool
+    thread each become a root span with a fresh trace id, and one analysis
+    arrives in Grafana as a handful of unrelated traces.
+
+    `attach` returns a token that `detach` needs back, and the pool reuses its
+    threads across items, so the `try/finally` is not decoration: a leaked
+    attach would leave the next item running under a finished span's context.
+    """
+    context = otel_context.get_current()
+
+    def bound() -> _R:
+        token = otel_context.attach(context)
+        try:
+            return work()
+        finally:
+            otel_context.detach(token)
+
+    return bound
+
+
 def run_traced_in_background(script_id: str, work: Work) -> None:
     """`run_traced` on a daemon thread, so the request that queued the run
     returns while it is still going (ADR 0013).
@@ -270,10 +304,27 @@ def _build_mock_use_cases(runner: Runner) -> _UseCaseGraph:
     jobs = InMemoryAnalysisJobStore()
     script_storage = InMemoryScriptStorage()
     analyze_script = AnalyzeScript(
-        ingestion, extractor, grounding, research, lore, tracker, continuity, findings
+        ingestion,
+        extractor,
+        grounding,
+        research,
+        lore,
+        tracker,
+        continuity,
+        findings,
+        bind=bind_context,
     )
     evaluate_delta = EvaluateDelta(
-        ingestion, extractor, grounding, research, lore, tracker, continuity, notifier, findings
+        ingestion,
+        extractor,
+        grounding,
+        research,
+        lore,
+        tracker,
+        continuity,
+        notifier,
+        findings,
+        bind=bind_context,
     )
     return _UseCaseGraph(
         analyze_script=analyze_script,
@@ -392,10 +443,27 @@ def _build_live_use_cases(
     script_storage = GcsScriptStorage(storage_client, intake_bucket)
 
     analyze_script = AnalyzeScript(
-        ingestion, extractor, grounding, research, lore, tracker, continuity, findings
+        ingestion,
+        extractor,
+        grounding,
+        research,
+        lore,
+        tracker,
+        continuity,
+        findings,
+        bind=bind_context,
     )
     evaluate_delta = EvaluateDelta(
-        ingestion, extractor, grounding, research, lore, tracker, continuity, notifier, findings
+        ingestion,
+        extractor,
+        grounding,
+        research,
+        lore,
+        tracker,
+        continuity,
+        notifier,
+        findings,
+        bind=bind_context,
     )
     return _UseCaseGraph(
         analyze_script=analyze_script,

@@ -8,12 +8,14 @@ their adapter modules for realism only, the same precedent
 because the layer guard restricts `src/clearcut/application`, not `tests/`.
 """
 
+import threading
+import time
 from typing import Any
 
 import pytest
 
 from clearcut.adapters.gcp.vertex_search import NoGroundedSource
-from clearcut.adapters.parallel.research import NoRightsHolderFound
+from clearcut.adapters.parallel.research import NoRightsHolderFound, ResearchUnavailable
 from clearcut.application.analyze_script import _NO_LOOKUP_CATEGORIES, AnalysisReport, AnalyzeScript
 from clearcut.application.grounding_query import _GROUNDING_TERMS
 from clearcut.application.ports import (
@@ -831,3 +833,169 @@ def test_every_category_that_grounds_has_search_terms() -> None:
         terms = _GROUNDING_TERMS[category]
         assert terms.strip()
         assert category.value not in terms
+
+
+# --- Change B: per-finding enrichment runs on a bounded thread pool ---------
+#
+# Each finding's two lookups are blocking HTTPS calls -- the Parallel Task API
+# `core` processor alone takes 77-169s -- and the lookups for two findings
+# share nothing. `application/concurrency.map_bounded` overlaps them; these
+# four tests pin what that must not change: ids stay in first-appearance
+# order, a hard failure still fails the run, and D23's degrade-one-finding
+# rule still degrades exactly one.
+
+
+class _BarrierResearch:
+    """A `RightsResearch` that proves two lookups were in flight at once.
+
+    The barrier has two parties, not three, because the claim under test is
+    "the pool overlaps lookups", not "the pool is at least three wide" -- a
+    narrower `_MAX_WORKERS` must not turn this test into a deadlock. Only the
+    first two calls wait: a third arriving at an already-tripped barrier would
+    wait alone for a second party that never comes, and break it on timeout.
+
+    Run serially, the first call waits for a partner that cannot exist until
+    it returns, so the timeout fires and `wait()` raises `BrokenBarrierError`.
+    """
+
+    def __init__(self, barrier: threading.Barrier) -> None:
+        self._barrier = barrier
+        self._lock = threading.Lock()
+        self.calls: list[str] = []
+
+    def find(self, asset_name: str, category: Category, jurisdiction: Jurisdiction) -> RightsClaim:
+        with self._lock:
+            self.calls.append(asset_name)
+            waits = len(self.calls) <= 2
+        if waits:
+            self._barrier.wait()
+        return _claim()
+
+
+class _SlowResearch:
+    """Latency inversely proportional to the finding's position, so the last
+    asset's lookup finishes first. Any implementation that collected results
+    as they completed would hand the loop its findings reversed."""
+
+    def __init__(self, delays: dict[str, float]) -> None:
+        self._delays = delays
+
+    def find(self, asset_name: str, category: Category, jurisdiction: Jurisdiction) -> RightsClaim:
+        time.sleep(self._delays.get(asset_name, 0.0))
+        return _claim(holder=asset_name, contact=f"legal@{asset_name.lower()}.example")
+
+
+def test_enrichment_runs_concurrently_across_findings() -> None:
+    barrier = threading.Barrier(2, timeout=5)
+    research = _BarrierResearch(barrier)
+    findings = [
+        _finding(finding_id="uuid-a", raw_text="Quilmes", scene_number=1),
+        _finding(finding_id="uuid-b", raw_text="Ferrari", scene_number=2),
+        _finding(finding_id="uuid-c", raw_text="Coca-Cola", scene_number=3),
+    ]
+    use_case = AnalyzeScript(
+        ingestion=_Ingestion([_scene(1), _scene(2), _scene(3)]),
+        extractor=_Extractor(findings),
+        grounding=_Grounding(),
+        research=research,
+        lore=_LoreStore(),
+        tracker=_Tracker(),
+        continuity=_Continuity(),
+        findings=_FindingStore(),
+    )
+
+    report = use_case.execute("proj-1", "scr-1", 1, "gs://bucket/v1.pdf", _MEXICO, _AT)
+
+    assert len(report.findings) == 3
+    assert sorted(research.calls) == ["Coca-Cola", "Ferrari", "Quilmes"]
+
+
+def test_finding_ids_stay_in_first_appearance_order_under_concurrency() -> None:
+    delays = {"Quilmes": 0.05, "Ferrari": 0.03, "Coca-Cola": 0.0}
+    findings = [
+        _finding(finding_id="uuid-a", raw_text="Quilmes", scene_number=1),
+        _finding(finding_id="uuid-b", raw_text="Ferrari", scene_number=2),
+        _finding(finding_id="uuid-c", raw_text="Coca-Cola", scene_number=3),
+    ]
+    use_case = AnalyzeScript(
+        ingestion=_Ingestion([_scene(1), _scene(2), _scene(3)]),
+        extractor=_Extractor(findings),
+        grounding=_Grounding(),
+        research=_SlowResearch(delays),
+        lore=_LoreStore(),
+        tracker=_Tracker(),
+        continuity=_Continuity(),
+        findings=_FindingStore(),
+    )
+
+    report = use_case.execute("proj-1", "scr-1", 1, "gs://bucket/v1.pdf", _MEXICO, _AT)
+
+    assert [finding.finding_id for finding in report.findings] == ["EVT-001", "EVT-002", "EVT-003"]
+    # Order alone is not enough: an id could keep its slot while carrying
+    # another asset's claim. Each contact must be the one its own asset's
+    # lookup returned.
+    assert [item.contact for item in report.tracker_items] == [
+        "legal@quilmes.example",
+        "legal@ferrari.example",
+        "legal@coca-cola.example",
+    ]
+
+
+def test_a_source_unavailable_from_one_finding_still_fails_the_run() -> None:
+    """The pool must not turn a hard failure into a degraded finding: the
+    D23 catch is `EnrichmentMissing` by name, and `ResearchUnavailable` is a
+    `SourceUnavailable` (ADR 0011). A partial report from a run whose source
+    was down would be a lie."""
+    research = _Research(
+        raise_for="Ferrari", error=ResearchUnavailable("Parallel Task API returned 503")
+    )
+    findings = [
+        _finding(finding_id="uuid-a", raw_text="Quilmes", scene_number=1),
+        _finding(finding_id="uuid-b", raw_text="Ferrari", scene_number=2),
+        _finding(finding_id="uuid-c", raw_text="Coca-Cola", scene_number=3),
+    ]
+    use_case = _use_case(
+        scenes=[_scene(1), _scene(2), _scene(3)], findings=findings, research=research
+    )
+
+    with pytest.raises(SourceUnavailable):
+        use_case.execute("proj-1", "scr-1", 1, "gs://bucket/v1.pdf", _MEXICO, _AT)
+
+
+def test_an_enrichment_missing_from_one_finding_degrades_only_that_finding() -> None:
+    """D23, unchanged by the pool: one unresolvable rights holder and one
+    ungrounded citation degrade that finding alone."""
+    citation = Citation(uri="https://example.test/ley", title="Ley 22.362", snippet="marcas")
+    grounding = _Grounding(
+        answer=GroundedAnswer(text="", citations=(citation,)),
+        raise_for="obra musical",
+        error=NoGroundedSource("derecho de autor obra musical"),
+    )
+    research = _Research(
+        raise_for="Hotel California", error=NoRightsHolderFound("Hotel California")
+    )
+    findings = [
+        _finding(finding_id="uuid-a", raw_text="Quilmes", scene_number=1),
+        _finding(
+            finding_id="uuid-b",
+            raw_text="Hotel California",
+            category=Category.COPYRIGHT_WORKS,
+            scene_number=2,
+        ),
+        _finding(finding_id="uuid-c", raw_text="Coca-Cola", scene_number=3),
+    ]
+    use_case = _use_case(
+        scenes=[_scene(1), _scene(2), _scene(3)],
+        findings=findings,
+        grounding=grounding,
+        research=research,
+    )
+
+    report = use_case.execute("proj-1", "scr-1", 1, "gs://bucket/v1.pdf", _MEXICO, _AT)
+
+    assert report.findings[1].citations == ()
+    assert report.tracker_items[1].contact == ""
+    assert report.findings[0].citations == (citation,)
+    assert report.findings[2].citations == (citation,)
+    assert report.tracker_items[0].contact == "legal@quilmes.example"
+    assert report.tracker_items[2].contact == "legal@quilmes.example"

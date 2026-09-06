@@ -28,11 +28,13 @@ import json
 import logging
 import os
 import socket
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, NoReturn, cast
 
 import pytest
 from flask import Flask
+from opentelemetry import trace
 
 from clearcut import composition
 from clearcut.adapters.bigquery.lore_store import BigQueryLoreStore
@@ -64,6 +66,7 @@ from clearcut.composition import (
     create_app,
     run_traced,
 )
+from tests.unit.conftest import install_in_memory_telemetry
 
 _ANALYZE_BODY = {
     "project_id": "demo-project",
@@ -125,6 +128,12 @@ def test_build_mock_use_cases_wires_the_demo_adapters_by_type() -> None:
     assert isinstance(graph.analyze_script._tracker, InMemoryTrackerStore)
     assert isinstance(graph.analyze_script._continuity, InMemoryContinuityCheck)
     assert isinstance(graph.evaluate_delta._notifier, InMemoryNotifier)
+    # Change B: the demo adapters open the `ground` and `research` spans, and
+    # the enrichment that calls them now runs on a pool. Without the binder
+    # here, mock mode is where the detached-trace regression shows up first
+    # (`test_observability.py`'s one-trace-id assertion).
+    assert graph.analyze_script._bind is composition.bind_context
+    assert graph.evaluate_delta._bind is composition.bind_context
     assert isinstance(graph.list_tracker_items._tracker, InMemoryTrackerStore)
     assert isinstance(graph.resolve_finding._notifier, InMemoryNotifier)
     assert isinstance(graph.answer_project_question._lore, InMemoryLoreStore)
@@ -399,6 +408,10 @@ def test_build_live_use_cases_wires_the_eight_live_adapters_with_no_socket(
     assert isinstance(graph.analyze_script._lore, BigQueryLoreStore)
     assert isinstance(graph.analyze_script._tracker, ClickHouseTrackerStore)
     assert isinstance(graph.evaluate_delta._notifier, WebhookNotifier)
+    # The branch that actually pays the 77-169s Parallel round trips, so the
+    # branch whose traces must not come apart (Change B).
+    assert graph.analyze_script._bind is composition.bind_context
+    assert graph.evaluate_delta._bind is composition.bind_context
 
 
 def test_build_live_use_cases_wires_answer_project_question_to_the_live_collaborators(
@@ -650,3 +663,55 @@ def test_the_build_dir_falls_back_to_the_package_layout(tmp_path: Path) -> None:
         )
     finally:
         os.chdir(cwd)
+
+
+# ---------------------------------------------------------------------------
+# Change B: `bind_context` is what keeps one analysis one trace once the
+# per-finding lookups run on a pool. `test_observability.py` proves that
+# end to end through the mock graph; this proves the primitive itself, at the
+# boundary where it either works or silently does not.
+# ---------------------------------------------------------------------------
+
+
+def test_bind_context_keeps_a_span_in_the_same_trace_across_a_thread_boundary(
+    isolated_otel: None,
+) -> None:
+    span_exporter, _ = install_in_memory_telemetry()
+    tracer = trace.get_tracer(__name__)
+
+    def _child() -> None:
+        with tracer.start_as_current_span("child"):
+            pass
+
+    with tracer.start_as_current_span("parent"):
+        bound = composition.bind_context(_child)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            pool.submit(bound).result()
+
+    spans = {span.name: span for span in span_exporter.get_finished_spans()}
+    assert spans["child"].context.trace_id == spans["parent"].context.trace_id
+    assert spans["child"].parent is not None
+    assert spans["child"].parent.span_id == spans["parent"].context.span_id
+
+
+def test_an_unbound_call_across_a_thread_boundary_starts_its_own_trace(
+    isolated_otel: None,
+) -> None:
+    """The negative half, so the test above cannot pass by accident: without
+    `bind_context` the worker starts from an empty context and mints a root
+    span with a trace id of its own. This is the regression Change B had to
+    prevent, stated once, directly."""
+    span_exporter, _ = install_in_memory_telemetry()
+    tracer = trace.get_tracer(__name__)
+
+    def _child() -> None:
+        with tracer.start_as_current_span("child"):
+            pass
+
+    with tracer.start_as_current_span("parent"):
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            pool.submit(_child).result()
+
+    spans = {span.name: span for span in span_exporter.get_finished_spans()}
+    assert spans["child"].context.trace_id != spans["parent"].context.trace_id
+    assert spans["child"].parent is None
