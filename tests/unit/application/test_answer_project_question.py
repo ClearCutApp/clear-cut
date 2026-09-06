@@ -56,7 +56,7 @@ class _RecordingTrackerStore:
     def save(self, items: list[TrackerItem]) -> None:
         return None
 
-    def latest(self, item_id: str) -> TrackerItem:
+    def latest(self, project_id: str, item_id: str) -> TrackerItem:
         raise KeyError(item_id)
 
     def latest_for_project(self, project_id: str) -> list[TrackerItem]:
@@ -81,7 +81,7 @@ class _RaisingTrackerStore:
     def save(self, items: list[TrackerItem]) -> None:
         return None
 
-    def latest(self, item_id: str) -> TrackerItem:
+    def latest(self, project_id: str, item_id: str) -> TrackerItem:
         raise KeyError(item_id)
 
     def latest_for_project(self, project_id: str) -> list[TrackerItem]:
@@ -455,6 +455,9 @@ class _PositionalOnlyLoreStore:
     def index(self, a: str, b: list[BibleFact | Scene]) -> None:
         raise NotImplementedError
 
+    def facts(self, a: str) -> list[BibleFact]:
+        raise NotImplementedError
+
     def search(self, a: str, b: str, c: int) -> list[BibleFact]:
         return []
 
@@ -472,7 +475,7 @@ class _PositionalOnlyTrackerStore:
     def save(self, a: list[TrackerItem]) -> None:
         return None
 
-    def latest(self, a: str) -> TrackerItem:
+    def latest(self, a: str, b: str) -> TrackerItem:
         raise KeyError(a)
 
     def latest_for_project(self, a: str) -> list[TrackerItem]:

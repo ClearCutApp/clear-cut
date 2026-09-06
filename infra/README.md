@@ -51,10 +51,11 @@ authenticated (`gcloud auth login`), and pointed at that project
    `tests/unit/test_environment_contract.py` fails if the name appears in
    `.env.example`.
 8. `.venv/bin/python infra/provision_tracker_schema.py --dry-run` — review the
-   two `CREATE TABLE IF NOT EXISTS` statements, then drop `--dry-run` to create
-   `tracker_items` and `script_versions` in ClickHouse Cloud. It reads
-   `CLICKHOUSE_HOST`, `CLICKHOUSE_USER` and `CLICKHOUSE_PASSWORD` from the
-   environment and exits naming any that are missing.
+   five `CREATE TABLE IF NOT EXISTS` statements, then drop `--dry-run` to create
+   `tracker_items`, `script_versions`, `projects`, `findings` and
+   `analysis_jobs` in ClickHouse Cloud. It reads `CLICKHOUSE_HOST`,
+   `CLICKHOUSE_USER` and `CLICKHOUSE_PASSWORD` from the environment and exits
+   naming any that are missing.
 
    It needs the project interpreter, not a bare `python3`: it reuses
    `ClickHouseTrackerStore.ensure_schema()` so the schema has one definition
@@ -63,16 +64,38 @@ authenticated (`gcloud auth login`), and pointed at that project
    ClickHouse Cloud itself is still created by hand — this script provisions
    the tables inside a service that already exists.
 
-9. `.venv/bin/python infra/seed_project_bible.py --dry-run` — review the fact
+   On a service provisioned before ADR 0014, `tracker_items` and
+   `script_versions` carry the old keys and `CREATE TABLE IF NOT EXISTS` leaves
+   them alone. ClickHouse cannot re-key a `MergeTree` in place, so correcting
+   them means `--recreate`, which drops all five tables and every row in them.
+   Rehearse it with `--recreate --force --dry-run`; without `--force` the
+   script prints what it would destroy and stops. The demo project comes back
+   from `infra/seed_project_bible.py` and one analyze call.
+
+9. `.venv/bin/python infra/provision_lore_schema.py --dry-run` — review the
+   three `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` statements, then drop
+   `--dry-run` to widen `clearcut.lore_vectors` with `fact_id`, `fact_kind` and
+   `source`. It reads `GOOGLE_CLOUD_PROJECT` and exits naming it if absent.
+
+   `BigQueryVectorStore` fixes the table's schema the first time it writes and
+   rejects every later insert carrying a column the table lacks, so on a table
+   provisioned before ADR 0014 every `index` call answers `400 Cannot add
+   fields (field: fact_id)` and no bible fact can be written at all. The
+   statements are additive: rows already there keep their six columns and read
+   back through the adapter's fallback. Running it twice changes nothing, and a
+   table the vector store created fresh with all nine columns is left alone.
+
+10. `.venv/bin/python infra/seed_project_bible.py --dry-run` — review the fact
    it would index, then drop `--dry-run` to write it into the BigQuery lore
    table. It reads `GOOGLE_CLOUD_PROJECT` and exits naming it if absent.
 
    The fact comes from `adapters/demo/scenario.py`, so what this seeds and what
-   mock mode serves cannot disagree about which fact scene 3 contradicts. It is
-   additive: running it twice indexes the fact twice, because `LoreStore` has
-   no way to remove a row (SDD section 4.3).
+   mock mode serves cannot disagree about which fact scene 3 contradicts.
+   Running it twice indexes nothing the second time: it reads the project's
+   facts first and matches on the hash of the text, which it has to, because
+   `LoreStore` has no way to remove a row (SDD section 4.3).
 
-10. `.venv/bin/python infra/fetch_legal_corpus.py AR --dry-run` — review the
+11. `.venv/bin/python infra/fetch_legal_corpus.py AR --dry-run` — review the
     searches, then drop `--dry-run` to ask Parallel for each category's statute.
     It needs `PARALLEL_API_KEY` and prints candidate URLs rather than uploading
     them: it rejects anything not on a government or intergovernmental domain,
@@ -83,7 +106,7 @@ authenticated (`gcloud auth login`), and pointed at that project
     the eight clearance categories currently ground against nothing for
     Argentina, because no statute covering them has been loaded.
 
-11. `.venv/bin/python infra/provision_grafana_dashboard.py --dry-run` — review
+12. `.venv/bin/python infra/provision_grafana_dashboard.py --dry-run` — review
     the four panels, then drop `--dry-run` to POST `infra/grafana_dashboard.json`
     to Grafana Cloud. It reads `GRAFANA_URL` and `GRAFANA_TOKEN` and exits
     naming any that are missing. Those are a Grafana service account, not the

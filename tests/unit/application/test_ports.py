@@ -42,7 +42,7 @@ class FakeTrackerStore:
     def save(self, items: list[TrackerItem]) -> None:
         return None
 
-    def latest(self, item_id: str) -> TrackerItem:
+    def latest(self, project_id: str, item_id: str) -> TrackerItem:
         raise KeyError(item_id)
 
     def latest_for_project(self, project_id: str) -> list[TrackerItem]:

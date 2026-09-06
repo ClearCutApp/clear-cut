@@ -39,30 +39,35 @@ def load_script() -> ModuleType:
 
 
 class RecordingLoreStore:
-    """Records what was indexed, and answers `search` the way BigQuery does.
+    """Records what was indexed, and answers `facts` the way BigQuery does.
 
-    The round trip is the point. `BigQueryLoreStore._bible_fact_from` rebuilds
-    `fact_id` from the stored `content_hash` column, so a fact that went in as
-    `FACT-001` comes back as a hex digest, with `source` flattened to
-    "episode - p.0". A guard that recognised an already-seeded fact by its
-    `fact_id` would therefore never match, and would re-index on every run
-    while looking correct.
+    The corpus holds rows of two shapes, and the guard has to recognise the
+    seeded fact in both. A row written since ADR 0014 carries `fact_id`,
+    `fact_kind` and `source`, so it reads back as the fact that went in. A row
+    written before them carries none of the three, so `BigQueryLoreStore`
+    rebuilds `fact_id` from the `content_hash` column and flattens `source` to
+    "episode - p.0" -- and `FACT-001` answers to a hex digest afterwards.
 
-    This fake reproduces that faithfully so the guard is tested against what
-    BigQuery actually returns rather than against what was handed to it.
+    `legacy=True` reproduces the older shape, so the guard is tested against
+    both of the things BigQuery can actually return.
     """
 
-    def __init__(self, already_holding: list[BibleFact] | None = None) -> None:
+    def __init__(
+        self, already_holding: list[BibleFact] | None = None, legacy: bool = False
+    ) -> None:
         self.indexed: list[tuple[str, list[Any]]] = []
         self._stored = list(already_holding or [])
+        self._legacy = legacy
 
     def index(self, project_id: str, records: list[Any]) -> None:
         self.indexed.append((project_id, records))
         self._stored.extend(records)
 
-    def search(self, project_id: str, query: str, limit: int) -> list[BibleFact]:
+    def facts(self, project_id: str) -> list[BibleFact]:
         if project_id != scenario.PROJECT_ID:
             return []
+        if not self._legacy:
+            return list(self._stored)
         return [
             BibleFact(
                 fact_id=content_hash(fact.text),
@@ -71,7 +76,7 @@ class RecordingLoreStore:
                 source="episode - p.0",
             )
             for fact in self._stored
-        ][:limit]
+        ]
 
 
 def test_seeds_the_scenario_bible_fact_into_the_demo_project() -> None:
@@ -168,21 +173,41 @@ def test_seeding_a_store_that_already_holds_the_fact_indexes_nothing() -> None:
     assert store.indexed == []
 
 
-def test_the_guard_survives_the_fact_id_round_trip() -> None:
+def test_a_row_written_before_the_identity_columns_still_counts_as_seeded() -> None:
     """The trap this guard has to avoid.
 
-    What comes back from BigQuery is not what went in: `fact_id` is rebuilt
-    from the `content_hash` column, so the stored fact answers to a hex digest
-    rather than to `FACT-001`. Matching on `fact_id` would silently never
-    match. This asserts the fake really does return a different id, so the
-    passing test above cannot be passing for the wrong reason.
+    A row already in the corpus comes back with `fact_id` rebuilt from its
+    content hash, so it answers to a hex digest rather than to `FACT-001`.
+    Matching on `fact_id` alone would never match it, and the seeder would
+    add a second copy on every run while looking correct.
     """
-    store = RecordingLoreStore(already_holding=[scenario.BIBLE_FACT])
+    store = RecordingLoreStore(already_holding=[scenario.BIBLE_FACT], legacy=True)
 
-    stored = store.search(scenario.PROJECT_ID, "anything", 5)
+    load_script().seed(store)
+
+    assert store.indexed == []
+
+
+def test_the_legacy_shape_really_does_return_a_different_id() -> None:
+    """Proof the test above is not passing for the wrong reason."""
+    store = RecordingLoreStore(already_holding=[scenario.BIBLE_FACT], legacy=True)
+
+    stored = store.facts(scenario.PROJECT_ID)
 
     assert stored[0].fact_id != scenario.BIBLE_FACT.fact_id
     assert stored[0].fact_id == content_hash(scenario.BIBLE_FACT.text)
+
+
+def test_a_row_written_with_its_own_identity_also_counts_as_seeded() -> None:
+    """Since ADR 0014 the fact reads back as the fact that went in, so the
+    guard has to recognise `FACT-001` as readily as the digest."""
+    store = RecordingLoreStore(already_holding=[scenario.BIBLE_FACT])
+
+    stored = store.facts(scenario.PROJECT_ID)
+
+    assert stored[0].fact_id == scenario.BIBLE_FACT.fact_id
+    load_script().seed(store)
+    assert store.indexed == []
 
 
 def test_a_different_project_is_not_mistaken_for_this_one() -> None:

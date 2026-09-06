@@ -118,7 +118,8 @@ def test_existing_api_route_is_not_shadowed_by_the_spa_catch_all(
 
     response = client.post("/api/projects/demo-project/scripts", json=_ANALYZE_BODY)
 
-    assert response.status_code == 200
+    # 202: the analysis is queued, not run inside the request (ADR 0013).
+    assert response.status_code == 202
     assert response.content_type.startswith("application/json")
 
 
@@ -177,7 +178,7 @@ def test_missing_build_dir_still_serves_every_api_route(
 
     response = client.post("/api/projects/demo-project/scripts", json=_ANALYZE_BODY)
 
-    assert response.status_code == 200
+    assert response.status_code == 202
 
 
 # ---------------------------------------------------------------------------

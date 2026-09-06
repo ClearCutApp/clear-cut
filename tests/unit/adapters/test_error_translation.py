@@ -25,7 +25,7 @@ from clearcut.domain.errors import EnrichmentMissing, RecordNotFound, SourceUnav
 
 def test_tracker_item_not_found_is_a_record_not_found() -> None:
     with pytest.raises(RecordNotFound):
-        raise TrackerItemNotFound("EVT-001")
+        raise TrackerItemNotFound("prj-1", "EVT-001")
 
 
 def test_no_grounded_source_is_an_enrichment_missing() -> None:
@@ -80,7 +80,7 @@ def test_notification_failed_is_a_source_unavailable() -> None:
 
 def test_tracker_item_not_found_message_still_names_the_item_id() -> None:
     try:
-        raise TrackerItemNotFound("EVT-042")
+        raise TrackerItemNotFound("prj-1", "EVT-042")
     except RecordNotFound as error:
         assert "EVT-042" in str(error)
     else:

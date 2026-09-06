@@ -14,7 +14,16 @@ dependencies = [
   "gunicorn==26.2.0",
   "clickhouse-connect==1.7.2",
   "google-api-core==2.34.0",
+  # Imported by infra/provision_lore_schema.py, which widens the BigQuery lore
+  # table; test_declared_dependencies.py scans src/ only, so it cannot see it.
+  "google-cloud-bigquery==3.44.0",
   "google-cloud-documentai==3.15.0",
+  # `adapters/gcp/storage.py` types its client against a local Protocol, so
+  # nothing under src/ imports this yet and test_declared_dependencies.py
+  # cannot see it. The composition root builds the real
+  # `google.cloud.storage.Client`, and Document AI reads the uploaded object
+  # out of the bucket this writes it to.
+  "google-cloud-storage==3.13.1",
   "google-genai==2.20.0",
   "langchain-google-community[featurestore]==5.0.0",
   "langchain-google-vertexai==3.2.4",

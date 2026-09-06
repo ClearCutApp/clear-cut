@@ -15,10 +15,10 @@ from typing import Any
 import pytest
 
 from clearcut.adapters.clickhouse.client import ClickHouseUnavailable
+from clearcut.adapters.clickhouse.scripts import script_to_row as _script_to_row
 from clearcut.adapters.clickhouse.tracker import (
     ClickHouseTrackerStore,
     TrackerItemNotFound,
-    _script_to_row,
     _tracker_item_to_row,
 )
 from clearcut.application.ports import TrackerStore
@@ -128,7 +128,10 @@ def test_adapter_satisfies_the_trackerstore_port() -> None:
     assert isinstance(checked, TrackerStore)
 
 
-def test_ensure_schema_emits_tracker_items_as_replacingmergetree_keyed_on_item_id() -> None:
+def test_ensure_schema_keys_tracker_items_on_the_project_as_well_as_the_item() -> None:
+    """ADR 0014: `ORDER BY item_id` alone made two projects' `EVT-001` one
+    row, and the next background merge kept the higher version and dropped
+    the other. The project has to be in the key for both to survive."""
     client = FakeChClient()
     adapter = ClickHouseTrackerStore(client)
 
@@ -136,17 +139,22 @@ def test_ensure_schema_emits_tracker_items_as_replacingmergetree_keyed_on_item_i
 
     tracker_ddl = next(cmd for cmd in client.commands if "tracker_items" in cmd)
     assert "ReplacingMergeTree(version)" in tracker_ddl
-    assert "ORDER BY item_id" in tracker_ddl
+    assert "ORDER BY (project_id, item_id)" in tracker_ddl
 
 
-def test_ensure_schema_emits_script_versions_as_replacingmergetree() -> None:
+def test_ensure_schema_keeps_every_script_version_rather_than_the_newest() -> None:
+    """ADR 0014: `ReplacingMergeTree(version) ORDER BY project_id` left one
+    row per project, so uploading v2 erased v1 and the delta path had
+    nothing to diff against. A script version is a row to keep, not an older
+    copy to collapse, so the engine takes no version argument."""
     client = FakeChClient()
     adapter = ClickHouseTrackerStore(client)
 
     adapter.ensure_schema()
 
     script_ddl = next(cmd for cmd in client.commands if "script_versions" in cmd)
-    assert "ReplacingMergeTree(version)" in script_ddl
+    assert "ORDER BY (project_id, script_id)" in script_ddl
+    assert "ReplacingMergeTree(version)" not in script_ddl
 
 
 def test_save_inserts_one_row_per_item_carrying_its_version() -> None:
@@ -283,7 +291,7 @@ def test_latest_returns_the_stored_item_at_its_highest_version() -> None:
     fresh = _item(item_id="EVT-001", version=2, state=TrackerState.CLEARED)
     client.set_result([tuple(_tracker_item_to_row(stale)), tuple(_tracker_item_to_row(fresh))])
 
-    result = adapter.latest("EVT-001")
+    result = adapter.latest("proj-a", "EVT-001")
 
     assert result.version == 2
     assert result.state == TrackerState.CLEARED
@@ -299,10 +307,26 @@ def test_latest_filters_by_item_id_before_selecting_the_highest_version() -> Non
     foreign = _item(item_id="EVT-002", version=9, state=TrackerState.CLEARED)
     client.set_result([tuple(_tracker_item_to_row(target)), tuple(_tracker_item_to_row(foreign))])
 
-    result = adapter.latest("EVT-001")
+    result = adapter.latest("proj-a", "EVT-001")
 
     assert result.item_id == "EVT-001"
     assert result.version == 1
+
+
+def test_latest_tells_apart_two_projects_that_both_minted_evt_001() -> None:
+    """The collision ADR 0014 exists to close: without `project_id` in the
+    read, the other project's higher-versioned row is what comes back."""
+    client = FakeChClient()
+    adapter = ClickHouseTrackerStore(client)
+    ours = _item(item_id="EVT-001", project_id="proj-a", version=1, state=TrackerState.BLOCKED)
+    theirs = _item(item_id="EVT-001", project_id="proj-b", version=9, state=TrackerState.CLEARED)
+    client.set_result([tuple(_tracker_item_to_row(ours)), tuple(_tracker_item_to_row(theirs))])
+
+    result = adapter.latest("proj-a", "EVT-001")
+
+    assert result.project_id == "proj-a"
+    assert result.version == 1
+    assert result.state == TrackerState.BLOCKED
 
 
 def test_latest_round_trips_needs_review_draft_email_and_scene_numbers() -> None:
@@ -316,7 +340,7 @@ def test_latest_round_trips_needs_review_draft_email_and_scene_numbers() -> None
     )
     client.set_result([tuple(_tracker_item_to_row(item))])
 
-    result = adapter.latest("EVT-001")
+    result = adapter.latest("proj-a", "EVT-001")
 
     assert result.needs_review is True
     assert result.draft_email == "rights@example.com"
@@ -361,7 +385,7 @@ def test_latest_raises_not_found_naming_the_id_for_an_unknown_item() -> None:
     client.set_result([])
 
     with pytest.raises(TrackerItemNotFound) as excinfo:
-        adapter.latest("missing-item")
+        adapter.latest("proj-a", "missing-item")
 
     assert "missing-item" in str(excinfo.value)
 
@@ -377,7 +401,7 @@ def test_latest_wraps_a_client_error_as_tracker_unavailable() -> None:
     adapter = ClickHouseTrackerStore(ExplodingChClient())
 
     with pytest.raises(ClickHouseUnavailable):
-        adapter.latest("EVT-001")
+        adapter.latest("proj-a", "EVT-001")
 
 
 def test_record_script_wraps_a_client_error_as_tracker_unavailable() -> None:

@@ -15,6 +15,12 @@ D24). The run's `Script` is recorded to `TrackerStore.latest_script` after
 `tracker.save`, so `EvaluateDelta` has a previous version to diff against
 (CHECKPOINTS.md Decision D30).
 
+The findings themselves are written to `FindingStore` in that same step (ADR
+0014). A tracker item carries no `raw_text`, no `category`, no `page` and no
+citations, so without this write the evidence behind an item exists only in
+the response body of the request that produced it: reopening the script
+shows a tracker row whose reason nobody can read back.
+
 `finding_id` is minted here as `EVT-NNN`, sequential in first-appearance
 order, discarding the extractor's placeholder UUID: an adapter cannot know a
 project's existing sequence, and a UUID is not stable across script versions,
@@ -36,6 +42,7 @@ from dataclasses import dataclass, replace
 from clearcut.application.grounding_query import grounding_query
 from clearcut.application.ports import (
     ContinuityCheck,
+    FindingStore,
     LegalGrounding,
     LoreStore,
     RightsClaim,
@@ -109,7 +116,17 @@ def _tracker_item(
 
 class AnalyzeScript:
     """`AnalyzeScript(ingestion, extractor, grounding, research, lore, tracker,
-    continuity)` (SDD Section 3, D11)."""
+    continuity, findings)` (SDD Section 3, D11, ADR 0014).
+
+    Eight constructor parameters, against AGENT.md Section 4's soft guide of
+    four. That guide is soft, and this is the case to argue with it: the use
+    case is the pipeline itself, and each parameter is a distinct I/O
+    boundary it crosses -- Document AI, two Gemini calls, Vertex AI Search,
+    the Parallel Task API, the embedding index, and two ClickHouse writes.
+    Grouping them behind a parameter object would name no concept a reader
+    already has; it would be a bag called `Ports` whose only purpose is to
+    make this signature shorter.
+    """
 
     def __init__(
         self,
@@ -120,6 +137,7 @@ class AnalyzeScript:
         lore: LoreStore,
         tracker: TrackerStore,
         continuity: ContinuityCheck,
+        findings: FindingStore,
     ) -> None:
         self._ingestion = ingestion
         self._extractor = extractor
@@ -128,6 +146,7 @@ class AnalyzeScript:
         self._lore = lore
         self._tracker = tracker
         self._continuity = continuity
+        self._findings = findings
 
     def execute(
         self,
@@ -155,6 +174,12 @@ class AnalyzeScript:
         records: list[BibleFact | Scene] = list(scenes)
         self._lore.index(project_id, records)
         self._tracker.save(items)
+        # Beside the tracker write, not after `record_script`: the item and
+        # the finding it came from are one fact, and a run that stored half
+        # of it leaves a tracker row nothing explains (ADR 0014). Keyed by
+        # this run's own `script_id`, because reopening version 2 must show
+        # what version 2 triggered.
+        self._findings.save(project_id, script_id, findings)
         self._tracker.record_script(script)
 
         return AnalysisReport(script=script, findings=tuple(findings), tracker_items=tuple(items))

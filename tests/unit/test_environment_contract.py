@@ -211,3 +211,40 @@ def test_live_tier_requirements_are_documented() -> None:
     assert wanted - in_doc == set(), (
         f"wanted by tests/live/, missing from infrastructure.md section 8: {wanted - in_doc}"
     )
+
+
+def test_the_live_env_fixture_covers_every_required_variable() -> None:
+    """`_LIVE_ENV_VALUES` in `tests/unit/test_composition.py` is hand-written,
+    and every live-wiring test builds the graph over it. CP-060's reviewer
+    flagged that nothing held the two together: an eleventh required variable
+    would drop out of the parametrized failure coverage silently.
+
+    It did. `SCRIPTS_INTAKE_BUCKET` became required with the script upload and
+    seven live-wiring tests went red at once, which is a loud failure but the
+    wrong one -- they failed on a missing fixture value rather than on the
+    behaviour they name.
+    """
+    required = _required_env_names(COMPOSITION_PATH.read_text())
+    fixture_source = (REPO_ROOT / "tests" / "unit" / "test_composition.py").read_text()
+
+    tree = ast.parse(fixture_source)
+    covered: set[str] = set()
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name) and target.id == "_LIVE_ENV_VALUES"
+                for target in node.targets
+            )
+            and isinstance(node.value, ast.Dict)
+        ):
+            covered = {
+                key.value
+                for key in node.value.keys
+                if isinstance(key, ast.Constant) and isinstance(key.value, str)
+            }
+
+    assert covered != set(), "_LIVE_ENV_VALUES not found in tests/unit/test_composition.py"
+    assert required - covered == set(), (
+        f"required by composition.py, missing from _LIVE_ENV_VALUES: {required - covered}"
+    )

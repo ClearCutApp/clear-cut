@@ -100,11 +100,19 @@ class RightsResearch(Protocol):
 
 @runtime_checkable
 class LoreStore(Protocol):
-    """Indexes and retrieves project-scoped bible facts and scenes."""
+    """Indexes and retrieves project-scoped bible facts and scenes.
+
+    `facts` is a separate read from `search` because listing a bible has no
+    query to embed: `GET /api/projects/{project_id}/bible` shows the producer
+    every fact, and a similarity search would rank and truncate a list they
+    expect whole.
+    """
 
     def index(self, project_id: str, records: list[BibleFact | Scene]) -> None: ...
 
     def search(self, project_id: str, query: str, limit: int) -> list[BibleFact]: ...
+
+    def facts(self, project_id: str) -> list[BibleFact]: ...
 
 
 @runtime_checkable
@@ -114,11 +122,16 @@ class TrackerStore(Protocol):
     Both tables live behind one port: the versioned `TrackerItem` rows and
     the `script_versions` side EvaluateDelta reads (docs/plan/sdd.md
     Section 3).
+
+    `latest` takes the project as well as the item because an item id is
+    unique only inside its project: `EVT-001` exists in every project that
+    ran an analysis, so a read on the id alone answers with whichever row a
+    background merge happened to keep (ADR 0014).
     """
 
     def save(self, items: list[TrackerItem]) -> None: ...
 
-    def latest(self, item_id: str) -> TrackerItem: ...
+    def latest(self, project_id: str, item_id: str) -> TrackerItem: ...
 
     def latest_for_project(self, project_id: str) -> list[TrackerItem]: ...
 
