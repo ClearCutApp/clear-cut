@@ -136,6 +136,18 @@ export interface Script {
 
 /** `project_id` is absent on purpose: it is the collection in the path,
  * not a field of the thing written. */
+/** One uploaded screenplay in Cloud Storage, before anything has parsed it.
+ *
+ * Upload and analysis are two steps on purpose: re-analysing the same upload
+ * costs no second transfer, so `gcs_uri` is handed straight to `createScript`.
+ */
+export interface ScriptFile {
+  gcs_uri: string;
+  filename: string;
+  size_bytes: number;
+  content_type: string;
+}
+
 export interface ScriptCreate {
   gcs_uri: string;
   version: number;
@@ -296,6 +308,24 @@ export function getScript(projectId: string, scriptId: string): Promise<Script> 
  * already identifies by `project_id` and `analysis_id`; polling reads the
  * body so a proxy that drops the header cannot strand the caller.
  */
+/** Writes a screenplay PDF to the intake bucket and returns its `gs://` URI.
+ *
+ * The body is a `FormData` with no `Content-Type` header, deliberately.
+ * `multipart/form-data` is only parseable with the boundary that separates
+ * its parts, the browser generates that boundary when it serialises the
+ * body, and naming the type by hand overwrites the header without it -- so
+ * the server receives a body it cannot split. This is why `jsonRequest` is
+ * not reused here.
+ */
+export function uploadScriptFile(projectId: string, file: File): Promise<ScriptFile> {
+  const body = new FormData();
+  body.append("file", file);
+  return requestJson<ScriptFile>(`/api/projects/${encodeURIComponent(projectId)}/script-files`, {
+    method: "POST",
+    body,
+  });
+}
+
 export function createScript(
   projectId: string,
   request: ScriptCreate,

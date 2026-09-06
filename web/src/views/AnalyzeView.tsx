@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 
 import type { ScriptCreate } from "../api/client";
 import { AnalyzeForm } from "../components/molecules/AnalyzeForm";
+import { ScriptFileUpload } from "../features/analyze/ScriptFileUpload";
 import { useProject } from "../state/ProjectContext";
 
 /**
@@ -16,11 +17,26 @@ import { useProject } from "../state/ProjectContext";
  * above it re-analyses only the scenes whose content hash changed.
  */
 export function AnalyzeView(): ReactElement {
-  const { projectId, jurisdictionCode, scripts, analysis, analysisError, runAnalysis } =
+  const { projectId, jurisdictionCode, scripts, analysis, analysisError, runAnalysis, uploadScript } =
     useProject();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [storedUri, setStoredUri] = useState<string | null>(null);
   const navigate = useNavigate();
+
+  async function handleChoose(file: File): Promise<void> {
+    setUploading(true);
+    setUploadError(null);
+    const outcome = await uploadScript(file);
+    setUploading(false);
+    if (outcome.ok) {
+      setStoredUri(outcome.value.gcs_uri);
+      return;
+    }
+    setUploadError(outcome.message);
+  }
 
   // The form holds its own field state from the moment it mounts, so it
   // waits for the version list rather than opening at 1 and silently
@@ -56,9 +72,20 @@ export function AnalyzeView(): ReactElement {
           is refused when the server has no previous version to diff against.
         </p>
       )}
+      <ScriptFileUpload
+        uploading={uploading}
+        storedUri={storedUri}
+        error={uploadError}
+        onChoose={(file) => void handleChoose(file)}
+      />
+
       {versionsKnown ? (
         <AnalyzeForm
-          initialGcsUri={analysis?.gcs_uri ?? ""}
+          // Remounted when an upload lands, so the URI field opens on the
+          // object just stored. The form owns its fields from mount, which
+          // is what keeps a producer's edit from being overwritten mid-typing.
+          key={storedUri ?? "no-upload"}
+          initialGcsUri={storedUri ?? analysis?.gcs_uri ?? ""}
           initialJurisdictionCode={jurisdictionCode}
           initialVersion={nextVersion}
           submitting={submitting}

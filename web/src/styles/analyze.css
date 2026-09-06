@@ -6,3 +6,39 @@
   display: grid;
   gap: var(--space-5);
 }
+
+/* The screenplay picker. Sits above the form it fills: the upload stores the
+   object, the form queues its analysis, and the URI between them stays
+   visible because the field it lands in is still editable. */
+
+.script-upload {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-container);
+}
+
+.script-upload__hint {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+}
+
+.script-upload__status {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.script-upload__stored {
+  margin: 0;
+  color: var(--color-text);
+}
+
+.script-upload__uri {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--color-accent);
+  overflow-wrap: anywhere;
+}

@@ -11,6 +11,7 @@ import {
 
 import {
   askProjectQuestion,
+  uploadScriptFile,
   createScript,
   createTrackerItemEmailDraft,
   createTrackerItemNotification,
@@ -24,6 +25,7 @@ import {
   type Finding,
   type Project,
   type QuestionAnswer,
+  type ScriptFile,
   type Script,
   type ScriptCreate,
   type ScriptSummary,
@@ -59,6 +61,10 @@ export interface ProjectContextValue {
   changeState: (itemId: string, state: TrackerState) => Promise<Outcome<TrackerItem>>;
   draftEmail: (itemId: string) => Promise<Outcome<TrackerItem>>;
   notify: (itemId: string, reason: string) => Promise<Outcome<TrackerItem>>;
+  /** Stores a screenplay PDF and answers its `gs://` URI, which
+   * `runAnalysis` then takes. Upload and analysis are two steps so a
+   * re-run of the same upload costs no second transfer. */
+  uploadScript: (file: File) => Promise<Outcome<ScriptFile>>;
   ask: (question: string) => Promise<Outcome<QuestionAnswer>>;
   setJurisdiction: (code: string) => void;
   selectItem: (itemId: string | null) => void;
@@ -71,6 +77,7 @@ const GENERIC_PROJECT_ERROR = "The project request failed unexpectedly.";
 const GENERIC_SCRIPT_ERROR = "The script request failed unexpectedly.";
 const GENERIC_ANALYZE_ERROR = "The analyze request failed unexpectedly.";
 const GENERIC_MUTATION_ERROR = "The tracker update failed unexpectedly.";
+const GENERIC_UPLOAD_ERROR = "The screenplay could not be stored.";
 const GENERIC_QUESTION_ERROR = "The question request failed unexpectedly.";
 
 const ProjectContext = createContext<ProjectContextValue | null>(null);
@@ -314,6 +321,12 @@ export function ProjectProvider({
     [runMutation, projectId],
   );
 
+  const uploadScript = useCallback(
+    (file: File) =>
+      attempt(() => uploadScriptFile(projectId, file), GENERIC_UPLOAD_ERROR),
+    [projectId],
+  );
+
   const ask = useCallback(
     (question: string) =>
       attempt(
@@ -356,6 +369,7 @@ export function ProjectProvider({
       selectedItemId,
       refreshTracker,
       runAnalysis,
+      uploadScript,
       changeState,
       draftEmail,
       notify,
@@ -380,6 +394,7 @@ export function ProjectProvider({
       selectedItemId,
       refreshTracker,
       runAnalysis,
+      uploadScript,
       changeState,
       draftEmail,
       notify,

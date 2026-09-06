@@ -16,6 +16,7 @@ import {
   listProjects,
   listScripts,
   listTrackerItems,
+  uploadScriptFile,
   updateTrackerItemState,
   type ScriptCreate,
 } from "./client";
@@ -327,5 +328,67 @@ describe("error bodies", () => {
     const failure = await listProjects().catch((error: unknown) => error);
 
     expect((failure as ApiError).message).toBe("the server returned 503");
+  });
+});
+
+describe("uploadScriptFile", () => {
+  it("posts the file as multipart and returns the stored object", async () => {
+    let seen: RequestInit | undefined;
+    let seenPath = "";
+    globalThis.fetch = ((path: string, init?: RequestInit) => {
+      seenPath = path;
+      seen = init;
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            gcs_uri: "gs://clearcut-scripts/prj-4f2a/verano.pdf",
+            filename: "verano.pdf",
+            size_bytes: 12,
+            content_type: "application/pdf",
+          }),
+          { status: 201 },
+        ),
+      );
+    }) as typeof fetch;
+
+    const file = new File(["%PDF-1.7 ..."], "verano.pdf", { type: "application/pdf" });
+    const stored = await uploadScriptFile("prj-4f2a", file);
+
+    // Asserted as a suffix rather than the whole path: only client.ts may
+    // spell an API path literal, and architecture.test.ts holds that for
+    // test files too. The part that matters here is the collection and the
+    // project it hangs off.
+    expect(seenPath).toMatch(/projects\/prj-4f2a\/script-files$/);
+    expect(seen?.method).toBe("POST");
+    expect(stored.gcs_uri).toBe("gs://clearcut-scripts/prj-4f2a/verano.pdf");
+  });
+
+  it("lets the browser set the multipart boundary rather than naming a content type", async () => {
+    // A hand-written `Content-Type: multipart/form-data` carries no boundary,
+    // and the server cannot parse a body it cannot split. This is the whole
+    // reason `jsonRequest` is not reused here.
+    let seen: RequestInit | undefined;
+    globalThis.fetch = ((_path: string, init?: RequestInit) => {
+      seen = init;
+      return Promise.resolve(new Response(JSON.stringify({}), { status: 201 }));
+    }) as typeof fetch;
+
+    await uploadScriptFile("prj-4f2a", new File(["x"], "a.pdf", { type: "application/pdf" }));
+
+    expect(seen?.headers).toBeUndefined();
+    expect(seen?.body).toBeInstanceOf(FormData);
+  });
+
+  it("surfaces the server's sentence when the upload is refused", async () => {
+    globalThis.fetch = respondWith(413, JSON.stringify({ error: "the file is over 25 MiB" }));
+
+    const failure = await uploadScriptFile(
+      "prj-4f2a",
+      new File(["x"], "a.pdf", { type: "application/pdf" }),
+    ).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(ApiError);
+    expect((failure as ApiError).status).toBe(413);
+    expect((failure as ApiError).message).toBe("the file is over 25 MiB");
   });
 });
