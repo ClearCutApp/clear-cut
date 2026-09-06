@@ -1,9 +1,471 @@
-/* Script review: scenes with inline highlights and the findings rail, two
-   columns from `@container (width >= 56rem)` so an open panel collapses
-   it honestly. Owned by the script feature; this file starts with the root
-   rule only. */
+/* Script review: the printed page with the analysis's findings marked on
+   it, and the suggestions rail beside it. Two columns from
+   `@container (width >= 62rem)`, one below it, so an open item panel
+   collapses the layout honestly. Owned by the script feature.
+
+   The paper is the one surface in the app that is not themed. A script is
+   read as paper: white, black, Courier, whatever the reader's system says
+   about dark mode. Its five colours are named here as tokens because the
+   rest of the app's palette has no word for "ink" or "line number", and
+   `tokens.css` belongs to the shell rather than to this feature. If a
+   second surface ever needs them they move up. */
 
 .script {
   display: grid;
   gap: var(--space-5);
+  container-type: inline-size;
+}
+
+.script__layout {
+  display: grid;
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.script__page {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+@container (width >= 62rem) {
+  .script__layout {
+    grid-template-columns: minmax(0, 1fr) 20rem;
+  }
+}
+
+/* --------------------------------------------------------------- stepper */
+
+.script-stepper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-4);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-container);
+}
+
+.script-stepper__pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.script-pill {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-sidebar);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-badge);
+}
+
+.script-pill__value {
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.script-pill__label {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.script-pill--high .script-pill__value {
+  color: var(--color-risk-high);
+}
+
+.script-pill--muted .script-pill__value {
+  color: var(--color-text-dim);
+}
+
+.script-pill--neutral .script-pill__value {
+  color: var(--color-text);
+}
+
+.script-stepper__controls {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.script-stepper__button {
+  display: inline-flex;
+  gap: var(--space-1);
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  font: inherit;
+  font-size: 12px;
+  color: var(--color-text);
+  cursor: pointer;
+  background: var(--color-sidebar);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  transition: border-color var(--transition-fast);
+}
+
+.script-stepper__button:disabled {
+  color: var(--color-text-dim);
+  cursor: not-allowed;
+}
+
+.script-stepper__button:hover:not(:disabled) {
+  border-color: var(--color-border-focus);
+}
+
+.script-stepper__count {
+  margin: 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-muted);
+}
+
+/* --------------------------------------------------------------- toolbar */
+
+.script-toolbar {
+  display: grid;
+  gap: var(--space-2) var(--space-4);
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-container);
+}
+
+.script-toolbar__format {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.script-toolbar__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  font: inherit;
+  font-size: 12px;
+  color: var(--color-text);
+  cursor: pointer;
+  background: var(--color-sidebar);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-badge);
+}
+
+.script-toolbar__button:disabled {
+  color: var(--color-text-dim);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.script-toolbar__reason {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--color-text-muted);
+}
+
+.script-toolbar__meters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.script-toolbar__words {
+  margin: 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-muted);
+}
+
+.script-toolbar__zoom {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.script-toolbar__level {
+  min-width: 3rem;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+/* ----------------------------------------------------------------- paper */
+
+.script-paper {
+  /* The printed page, after the design file: white stock, near-black ink,
+     a lighter grey for the sluglines' weight, and the palest for the line
+     numbers, which are furniture rather than text. */
+  --paper-stock: #fff;
+  --paper-ink: #1f2937;
+  --paper-ink-strong: #111827;
+  --paper-line-number: #9ca3af;
+
+  /* The three highlight pairs: a translucent wash to sit behind the words
+     and a dark enough ink to keep them readable on it. */
+  --paper-mark-high: rgb(239 68 68 / 20%);
+  --paper-mark-high-ink: #991b1b;
+  --paper-mark-medium: rgb(245 158 11 / 20%);
+  --paper-mark-medium-ink: #92400e;
+  --paper-mark-low: rgb(16 185 129 / 20%);
+  --paper-mark-low-ink: #065f46;
+  --script-zoom: 100%;
+
+  padding: var(--space-6);
+  overflow-x: auto;
+  font-family: "Courier New", courier, monospace;
+  font-size: calc(0.85rem * var(--script-zoom) / 100%);
+  line-height: 1.6;
+  color: var(--paper-ink);
+  background: var(--paper-stock);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-container);
+}
+
+.script-paper__row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+}
+
+.script-paper__gutter {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 0.75rem;
+}
+
+.script-paper__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.script-paper__dot--low {
+  background: var(--color-risk-low);
+}
+
+.script-paper__dot--medium {
+  background: var(--color-risk-medium);
+}
+
+.script-paper__dot--high,
+.script-paper__dot--critical {
+  background: var(--color-risk-high);
+}
+
+.script-paper__number {
+  flex: none;
+  width: 2rem;
+  font-size: 0.78em;
+  color: var(--paper-line-number);
+  text-align: right;
+  user-select: none;
+}
+
+.script-paper__line {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 1.6em;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.script-paper__line--slugline {
+  margin-top: var(--space-4);
+  margin-bottom: var(--space-2);
+  font-weight: 700;
+  color: var(--paper-ink-strong);
+  text-transform: uppercase;
+}
+
+.script-paper__line--transition {
+  margin-top: var(--space-2);
+  font-weight: 700;
+  color: var(--paper-ink-strong);
+  text-align: right;
+}
+
+.script-paper__line--blank {
+  min-height: 1.6em;
+}
+
+.script-paper__line--action {
+  color: var(--paper-ink);
+}
+
+.script-mark {
+  padding: 1px 4px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: 3px;
+}
+
+.script-mark--low {
+  color: var(--paper-mark-low-ink);
+  background: var(--paper-mark-low);
+}
+
+.script-mark--medium {
+  color: var(--paper-mark-medium-ink);
+  background: var(--paper-mark-medium);
+}
+
+.script-mark--high,
+.script-mark--critical {
+  color: var(--paper-mark-high-ink);
+  background: var(--paper-mark-high);
+}
+
+.script-mark--selected {
+  border-color: currentcolor;
+}
+
+/* ------------------------------------------------------------ suggestions */
+
+.suggestions {
+  display: grid;
+  gap: var(--space-3);
+  align-content: start;
+  padding: var(--space-4);
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-container);
+}
+
+.suggestions__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.suggestions__list {
+  display: grid;
+  gap: var(--space-2);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.suggestions__empty {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.suggestion {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--color-sidebar);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+}
+
+.suggestion--selected {
+  border-color: var(--color-accent);
+}
+
+.suggestion__summary {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+.suggestion__chevron {
+  display: inline-flex;
+  flex: none;
+  color: var(--color-text-muted);
+}
+
+.suggestion__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.suggestion__where {
+  margin: 0;
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.suggestion__unmarked {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--color-text-dim);
+}
+
+.suggestion__body {
+  display: grid;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-border);
+}
+
+.suggestion__facts {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+}
+
+.suggestion__fact {
+  display: flex;
+  gap: var(--space-3);
+  justify-content: space-between;
+  font-size: 11px;
+}
+
+.suggestion__fact dt {
+  color: var(--color-text-muted);
+}
+
+.suggestion__fact dd {
+  margin: 0;
+  text-align: right;
+}
+
+.suggestion__citations {
+  display: grid;
+  gap: var(--space-1);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.suggestion__link {
+  display: inline-flex;
+  gap: var(--space-1);
+  align-items: center;
+  font-size: 11px;
+  color: var(--color-accent);
+}
+
+.suggestion__none {
+  margin: 0;
+  font-size: 11px;
+  color: var(--color-text-muted);
 }
