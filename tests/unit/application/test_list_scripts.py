@@ -91,6 +91,30 @@ def test_execute_returns_every_version_newest_first() -> None:
     assert [listing.script.version for listing in result] == [3, 2, 1]
 
 
+def test_two_versions_with_the_same_number_answer_most_recent_first() -> None:
+    """Sorting on `version` alone leaves ties in store order, which is oldest
+    first, so the older of two equal versions won the top of the list.
+
+    That is not academic. The mock scenario seeds `demo-script-v1` at version
+    1 as a script that exists but was never analyzed, and an analysis posted
+    at version 1 writes a second row at the same number. The client takes the
+    first entry, so Script Review drew the seeded text with none of the
+    findings the run had just produced -- the empty screen ADR 0014 exists to
+    end, reappearing through the ordering rather than the storage.
+    """
+    scripts = FakeScriptStore(
+        [
+            _script("seeded", "prj-4f2a", 1),
+            _script("analyzed", "prj-4f2a", 1),
+        ]
+    )
+    use_case = ListScripts(scripts, FakeFindingStore())
+
+    result = use_case.execute("prj-4f2a")
+
+    assert [listing.script.script_id for listing in result] == ["analyzed", "seeded"]
+
+
 def test_execute_counts_the_findings_of_each_version_separately() -> None:
     """Findings are stored per version, so reopening an older one shows what
     that version triggered rather than what the newest one does."""
