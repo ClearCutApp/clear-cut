@@ -246,7 +246,7 @@ Secret Manager entries mounted as environment variables. The full set:
 | `VERTEX_SEARCH_DATA_STORE_ID` | data store from section 5, as a full resource name: `projects/clearcut-hack/locations/global/collections/default_collection/dataStores/clearcut-legal-corpus` |
 | `NOTIFY_WEBHOOK_URL` | outbound webhook the Notifier posts to |
 | `SCRIPTS_INTAKE_BUCKET` | bucket an uploaded screenplay is written to, `clearcut-scripts-intake`, as the bare name without a `gs://` prefix; section 2 creates it and Document AI reads the object back out of it |
-| `CLEARCUT_LIVE_SCRIPT_GCS_URI` | `gs://` path to a real screenplay PDF in the intake bucket. Read only by the live tier, never by the running service: `tests/live/test_document_ai_live.py` and `test_end_to_end_live.py` both skip without it, so Document AI never parses a PDF from a cold start |
+| `CLEARCUT_LIVE_SCRIPT_GCS_URI` | `gs://clearcut-scripts-intake/demo-project/v1.pdf` -- the planted screenplay `infra/build_planted_script.py` emits and uploads, in place since 2026-09-03. Read only by the live tier, never by the running service. Both `tests/live/test_document_ai_live.py` and `test_end_to_end_live.py` skip without it, and for three days they skipped while the file they wanted was already in the bucket |
 
 The Notifier delivers every notification as an HTTP POST to
 `NOTIFY_WEBHOOK_URL`; SMTP is deliberately out of scope for the demo, so the
