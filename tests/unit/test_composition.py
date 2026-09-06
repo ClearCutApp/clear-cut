@@ -36,6 +36,7 @@ from flask import Flask
 
 from clearcut import composition
 from clearcut.adapters.bigquery.lore_store import BigQueryLoreStore
+from clearcut.adapters.clickhouse.client import bare_host
 from clearcut.adapters.clickhouse.tracker import ClickHouseTrackerStore
 from clearcut.adapters.demo.in_memory import (
     InMemoryContinuityCheck,
@@ -59,7 +60,6 @@ from clearcut.composition import (
     _GENAI_LOCATION,
     _build_live_use_cases,
     _build_mock_use_cases,
-    _clickhouse_host,
     _default_build_dir,
     create_app,
     run_traced,
@@ -603,7 +603,7 @@ def test_the_bigquery_dataset_location_is_not_the_genai_location() -> None:
     ],
 )
 def test_every_form_the_console_offers_reduces_to_the_bare_host(configured: str) -> None:
-    assert _clickhouse_host(configured) == "tnm.us-east1.gcp.clickhouse.cloud"
+    assert bare_host(configured) == "tnm.us-east1.gcp.clickhouse.cloud"
 
 
 def test_a_host_with_no_scheme_or_port_is_left_alone() -> None:
@@ -612,7 +612,7 @@ def test_a_host_with_no_scheme_or_port_is_left_alone() -> None:
     A normaliser that rewrites valid input is worse than none: it turns one
     documented format into two, and only one of them is tested.
     """
-    assert _clickhouse_host("localhost") == "localhost"
+    assert bare_host("localhost") == "localhost"
 
 
 # ---------------------------------------------------------------------------

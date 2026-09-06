@@ -21,9 +21,8 @@ from typing import cast
 import clickhouse_connect
 import pytest
 
-from clearcut.adapters.clickhouse.client import _ChClient
+from clearcut.adapters.clickhouse.client import _ChClient, bare_host
 from clearcut.adapters.clickhouse.tracker import ClickHouseTrackerStore
-from clearcut.composition import _clickhouse_host
 from clearcut.domain.errors import RecordNotFound
 from clearcut.domain.script import Scene, Script
 from clearcut.domain.tracker import TrackerItem, TrackerState
@@ -39,7 +38,7 @@ def _client() -> _ChClient:
         clickhouse_connect.get_client(
             # Through the same normaliser `composition.py` uses, so this test
             # accepts exactly what the console hands an operator.
-            host=_clickhouse_host(env("CLICKHOUSE_HOST")),
+            host=bare_host(env("CLICKHOUSE_HOST")),
             username=env("CLICKHOUSE_USER"),
             password=env("CLICKHOUSE_PASSWORD"),
             secure=True,

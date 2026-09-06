@@ -45,7 +45,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 try:
     from clearcut.adapters.clickhouse import schema  # noqa: E402
-    from clearcut.adapters.clickhouse.client import _ChClient  # noqa: E402
+    from clearcut.adapters.clickhouse.client import _ChClient, bare_host  # noqa: E402
     from clearcut.adapters.clickhouse.tracker import ClickHouseTrackerStore  # noqa: E402
 except ModuleNotFoundError as exc:  # pragma: no cover - depends on the interpreter
     # Unlike build_manifest.py, which touches only the stdlib-only domain layer,
@@ -163,7 +163,7 @@ def main(argv: list[str] | None = None) -> int:
     import clickhouse_connect
 
     client = clickhouse_connect.get_client(
-        host=os.environ["CLICKHOUSE_HOST"],
+        host=bare_host(os.environ["CLICKHOUSE_HOST"]),
         username=os.environ["CLICKHOUSE_USER"],
         password=os.environ["CLICKHOUSE_PASSWORD"],
         secure=True,

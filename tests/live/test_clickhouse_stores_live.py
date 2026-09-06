@@ -19,11 +19,10 @@ import clickhouse_connect
 import pytest
 
 from clearcut.adapters.clickhouse.analyses import ClickHouseAnalysisJobStore
-from clearcut.adapters.clickhouse.client import _ChClient
+from clearcut.adapters.clickhouse.client import _ChClient, bare_host
 from clearcut.adapters.clickhouse.findings import ClickHouseFindingStore
 from clearcut.adapters.clickhouse.projects import ClickHouseProjectStore, ProjectNotFound
 from clearcut.adapters.clickhouse.scripts import ClickHouseScriptStore, ScriptNotFound
-from clearcut.composition import _clickhouse_host
 from clearcut.domain.analysis import AnalysisJob, AnalysisState
 from clearcut.domain.finding import Category, Citation, Finding, NerLabel, RiskLevel
 from clearcut.domain.project import Project
@@ -40,7 +39,7 @@ def _client() -> _ChClient:
     return cast(
         _ChClient,
         clickhouse_connect.get_client(
-            host=_clickhouse_host(env("CLICKHOUSE_HOST")),
+            host=bare_host(env("CLICKHOUSE_HOST")),
             username=env("CLICKHOUSE_USER"),
             password=env("CLICKHOUSE_PASSWORD"),
             secure=True,
