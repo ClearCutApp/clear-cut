@@ -20,7 +20,7 @@ import time
 
 import httpx
 from opentelemetry import metrics, trace
-from parallel import APIConnectionError, APIStatusError, Parallel
+from parallel import APIConnectionError, APIResponseValidationError, APIStatusError, Parallel
 from parallel.types.citation import Citation as ParallelCitation
 from parallel.types.field_basis import FieldBasis
 from parallel.types.json_schema_param import JsonSchemaParam
@@ -97,7 +97,17 @@ class ParallelRightsResearch:
         # backoff sleeps, which unit tests cannot afford and which would
         # leave a use case waiting well past the demo clock in production
         # (AGENT.md Section 5, docs/plan/infrastructure.md Section 7.1).
-        self._client = Parallel(api_key=api_key, http_client=http_client, max_retries=0)
+        # _strict_response_validation=True: the SDK defaults to lenient, which
+        # hands back a bare `str` when a proxy answers 200 with an HTML
+        # interstitial. The `AttributeError` on the next use of that value is
+        # mapped to 500 by `adapters/http/errors.py`, reporting an upstream
+        # outage as a ClearCut bug (ADR 0011, CP-056).
+        self._client = Parallel(
+            api_key=api_key,
+            http_client=http_client,
+            max_retries=0,
+            _strict_response_validation=True,
+        )
 
     def find(self, asset_name: str, category: Category, jurisdiction: Jurisdiction) -> RightsClaim:
         stage_start = time.perf_counter()
@@ -122,6 +132,13 @@ class ParallelRightsResearch:
                     "Parallel Task API accepted the run but returned no run_id"
                 )
             result = self._client.task_run.result(run.run_id)
+        # First because it is a sibling of the other two, not a subclass:
+        # `APIResponseValidationError` extends `APIError` directly, so ordering
+        # it after `APIStatusError` would read as narrowing when it is not.
+        except APIResponseValidationError as error:
+            raise ResearchUnavailable(
+                f"Parallel Task API returned a response ClearCut cannot read: {error}"
+            ) from error
         except APIStatusError as error:
             raise ResearchUnavailable(
                 f"Parallel Task API responded with status {error.status_code}",
