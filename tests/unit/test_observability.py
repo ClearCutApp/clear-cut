@@ -42,7 +42,7 @@ from opentelemetry.sdk.trace.export import (
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from clearcut import composition
-from clearcut.composition import create_app
+from clearcut.composition import create_app, run_traced
 
 _ANALYZE_BODY = {
     "project_id": "demo-project",
@@ -194,10 +194,10 @@ def test_create_app_works_and_opens_no_socket_with_endpoint_unset(
 
     monkeypatch.setattr(socket.socket, "connect", _blocked)
 
-    client = create_app().test_client()
+    client = create_app(analysis_runner=run_traced).test_client()
     response = client.post("/api/projects/demo-project/scripts", json=_ANALYZE_BODY)
 
-    assert response.status_code == 200
+    assert response.status_code == 202
 
 
 # ---------------------------------------------------------------------------
@@ -213,9 +213,9 @@ def test_five_pipeline_stage_spans_appear_and_share_one_trace_id(
     span_exporter, _ = _install_in_memory_providers()
     _clear_env(monkeypatch, CLEARCUT_MODE="mock")
 
-    client = create_app().test_client()
+    client = create_app(analysis_runner=run_traced).test_client()
     response = client.post("/api/projects/demo-project/scripts", json=_ANALYZE_BODY)
-    assert response.status_code == 200
+    assert response.status_code == 202
 
     spans = span_exporter.get_finished_spans()
     names = {span.name for span in spans}
@@ -229,7 +229,7 @@ def test_root_span_carries_script_id(monkeypatch: pytest.MonkeyPatch, isolated_o
     span_exporter, _ = _install_in_memory_providers()
     _clear_env(monkeypatch, CLEARCUT_MODE="mock")
 
-    client = create_app().test_client()
+    client = create_app(analysis_runner=run_traced).test_client()
     response = client.post("/api/projects/demo-project/scripts", json=_ANALYZE_BODY)
     script_id = response.get_json()["script_id"]
 
@@ -274,9 +274,9 @@ def test_four_metrics_record_one_point_each_with_labels_in_mock_mode(
     _, metric_reader = _install_in_memory_providers()
     _clear_env(monkeypatch, CLEARCUT_MODE="mock")
 
-    client = create_app().test_client()
+    client = create_app(analysis_runner=run_traced).test_client()
     response = client.post("/api/projects/demo-project/scripts", json=_ANALYZE_BODY)
-    assert response.status_code == 200
+    assert response.status_code == 202
 
     points_by_name = _data_points_by_metric_name(metric_reader)
 
@@ -301,7 +301,7 @@ def test_gemini_tokens_total_has_no_points_in_mock_mode(
     _, metric_reader = _install_in_memory_providers()
     _clear_env(monkeypatch, CLEARCUT_MODE="mock")
 
-    client = create_app().test_client()
+    client = create_app(analysis_runner=run_traced).test_client()
     client.post("/api/projects/demo-project/scripts", json=_ANALYZE_BODY)
 
     points_by_name = _data_points_by_metric_name(metric_reader)
@@ -323,9 +323,9 @@ def test_a_raising_span_exporter_never_breaks_the_analyze_call(
     metrics.set_meter_provider(MeterProvider(metric_readers=[]))
 
     _clear_env(monkeypatch, CLEARCUT_MODE="mock")
-    client = create_app().test_client()
+    client = create_app(analysis_runner=run_traced).test_client()
 
     response = client.post("/api/projects/demo-project/scripts", json=_ANALYZE_BODY)
 
-    assert response.status_code == 200
+    assert response.status_code == 202
     assert raising_exporter.calls  # proves the exporter really was invoked and really did raise

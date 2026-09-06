@@ -106,6 +106,7 @@ from clearcut.application.list_tracker_items import ListTrackerItems
 from clearcut.application.resolve_finding import ResolveFinding
 from clearcut.application.start_analysis import Runner, StartAnalysis, Work
 from clearcut.application.upload_script_file import UploadScriptFile
+from clearcut.domain.finding import Finding
 
 logger = logging.getLogger(__name__)
 
@@ -178,6 +179,26 @@ def _configure_telemetry() -> None:
     metric_exporter = _metric_exporter()
     metric_readers = [PeriodicExportingMetricReader(metric_exporter)] if metric_exporter else []
     metrics.set_meter_provider(MeterProvider(metric_readers=metric_readers))
+
+
+def record_findings_total(findings: tuple[Finding, ...]) -> None:
+    """Emits `clearcut_findings_total`, one point per finding, labelled by risk
+    level and category (ADR 0008, SDD Section 6).
+
+    This used to run in the analyze route, straight after the use case
+    returned. Since ADR 0013 that route answers 202 before a single finding
+    exists, so the count is taken where the run actually ends and reaches this
+    layer as the callable `StartAnalysis` was given.
+
+    The meter is resolved per call for the same reason the tracer is: a
+    module-level lookup caches a proxy from before `_configure_telemetry`
+    installed the real provider.
+    """
+    counter = metrics.get_meter(__name__).create_counter(
+        "clearcut_findings_total", description="Findings emitted, by risk level and category"
+    )
+    for finding in findings:
+        counter.add(1, {"risk_level": finding.risk_level.value, "category": finding.category.value})
 
 
 def run_traced(script_id: str, work: Work) -> None:
@@ -257,7 +278,13 @@ def _build_mock_use_cases(runner: Runner) -> _UseCaseGraph:
     return _UseCaseGraph(
         analyze_script=analyze_script,
         evaluate_delta=evaluate_delta,
-        start_analysis=StartAnalysis(jobs, analyze_script, evaluate_delta, runner=runner),
+        start_analysis=StartAnalysis(
+            jobs,
+            analyze_script,
+            evaluate_delta,
+            runner=runner,
+            on_findings=record_findings_total,
+        ),
         get_analysis=GetAnalysis(jobs),
         create_project=CreateProject(projects),
         list_projects=ListProjects(projects),
@@ -392,7 +419,13 @@ def _build_live_use_cases(
     return _UseCaseGraph(
         analyze_script=analyze_script,
         evaluate_delta=evaluate_delta,
-        start_analysis=StartAnalysis(jobs, analyze_script, evaluate_delta, runner=runner),
+        start_analysis=StartAnalysis(
+            jobs,
+            analyze_script,
+            evaluate_delta,
+            runner=runner,
+            on_findings=record_findings_total,
+        ),
         get_analysis=GetAnalysis(jobs),
         create_project=CreateProject(projects),
         list_projects=ListProjects(projects),

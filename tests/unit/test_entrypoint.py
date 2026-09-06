@@ -25,11 +25,17 @@ _ANALYZE_BODY = {
     "version": 1,
 }
 
+# One route per domain the partition serves (ADR 0012), which is what this
+# test is for: proving `main.app` mounted the real blueprints rather than an
+# empty app. The full twenty-operation surface is held against
+# `docs/api/openapi.yaml` by the drift test, not restated here.
 _DEMO_ROUTES = (
+    "/api/health",
+    "/api/projects",
     "/api/projects/<project_id>/scripts",
-    "/api/projects/<project_id>/tracker-items",
-    "/api/tracker-items/<item_id>",
-    "/api/tracker-items/<item_id>/actions",
+    "/api/projects/<project_id>/analyses/<analysis_id>",
+    "/api/projects/<project_id>/tracker-items/<item_id>",
+    "/api/projects/<project_id>/bible",
     "/api/projects/<project_id>/questions",
 )
 
@@ -61,7 +67,7 @@ def test_import_builds_a_flask_app_with_no_socket_opened(
 # ---------------------------------------------------------------------------
 
 
-def test_app_url_map_carries_the_five_demo_routes(
+def test_app_url_map_carries_a_route_from_every_domain(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     main = _import_main(monkeypatch, CLEARCUT_MODE="mock")
@@ -76,12 +82,18 @@ def test_app_url_map_carries_the_five_demo_routes(
 # ---------------------------------------------------------------------------
 
 
-def test_a_request_through_the_test_client_returns_200(
+def test_a_request_through_the_test_client_queues_an_analysis(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """202 rather than 200 since ADR 0013: the upload queues a job and answers
+    with where to read it, because the pipeline it starts takes twelve to
+    twenty minutes against real services and no browser holds a request that
+    long. The `Location` is the assertion that matters -- a 202 with nowhere to
+    poll would be a worse contract than the blocking call it replaced."""
     main = _import_main(monkeypatch, CLEARCUT_MODE="mock")
     response = main.app.test_client().post("/api/projects/demo-project/scripts", json=_ANALYZE_BODY)
-    assert response.status_code == 200
+    assert response.status_code == 202
+    assert response.headers["Location"].startswith("/api/projects/demo-project/analyses/")
 
 
 # ---------------------------------------------------------------------------

@@ -24,9 +24,24 @@ from clearcut.application.analyze_script import AnalyzeScript
 from clearcut.application.evaluate_delta import EvaluateDelta
 from clearcut.application.ports import AnalysisJobStore
 from clearcut.domain.analysis import AnalysisJob, AnalysisState
+from clearcut.domain.finding import Finding
 from clearcut.domain.jurisdiction import Jurisdiction
 
 Work = Callable[[], None]
+
+# Called once with the findings a completed run produced. `clearcut_findings_total`
+# is labelled by risk level and category (ADR 0008), and the route that used to
+# emit it now answers 202 before any finding exists, so the count has to be taken
+# where the run ends. It arrives as a plain callable rather than a port: this
+# crosses no I/O boundary of its own (AGENT.md Section 4), and it keeps the
+# OpenTelemetry import in `composition.py` where the other one already is.
+FindingsObserver = Callable[[tuple[Finding, ...]], None]
+
+
+def ignore_findings(_findings: tuple[Finding, ...]) -> None:
+    """The default: a run that nobody is measuring still has to complete."""
+
+
 Runner = Callable[[str, Work], None]
 
 # The format `TrackerItem.updated_at` carries. The pipeline takes `at` as a
@@ -96,12 +111,14 @@ class StartAnalysis:
         *,
         clock: Callable[[], datetime] = utc_now,
         runner: Runner = run_in_background,
+        on_findings: FindingsObserver = ignore_findings,
     ) -> None:
         self._jobs = jobs
         self._analyze = analyze
         self._delta = delta
         self._clock = clock
         self._runner = runner
+        self._on_findings = on_findings
 
     def execute(
         self,
@@ -148,7 +165,7 @@ class StartAnalysis:
         self._jobs.save(running)
         pipeline: AnalyzeScript | EvaluateDelta = self._analyze if version == 1 else self._delta
         try:
-            pipeline.execute(
+            report = pipeline.execute(
                 running.project_id,
                 running.script_id,
                 version,
@@ -159,4 +176,5 @@ class StartAnalysis:
         except Exception as exc:
             self._jobs.save(running.failed(_failure_reason(exc), self._clock()))
         else:
+            self._on_findings(report.findings)
             self._jobs.save(running.succeeded(self._clock()))

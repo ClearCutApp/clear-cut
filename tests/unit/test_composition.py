@@ -53,6 +53,7 @@ from clearcut.adapters.gemini.continuity import GeminiContinuityCheck
 from clearcut.adapters.gemini.extractor import GeminiSceneExtractor
 from clearcut.adapters.notify.webhook import WebhookNotifier
 from clearcut.adapters.parallel.research import ParallelRightsResearch
+from clearcut.application.start_analysis import Work
 from clearcut.composition import (
     _GCP_LOCATION,
     _GENAI_LOCATION,
@@ -61,6 +62,7 @@ from clearcut.composition import (
     _clickhouse_host,
     _default_build_dir,
     create_app,
+    run_traced,
 )
 
 _ANALYZE_BODY = {
@@ -101,8 +103,20 @@ def test_create_app_returns_a_flask_app_with_the_demo_routes_mounted(
 # ---------------------------------------------------------------------------
 
 
+def run_inline(_script_id: str, work: Work) -> None:
+    """Runs the queued work on the calling thread.
+
+    `run_traced_in_background` hands the run to a daemon thread, which is
+    right in production and useless in a build-only test: the assertions
+    below would race the run rather than observe it. Every test that wants
+    the pipeline to have finished by the time it looks passes this instead
+    (ADR 0013 puts the seam here for exactly that reason).
+    """
+    work()
+
+
 def test_build_mock_use_cases_wires_the_demo_adapters_by_type() -> None:
-    graph = _build_mock_use_cases()
+    graph = _build_mock_use_cases(run_inline)
     assert isinstance(graph.analyze_script._ingestion, InMemoryScriptIngestion)
     assert isinstance(graph.analyze_script._extractor, InMemorySceneExtractor)
     assert isinstance(graph.analyze_script._grounding, InMemoryLegalGrounding)
@@ -120,7 +134,7 @@ def test_build_mock_use_cases_shares_one_tracker_store_across_use_cases() -> Non
     """`POST /api/analyze` writes through `AnalyzeScript`; `GET /api/tracker`
     reads through `ListTrackerItems`. Two separate `InMemoryTrackerStore`
     instances would make the second call blind to the first call's write."""
-    graph = _build_mock_use_cases()
+    graph = _build_mock_use_cases(run_inline)
     assert graph.analyze_script._tracker is graph.list_tracker_items._tracker
     assert graph.analyze_script._tracker is graph.resolve_finding._tracker
 
@@ -135,14 +149,27 @@ def test_mock_mode_needs_no_credentials_and_drives_the_sdd_8d_scenario(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _clear_env(monkeypatch, CLEARCUT_MODE="mock")
-    client = create_app().test_client()
+    client = create_app(analysis_runner=run_traced).test_client()
 
-    analyze_response = client.post("/api/projects/demo-project/scripts", json=_ANALYZE_BODY)
-    assert analyze_response.status_code == 200
-    report = analyze_response.get_json()
+    queued = client.post("/api/projects/demo-project/scripts", json=_ANALYZE_BODY)
+    assert queued.status_code == 202
+    location = queued.headers["Location"]
 
-    findings_by_category = {finding["category"]: finding for finding in report["findings"]}
-    assert len(report["findings"]) == 3
+    analysis = client.get(location)
+    assert analysis.status_code == 200
+    assert analysis.get_json()["state"] == "SUCCEEDED"
+
+    # The reload is the point of ADR 0014. Before findings were persisted this
+    # read returned nothing, because a finding existed only in the body of the
+    # response that produced it -- so Script Review was empty the moment a
+    # producer refreshed the page.
+    script_id = queued.get_json()["script_id"]
+    script = client.get(f"/api/projects/demo-project/scripts/{script_id}")
+    assert script.status_code == 200
+    body = script.get_json()
+
+    findings_by_category = {finding["category"]: finding for finding in body["findings"]}
+    assert len(body["findings"]) == 3
     assert findings_by_category["INDUSTRIAL_PROPERTY"]["page"] == 3
     assert findings_by_category["COPYRIGHT_WORKS"]["page"] == 5
     assert findings_by_category["CONTINUITY"]["page"] == 8
@@ -263,6 +290,7 @@ _LIVE_ENV_VALUES = {
     "CLICKHOUSE_PASSWORD": "dummy-ch-password",
     "VERTEX_SEARCH_DATA_STORE_ID": "dummy-data-store",
     "NOTIFY_WEBHOOK_URL": "https://notify.example.invalid/webhook",
+    "SCRIPTS_INTAKE_BUCKET": "clearcut-dummy-intake",
 }
 
 
@@ -306,6 +334,11 @@ class _FakeVectorStore:
         raise AssertionError(
             "_VectorStore.similarity_search_by_vector_with_score was called in a build-only test"
         )
+
+    def get_documents(
+        self, ids: list[str] | None = None, filter: dict[str, Any] | None = None
+    ) -> NoReturn:
+        raise AssertionError("_VectorStore.get_documents was called in a build-only test")
 
 
 def _write_fake_adc(tmp_path: Path) -> str:
