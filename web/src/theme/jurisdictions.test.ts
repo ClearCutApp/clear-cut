@@ -3,10 +3,10 @@ import { describe, expect, it } from "vitest";
 import { JURISDICTIONS, jurisdictionName } from "./jurisdictions";
 
 describe("JURISDICTIONS", () => {
-  it("offers exactly ten codes with Argentina first", () => {
-    expect(JURISDICTIONS).toHaveLength(10);
+  it("offers eleven selectable codes with Argentina first", () => {
+    expect(JURISDICTIONS).toHaveLength(11);
     expect(JURISDICTIONS[0]).toEqual({ code: "AR", name: "Argentina" });
-    expect(new Set(JURISDICTIONS.map((entry) => entry.code)).size).toBe(10);
+    expect(new Set(JURISDICTIONS.map((entry) => entry.code)).size).toBe(11);
   });
 });
 
@@ -23,4 +23,9 @@ describe("jurisdictionName", () => {
   it("does not resolve inherited object keys as jurisdictions", () => {
     expect(jurisdictionName("constructor")).toBe("constructor");
   });
+});
+
+it("includes Colombia and localizes launch countries", () => {
+  expect(jurisdictionName("CO")).toBe("Colombia");
+  expect(jurisdictionName("US", "es")).toBe("Estados Unidos");
 });

@@ -34,3 +34,14 @@ export const FACT_KIND_LABELS: Record<BibleFact["kind"], string> = {
   LORE: "Bible fact",
   POLICY: "Policy",
 };
+
+export const CATEGORY_LABELS_ES: Record<Category, string> = {
+  INDUSTRIAL_PROPERTY: "Propiedad industrial",
+  COPYRIGHT_WORKS: "Obras protegidas",
+  PERSONALITY_IMAGE: "Personalidad e imagen",
+  INTEGRATED_VISUAL: "Elementos visuales integrados",
+  LOCATIONS_PERMITS: "Locaciones y permisos",
+  SPECIAL_SYMBOLS: "Símbolos especiales",
+  CONTINUITY: "Continuidad",
+  POLICY: "Políticas",
+};
