@@ -533,6 +533,23 @@ paths:
       responses:
         '201':
           description: The fact as stored, carrying the id the server assigned.
+          description: Draft changed; response includes current_version. Preserve local
+          description: Draft changed; response includes current_version. Preserve local
+        description: Canonical screenplay JSON is limited to 8 MiB; block IDs unique
+          description: Draft changed; response includes current_version. Preserve local
+          description: Draft changed; response includes current_version. Preserve local
+        description: Canonical screenplay JSON is limited to 8 MiB; block IDs unique
+          description: Draft changed; response includes current_version. Preserve local
+          description: Owned immutable file or saved screenplay
+          description: Draft changed; original retained in project documents
+          description: Owned immutable file or saved screenplay
+          description: Draft changed; original retained in project documents
+          description: Owned immutable file or saved screenplay
+          description: Draft changed; original retained in project documents
+          description: Owned immutable file or saved screenplay
+          description: Draft changed; original retained in project documents
+          description: Owned immutable file or saved screenplay
+          description: Draft changed; original retained in project documents
                 $ref: '#/components/schemas/TrackerItem'
                 $ref: '#/components/schemas/TrackerItem'
                       $ref: '#/components/schemas/ActivityEvent'
@@ -814,10 +831,7 @@ components:
           examples: ['2026-09-05T12:04:11Z']
         error:
           type: string
-          description: |
-            Why the run failed. Empty in every state but `FAILED`, and never
-            empty in `FAILED`.
-          examples: ['Document AI returned no pages']
+          description: Why the run failed. Empty in every state but `FAILED`, and never empty in `FAILED`.
         version:
           type: integer
           minimum: 1
