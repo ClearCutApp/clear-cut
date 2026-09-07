@@ -35,9 +35,13 @@ class FakeDocumentProcessorClient:
         self._document = document
         self._error = error
         self.requests: list[documentai.ProcessRequest] = []
+        self.budgets: list[tuple[None, float]] = []
 
-    def process_document(self, request: documentai.ProcessRequest) -> documentai.ProcessResponse:
+    def process_document(
+        self, request: documentai.ProcessRequest, *, retry: None = None, timeout: float = 120
+    ) -> documentai.ProcessResponse:
         self.requests.append(request)
+        self.budgets.append((retry, timeout))
         if self._error is not None:
             raise self._error
         assert self._document is not None
@@ -283,3 +287,13 @@ def test_parse_opens_an_ingest_span_and_records_stage_latency(isolated_otel: Non
     latency_points = metric_attributes_by_name(metric_reader)["clearcut_stage_latency_ms"]
     assert latency_points
     assert all(point["stage"] == "ingest" for point in latency_points)
+
+
+def test_document_request_uses_explicit_budget_and_no_sdk_retries() -> None:
+    error = ServiceUnavailable("unavailable")  # type: ignore[no-untyped-call]
+    client = FakeDocumentProcessorClient(error=error)
+    adapter = DocumentAIIngestion(client, "processor", timeout=17)
+    with pytest.raises(IngestionFailed):
+        adapter.parse("gs://bucket/owned.pdf", "script")
+    assert client.budgets == [(None, 17)]
+    assert len(client.requests) == 1

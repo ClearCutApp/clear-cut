@@ -15,6 +15,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+import httpx
 from google.genai import errors as genai_errors
 from google.genai import types
 from opentelemetry import metrics, trace
@@ -24,6 +25,7 @@ from clearcut.domain.finding import Finding, NerLabel, RiskLevel
 from clearcut.domain.jurisdiction import Jurisdiction
 from clearcut.domain.script import Scene
 from clearcut.domain.taxonomy import category_for
+from clearcut.observability import stage_span
 
 _BATCH_SIZE = 8
 
@@ -176,7 +178,7 @@ class GeminiSceneExtractor:
         findings: list[Finding] = []
         prompt_tokens = 0
         output_tokens = 0
-        with trace.get_tracer(__name__).start_as_current_span("extract") as span:
+        with stage_span(trace.get_tracer(__name__), "extract") as span:
             span.set_attribute("gemini_model", self.model)
             for batch in _batched(scenes, _BATCH_SIZE):
                 batch_findings, usage = self._extract_batch(batch, jurisdiction)
@@ -203,19 +205,20 @@ class GeminiSceneExtractor:
             response_schema=_FINDINGS_SCHEMA,
             thinking_config=types.ThinkingConfig(thinking_level=types.ThinkingLevel.HIGH),
         )
+        contents: list[types.ContentUnionDict] = [_scene_text(scene) for scene in batch]
         try:
             response = self.client.models.generate_content(
                 model=self.model,
-                contents=[_scene_text(scene) for scene in batch],
+                contents=contents,
                 config=config,
             )
-        except genai_errors.APIError as exc:
-            raise ExtractionUnavailable(f"extraction call failed: {exc}") from exc
+        except (genai_errors.APIError, httpx.HTTPError) as exc:
+            raise ExtractionUnavailable("extraction provider unavailable") from exc
 
         try:
             items: list[dict[str, Any]] = json.loads(response.text or "[]")
         except json.JSONDecodeError as exc:
-            raise ExtractionUnavailable(f"extraction response was not JSON: {exc}") from exc
+            raise ExtractionUnavailable("extraction response was invalid") from exc
 
         try:
             findings = [self._to_finding(item, by_number) for item in items]

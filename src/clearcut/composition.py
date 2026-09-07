@@ -109,6 +109,8 @@ from clearcut.application.resolve_finding import ResolveFinding
 from clearcut.application.start_analysis import Runner, StartAnalysis, Work
 from clearcut.application.upload_script_file import UploadScriptFile
 from clearcut.domain.finding import Finding
+from clearcut.observability import stage_span
+from clearcut.provider_config import ProviderConfig
 
 logger = logging.getLogger(__name__)
 
@@ -217,7 +219,7 @@ def run_traced(script_id: str, work: Work) -> None:
     before `_configure_telemetry` installs the real provider caches that
     first resolution permanently.
     """
-    with trace.get_tracer(__name__).start_as_current_span(_ANALYSIS_SPAN) as span:
+    with stage_span(trace.get_tracer(__name__), _ANALYSIS_SPAN) as span:
         span.set_attribute("script_id", script_id)
         work()
 
@@ -372,6 +374,7 @@ def _build_live_use_cases(
     ch_client: _ChClient | None = None,
     vector_store: _VectorStore | None = None,
     storage_client: _StorageClient | None = None,
+    provider_config: dict[str, str] | None = None,
 ) -> _UseCaseGraph:
     """The live wiring seam CP-049 fills (Decision D38): the live adapters,
     built from environment-read credentials, with the vendor clients that
@@ -391,6 +394,7 @@ def _build_live_use_cases(
     processor_id = _required_env("DOCAI_PROCESSOR_ID")
     gemini_model = _required_env("GEMINI_MODEL")
     gemini_model_lite = _required_env("GEMINI_MODEL_LITE")
+    providers = ProviderConfig.read(os.environ, gemini_model, gemini_model_lite, provider_config)
     parallel_api_key = _required_env("PARALLEL_API_KEY")
     clickhouse_host = bare_host(_required_env("CLICKHOUSE_HOST"))
     clickhouse_user = _required_env("CLICKHOUSE_USER")
@@ -410,10 +414,41 @@ def _build_live_use_cases(
                 username=clickhouse_user,
                 password=clickhouse_password,
                 secure=True,
+                connect_timeout=providers.clickhouse_connect_timeout,
+                send_receive_timeout=providers.clickhouse_request_timeout,
+                query_retries=0,
             ),
         )
 
-    embeddings = VertexAIEmbeddings(project=project, location=_GCP_LOCATION, model=_EMBEDDING_MODEL)
+    genai_client = genai.Client(
+        vertexai=True,
+        project=project,
+        location=_GENAI_LOCATION,
+        http_options=genai.types.HttpOptions(
+            timeout=int(providers.genai_timeout * 1000),
+            retry_options=genai.types.HttpRetryOptions(attempts=1),
+        ),
+    )
+    embedding_client = genai.Client(
+        vertexai=True,
+        project=project,
+        location=_GCP_LOCATION,
+        http_options=genai.types.HttpOptions(
+            timeout=int(providers.genai_timeout * 1000),
+            retry_options=genai.types.HttpRetryOptions(attempts=1),
+        ),
+    )
+    embeddings = VertexAIEmbeddings(
+        project=project,
+        location=_GCP_LOCATION,
+        model=providers.embedding_model,
+        client=embedding_client,
+        max_retries=1,
+    )
+    # SDK 3.2.4's validator replaces the constructor's public client field.
+    # Assign it after validation so embeddings retain their regional budget.
+    embeddings.client.close()
+    embeddings.client = embedding_client
     if vector_store is None:
         vector_store = BigQueryVectorStore(
             embedding=embeddings,
@@ -425,10 +460,11 @@ def _build_live_use_cases(
     if storage_client is None:
         storage_client = storage.Client(project=project)
 
-    genai_client = genai.Client(vertexai=True, project=project, location=_GENAI_LOCATION)
     documentai_client = documentai.DocumentProcessorServiceClient()
 
-    ingestion = DocumentAIIngestion(documentai_client, processor_id)
+    ingestion = DocumentAIIngestion(
+        documentai_client, processor_id, timeout=providers.document_timeout
+    )
     extractor = GeminiSceneExtractor(genai_client, gemini_model)
     grounding = VertexSearchGrounding(genai_client.models, data_store_id)
     research = ParallelRightsResearch(httpx.Client(), parallel_api_key)

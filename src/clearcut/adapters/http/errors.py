@@ -52,9 +52,11 @@ def run_use_case(
         body = build()
     except RecordNotFound as error:
         return error_response(404, str(error))
-    except SourceUnavailable as error:
-        return error_response(502, str(error))
-    except Exception:
+    except SourceUnavailable:
+        return error_response(502, "upstream service unavailable; try again")
+    except Exception as error:
+        if getattr(error, "code", None) == 413:
+            return error_response(413, "request body too large")
         # Neither of the two mapped domain errors, and not `EnrichmentMissing`
         # either -- that one is caught inside the use case and never reaches
         # here (D23). A 500 with no stack trace is the honest answer: the
