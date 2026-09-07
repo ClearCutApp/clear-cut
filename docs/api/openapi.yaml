@@ -533,6 +533,8 @@ paths:
       responses:
         '201':
           description: The fact as stored, carrying the id the server assigned.
+                $ref: '#/components/schemas/TrackerItem'
+                $ref: '#/components/schemas/TrackerItem'
                       $ref: '#/components/schemas/ActivityEvent'
                       $ref: '#/components/schemas/ActivityEvent'
           content:

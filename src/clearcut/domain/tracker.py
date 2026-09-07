@@ -1,14 +1,74 @@
 """TrackerItem, the actionable side of a Finding (docs/plan/sdd.md Section 2).
 
-Every state transition writes a new versioned row rather than mutating the
-old one, so ClickHouse's latest-wins read always resolves to the last action
-a producer took. No I/O, no third-party imports, stdlib only; the time each
+Production changes use Firestore compare-and-set and immutable audit events.
+Legacy ClickHouse replacing rows are surviving baselines, not complete history.
+No I/O, no third-party imports, stdlib only; the time each
 transition is recorded at arrives as an argument.
 """
 
 import enum
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
+from datetime import date
+
+from clearcut.domain.finding import Citation
+
+
+class InvalidClearance(ValueError):
+    """Invalid clearance details supplied by a user."""
+
+
+@dataclass(frozen=True)
+class ClearanceDetails:
+    note: str
+    clearance_conditions: str
+    due_date: str
+    assignee_id: str
+    evidence_file_ids: tuple[str, ...]
+    draft_email: str | None
+
+    def __post_init__(self) -> None:
+        if any(
+            not isinstance(value, str) or len(value) > 4000
+            for value in (self.note, self.clearance_conditions)
+        ):
+            raise InvalidClearance("notes and conditions must be at most 4000 characters")
+        if not isinstance(self.due_date, str) or not isinstance(self.assignee_id, str):
+            raise InvalidClearance("due date and assignee must be text")
+        if self.due_date:
+            try:
+                parsed = date.fromisoformat(self.due_date)
+            except ValueError as exc:
+                raise InvalidClearance("due date must use YYYY-MM-DD") from exc
+            if parsed.isoformat() != self.due_date:
+                raise InvalidClearance("due date must use YYYY-MM-DD")
+        if len(self.assignee_id) > 128 or "/" in self.assignee_id or "\\" in self.assignee_id:
+            raise InvalidClearance("invalid assignee")
+        if len(self.evidence_file_ids) > 20 or len(set(self.evidence_file_ids)) != len(
+            self.evidence_file_ids
+        ):
+            raise InvalidClearance("choose at most 20 distinct evidence files")
+        if any(
+            not isinstance(value, str)
+            or not value
+            or len(value) > 128
+            or "/" in value
+            or "\\" in value
+            for value in self.evidence_file_ids
+        ):
+            raise InvalidClearance("invalid evidence file identifier")
+        if self.draft_email is not None and (
+            not isinstance(self.draft_email, str) or len(self.draft_email) > 20000
+        ):
+            raise InvalidClearance("permission draft must be at most 20000 characters")
+
+
+class TrackerConflict(Exception):
+    """Another actor changed the item before this write committed."""
+
+    def __init__(self, current_version: int) -> None:
+        self.current_version = current_version
+        super().__init__("clearance changed; reload it before trying again")
 
 
 class TrackerState(enum.StrEnum):
@@ -36,6 +96,11 @@ class TrackerItem:
     version: int
     needs_review: bool = False
     draft_email: str | None = None
+    clearance_conditions: str = ""
+    due_date: str = ""
+    assignee_id: str = ""
+    evidence_file_ids: tuple[str, ...] = ()
+    rights_holder_citations: tuple[Citation, ...] = ()
 
     def __post_init__(self) -> None:
         if self.version < 1:
@@ -45,6 +110,27 @@ class TrackerItem:
         if not self.project_id.strip():
             raise ValueError("project_id must not be blank")
 
+    def with_details(self, details: ClearanceDetails, at: str) -> "TrackerItem":
+        return replace(
+            self,
+            note=details.note,
+            clearance_conditions=details.clearance_conditions,
+            due_date=details.due_date,
+            assignee_id=details.assignee_id,
+            evidence_file_ids=details.evidence_file_ids,
+            draft_email=details.draft_email,
+            needs_review=self.needs_review
+            or (
+                self.state is TrackerState.CLEARED
+                and (
+                    details.clearance_conditions != self.clearance_conditions
+                    or details.evidence_file_ids != self.evidence_file_ids
+                )
+            ),
+            updated_at=at,
+            version=self.version + 1,
+        )
+
     def transitioned_to(self, state: TrackerState, at: str) -> "TrackerItem":
         """A new item at `state` and `version + 1`; the receiver is untouched.
 
@@ -53,6 +139,16 @@ class TrackerItem:
         record of a producer action, not a cache of current state.
         """
         return replace(self, state=state, updated_at=at, version=self.version + 1)
+
+    def reconfirmed(self, at: str) -> "TrackerItem":
+        """An explicit human acknowledgement; callers must pin the revision."""
+        return replace(
+            self,
+            state=TrackerState.CLEARED,
+            needs_review=False,
+            updated_at=at,
+            version=self.version + 1,
+        )
 
     def flagged_for_review(self, at: str) -> "TrackerItem":
         """A new item with `needs_review=True` at `version + 1`; state unchanged.
