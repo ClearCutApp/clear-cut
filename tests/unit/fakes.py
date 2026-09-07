@@ -19,6 +19,7 @@ from clearcut.application.ports import (
     ScriptIngestion,
     ScriptStorage,
     ScriptStore,
+    WebGrounding,
 )
 from clearcut.domain.analysis import AnalysisJob
 from clearcut.domain.bible import BibleFact
@@ -50,6 +51,14 @@ class FakeLegalGrounding:
         self._answer = answer if answer is not None else GroundedAnswer(text="", citations=())
 
     def ground(self, query: str, jurisdiction: Jurisdiction) -> GroundedAnswer:
+        return self._answer
+
+
+class FakeWebGrounding:
+    def __init__(self, answer: GroundedAnswer | None = None) -> None:
+        self._answer = answer if answer is not None else GroundedAnswer(text="", citations=())
+
+    def search(self, question: str, jurisdiction: Jurisdiction) -> GroundedAnswer:
         return self._answer
 
 
@@ -175,6 +184,7 @@ class FakeScriptStorage:
 _ingestion: ScriptIngestion = FakeScriptIngestion()
 _extractor: SceneExtractor = FakeSceneExtractor()
 _grounding: LegalGrounding = FakeLegalGrounding()
+_web_grounding: WebGrounding = FakeWebGrounding()
 _research: RightsResearch = FakeRightsResearch()
 _lore_store: LoreStore = FakeLoreStore()
 _project_store: ProjectStore = FakeProjectStore()

@@ -1,7 +1,7 @@
 """In-memory adapters over the CP-043 seed, wired in for `CLEARCUT_MODE=mock`
 (D36).
 
-Each class below implements one of the thirteen application ports directly
+Each class below implements one of the fourteen application ports directly
 over `scenario.py`'s planted data -- no service behind them, no I/O, no clock,
 no environment read. The stores carry mutable state (an in-process dict or
 list), because a producer's PATCH request, `EvaluateDelta`'s carry-forward
@@ -113,6 +113,22 @@ class InMemoryLegalGrounding:
         with stage_span(_tracer(), "ground"):
             answer = scenario.GROUNDED_ANSWER
         _record_stage("ground", start)
+        return answer
+
+
+class InMemoryWebGrounding:
+    """Implements `WebGrounding`: always returns the one planted web answer.
+
+    Its own `web_search` span and stage metric, for the same reason every
+    other class here carries one: a Grafana trace of a mocked demo run (D36)
+    has to look like a live run, and the live `ParallelWebSearch` records both.
+    """
+
+    def search(self, question: str, jurisdiction: Jurisdiction) -> GroundedAnswer:
+        start = time.perf_counter()
+        with stage_span(_tracer(), "web_search"):
+            answer = scenario.WEB_ANSWER
+        _record_stage("web_search", start)
         return answer
 
 

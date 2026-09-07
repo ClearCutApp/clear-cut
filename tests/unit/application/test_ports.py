@@ -19,6 +19,7 @@ from clearcut.application.ports import (
     ScriptStorage,
     ScriptStore,
     TrackerStore,
+    WebGrounding,
 )
 from clearcut.domain.script import Script
 from clearcut.domain.tracker import TrackerItem
@@ -33,6 +34,7 @@ from tests.unit.fakes import (
     FakeScriptIngestion,
     FakeScriptStorage,
     FakeScriptStore,
+    FakeWebGrounding,
 )
 
 
@@ -74,6 +76,7 @@ _FAKES_BY_PORT = {
     ScriptIngestion: FakeScriptIngestion(),
     SceneExtractor: FakeSceneExtractor(),
     LegalGrounding: FakeLegalGrounding(),
+    WebGrounding: FakeWebGrounding(),
     RightsResearch: FakeRightsResearch(),
     LoreStore: FakeLoreStore(),
     TrackerStore: FakeTrackerStore(),

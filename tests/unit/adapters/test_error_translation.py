@@ -1,7 +1,7 @@
 """Proves every adapter error is catchable as its D23 domain type (CP-034,
 AGENT.md Section 2 rule 3, CHECKPOINTS.md Decision D23).
 
-Each of the eleven adapter errors keeps its own module, its own name, and its
+Each of the thirteen adapter errors keeps its own module, its own name, and its
 own message -- D23 only changes the *type* that crosses the port, from an
 adapter-local `Exception` subclass to a `clearcut.domain.errors` subclass.
 Each test below raises the adapter's own error and catches it by the domain
@@ -20,6 +20,7 @@ from clearcut.adapters.gemini.continuity import ContinuityCheckFailed
 from clearcut.adapters.gemini.extractor import ExtractionFailed
 from clearcut.adapters.notify.webhook import NotificationFailed
 from clearcut.adapters.parallel.research import NoRightsHolderFound, ResearchUnavailable
+from clearcut.adapters.parallel.search import NoWebEvidence, WebSearchUnavailable
 from clearcut.domain.errors import EnrichmentMissing, RecordNotFound, SourceUnavailable
 
 
@@ -36,6 +37,11 @@ def test_no_grounded_source_is_an_enrichment_missing() -> None:
 def test_no_rights_holder_found_is_an_enrichment_missing() -> None:
     with pytest.raises(EnrichmentMissing):
         raise NoRightsHolderFound("the mural")
+
+
+def test_no_web_evidence_is_an_enrichment_missing() -> None:
+    with pytest.raises(EnrichmentMissing):
+        raise NoWebEvidence("can we show the mural?")
 
 
 def test_tracker_unavailable_is_a_source_unavailable() -> None:
@@ -66,6 +72,11 @@ def test_extraction_failed_is_a_source_unavailable() -> None:
 def test_research_unavailable_is_a_source_unavailable() -> None:
     with pytest.raises(SourceUnavailable):
         raise ResearchUnavailable("Parallel Task API responded with status 503", status_code=503)
+
+
+def test_web_search_unavailable_is_a_source_unavailable() -> None:
+    with pytest.raises(SourceUnavailable):
+        raise WebSearchUnavailable("Parallel Search API responded with status 503", status_code=503)
 
 
 def test_continuity_check_failed_is_a_source_unavailable() -> None:
