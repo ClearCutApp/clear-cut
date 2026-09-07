@@ -2,6 +2,8 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router";
 
+import { AuthProvider } from "./state/AuthContext";
+import { LocaleProvider } from "./state/LocaleContext";
 import { App } from "./App";
 import { ServerModeProvider } from "./state/ServerModeContext";
 import "./index.css";
@@ -15,7 +17,7 @@ createRoot(container).render(
   <StrictMode>
     <BrowserRouter>
       <ServerModeProvider>
-        <App />
+        <LocaleProvider><AuthProvider><App /></AuthProvider></LocaleProvider>
       </ServerModeProvider>
     </BrowserRouter>
   </StrictMode>,

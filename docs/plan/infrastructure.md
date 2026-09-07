@@ -224,6 +224,10 @@ which is what the partner requirement asks for (section 11).
 
 ## 8. Secrets and configuration
 
+Recovery amendment: `CLEARCUT_PROVIDER_OPTIONS` is an optional JSON object for
+validated model and operation-budget overrides; see docs/recovery/provider-config.md.
+Queued analyses retain the exact options that applied when they were created.
+
 Locally, a `.env` file at the repo root holds everything; it is gitignored and
 never committed. In the deployed Cloud Run service, the same names come from
 Secret Manager entries mounted as environment variables. The full set:
@@ -233,7 +237,7 @@ Secret Manager entries mounted as environment variables. The full set:
 | `CLEARCUT_MODE` | `mock` for the in-memory demo, `live` for the real adapter graph; unset defaults to `live` |
 | `GOOGLE_CLOUD_PROJECT` | project ID, `clearcut-hack` |
 | `DOCAI_PROCESSOR_ID` | Document AI processor from section 3, as a full resource name: `projects/clearcut-hack/locations/us/processors/<id>` |
-| `PARALLEL_API_KEY` | Parallel Task API, Search API, and MCP auth (`x-api-key`) |
+| `PARALLEL_API_KEY` | Parallel Task API and Search API auth (`x-api-key`) |
 | `CLICKHOUSE_HOST` | ClickHouse Cloud endpoint |
 | `CLICKHOUSE_USER` | ClickHouse user |
 | `CLICKHOUSE_PASSWORD` | ClickHouse password |
@@ -246,6 +250,13 @@ Secret Manager entries mounted as environment variables. The full set:
 | `VERTEX_SEARCH_DATA_STORE_ID` | data store from section 5, as a full resource name: `projects/clearcut-hack/locations/global/collections/default_collection/dataStores/clearcut-legal-corpus` |
 | `NOTIFY_WEBHOOK_URL` | outbound webhook the Notifier posts to |
 | `SCRIPTS_INTAKE_BUCKET` | bucket an uploaded screenplay is written to, `clearcut-scripts-intake`, as the bare name without a `gs://` prefix; section 2 creates it and Document AI reads the object back out of it |
+| `FIREBASE_WEB_API_KEY` | Public Firebase web app key served by `/api/client-config`; also used by disposable live identity checks |
+| `FIREBASE_WEB_AUTH_DOMAIN` | Public Firebase authorized auth domain; runtime browser config |
+| `FIREBASE_WEB_APP_ID` | Public Firebase web app ID; runtime browser config |
+| `VITE_FIREBASE_API_KEY` | Optional public browser build override for Firebase API key |
+| `VITE_FIREBASE_AUTH_DOMAIN` | Optional public browser build override for auth domain |
+| `VITE_FIREBASE_PROJECT_ID` | Optional public browser build override for project ID |
+| `VITE_FIREBASE_APP_ID` | Optional public browser build override for web app ID |
 | `CLEARCUT_LIVE_SCRIPT_GCS_URI` | `gs://clearcut-scripts-intake/demo-project/v1.pdf` -- the planted screenplay `infra/build_planted_script.py` emits and uploads, in place since 2026-09-03. Read only by the live tier, never by the running service. Both `tests/live/test_document_ai_live.py` and `test_end_to_end_live.py` skip without it, and for three days they skipped while the file they wanted was already in the bucket |
 
 The Notifier delivers every notification as an HTTP POST to
@@ -327,7 +338,7 @@ judges a live multi-stage pipeline rather than a single prompt call.
 | Repository | public, with the Apache-2.0 `LICENSE` at root (already present) |
 | Demo video | 3 minutes, English or subtitled |
 | Devpost form | submitted before September 7, 2026 |
-| Runtime proof | the repo shows real runtime calls to Google Cloud (Gemini, Document AI) and Parallel (Task API, MCP), not mocked responses |
+| Runtime proof | the repo shows real runtime calls to Google Cloud (Gemini, Document AI) and Parallel (Task API for rights-holder research, Search API for live legal grounding), not mocked responses |
 
 The runtime-proof row is the one judges verify against the code, so keep the
 Parallel and Gemini call sites obvious in the repository rather than buried

@@ -15,7 +15,7 @@ never the reverse -- and lets a test serve a document it wrote itself.
 from collections.abc import Callable
 from typing import Any
 
-from flask import Blueprint, jsonify
+from flask import Blueprint, g, jsonify
 from flask.typing import ResponseReturnValue
 
 from clearcut.adapters.http import schemas
@@ -68,6 +68,54 @@ SCHEMAS: JsonDict = {
 }
 
 PATHS: JsonDict = {
+    "/api/client-config": {
+        "get": {
+            "tags": [TAG],
+            "operationId": "getClientConfig",
+            "security": [],
+            "summary": "Public Firebase web app identifiers",
+            "responses": {
+                "200": schemas.ok(
+                    "Public app config.",
+                    schemas.json_of(
+                        {
+                            "type": "object",
+                            "required": ["apiKey", "authDomain", "projectId", "appId"],
+                            "properties": {
+                                key: {"type": "string"}
+                                for key in ("apiKey", "authDomain", "projectId", "appId")
+                            },
+                        }
+                    ),
+                ),
+                "503": {"description": "Account access is awaiting configuration."},
+            },
+        }
+    },
+    "/api/me": {
+        "get": {
+            "tags": [TAG],
+            "operationId": "getIdentity",
+            "summary": "Verified identity context",
+            "responses": {
+                "200": schemas.ok(
+                    "Verified user.",
+                    schemas.json_of(
+                        {
+                            "type": "object",
+                            "required": ["user_id", "email"],
+                            "properties": {
+                                "user_id": {"type": "string"},
+                                "email": {"type": "string"},
+                            },
+                        }
+                    ),
+                ),
+                "401": {"description": "Sign in required."},
+                "503": {"description": "Identity or authorization service unavailable."},
+            },
+        }
+    },
     "/api/health": {
         "get": {
             "tags": [TAG],
@@ -117,13 +165,28 @@ PATHS: JsonDict = {
 }
 
 
-def create_system_blueprint(mode: str, spec: Callable[[], JsonDict]) -> Blueprint:
+def create_system_blueprint(
+    mode: str, spec: Callable[[], JsonDict], client_config: dict[str, str] | None = None
+) -> Blueprint:
     """Health, the OpenAPI document, and a Swagger UI over it.
 
     Register before the SPA blueprint, whose catch-all answers every
     unmatched path: registered after it, all three become its JSON 404.
     """
     bp = Blueprint("clearcut_system", __name__)
+
+    @bp.get("/api/client-config")
+    def public_client_config() -> ResponseReturnValue:
+        if not client_config or not all(client_config.values()):
+            return {"error": "account access is awaiting configuration"}, 503
+        return client_config
+
+    @bp.get("/api/me")
+    def identity_context() -> ResponseReturnValue:
+        identity = getattr(g, "identity", None)
+        if identity is None:
+            return {"error": "sign in required"}, 401
+        return {"user_id": identity.user_id, "email": identity.email}
 
     @bp.route("/api/health")
     def health() -> ResponseReturnValue:

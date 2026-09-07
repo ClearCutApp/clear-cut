@@ -30,7 +30,9 @@ The span is opened inside the runner instead, and the runner is supplied here
 because `application/` may not import opentelemetry.
 """
 
+import json
 import logging
+import math
 import os
 import threading
 from collections.abc import Callable
@@ -39,12 +41,13 @@ from pathlib import Path
 from typing import TypeVar, cast
 
 import clickhouse_connect
+import firebase_admin
 import httpx
 from flask import Flask
 from google import genai
+from google.cloud import bigquery, firestore, storage
 from google.cloud import documentai_v1 as documentai
-from google.cloud import storage
-from langchain_google_community import BigQueryVectorStore  # type: ignore[import-untyped]
+from google.cloud.speech_v2 import SpeechClient
 from langchain_google_vertexai import VertexAIEmbeddings
 from opentelemetry import context as otel_context
 from opentelemetry import metrics, trace
@@ -56,6 +59,8 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from clearcut.adapters.bigquery.lore_store import BigQueryLoreStore, _VectorStore
+from clearcut.adapters.bigquery.scene_vectors import BigQuerySceneVectors
+from clearcut.adapters.bigquery.vectors import BigQueryVectors
 from clearcut.adapters.clickhouse.activity import ClickHouseActivity
 from clearcut.adapters.clickhouse.analyses import ClickHouseAnalysisJobStore
 from clearcut.adapters.clickhouse.client import _ChClient, bare_host
@@ -79,11 +84,15 @@ from clearcut.adapters.demo.in_memory import (
     InMemoryTrackerStore,
 )
 from clearcut.adapters.gcp.document_ai import DocumentAIIngestion
+from clearcut.adapters.gcp.firebase_identity import FirebaseIdentityVerifier
+from clearcut.adapters.gcp.firestore_access import FirestoreProjectAccess
+from clearcut.adapters.gcp.speech import GoogleSpeechTranscription
 from clearcut.adapters.gcp.storage import GcsScriptStorage, _StorageClient
 from clearcut.adapters.gcp.vertex_search import VertexSearchGrounding
 from clearcut.adapters.gemini.continuity import GeminiContinuityCheck
 from clearcut.adapters.gemini.extractor import GeminiSceneExtractor
 from clearcut.adapters.http.bible import create_bible_blueprint
+from clearcut.adapters.http.identity import install_identity_boundary
 from clearcut.adapters.http.openapi import build_spec
 from clearcut.adapters.http.projects import create_projects_blueprint
 from clearcut.adapters.http.questions import create_questions_blueprint
@@ -91,6 +100,7 @@ from clearcut.adapters.http.scripts import create_scripts_blueprint
 from clearcut.adapters.http.spa import create_spa_blueprint
 from clearcut.adapters.http.system import create_system_blueprint
 from clearcut.adapters.http.tracker import create_tracker_blueprint
+from clearcut.adapters.http.voice import create_voice_blueprint
 from clearcut.adapters.notify.webhook import WebhookNotifier
 from clearcut.adapters.parallel.research import ParallelRightsResearch
 from clearcut.application.activity_ports import ActivityStore
@@ -110,6 +120,8 @@ from clearcut.application.list_tracker_items import ListTrackerItems
 from clearcut.application.resolve_finding import ResolveFinding
 from clearcut.application.start_analysis import Runner, StartAnalysis, Work
 from clearcut.application.upload_script_file import UploadScriptFile
+from clearcut.application.workspace_ports import OwnedFiles, ProjectAccess
+from clearcut.domain.errors import SourceUnavailable
 from clearcut.domain.finding import Finding
 from clearcut.observability import stage_span
 from clearcut.provider_config import ProviderConfig
@@ -287,6 +299,7 @@ class _UseCaseGraph:
     get_bible: GetBible
     add_bible_facts: AddBibleFacts
     answer_project_question: AnswerProjectQuestion
+    provider_config_json: str = "{}"
     activity: ActivityStore | None = None
 
 
@@ -371,6 +384,52 @@ def _required_env(name: str) -> str:
     return value
 
 
+def _scene_vectors(project: str) -> BigQuerySceneVectors:
+    def options(raw: str) -> ProviderConfig:
+        return ProviderConfig.read({}, "unused", "unused", json.loads(raw))
+
+    def store(raw: str) -> _VectorStore:
+        providers = options(raw)
+        return BigQueryVectors(
+            bigquery.Client(project=project, location=_GCP_LOCATION),
+            f"{project}.{_BIGQUERY_DATASET}.analysis_scene_vectors",
+            location=_GCP_LOCATION,
+            timeout=providers.bigquery_timeout,
+            extra_columns=("organization_id", "analysis_id", "revision_id", "scene_id"),
+        )
+
+    def embed(texts: list[str], raw: str, query: bool) -> list[list[float]]:
+        providers = options(raw)
+        try:
+            with genai.Client(
+                vertexai=True,
+                project=project,
+                location=_GCP_LOCATION,
+                http_options=genai.types.HttpOptions(
+                    timeout=int(providers.genai_timeout * 1000),
+                    retry_options=genai.types.HttpRetryOptions(attempts=1),
+                ),
+            ) as client:
+                response = client.models.embed_content(
+                    model=providers.embedding_model,
+                    contents=cast(list[genai.types.ContentUnionDict], texts),
+                    config=genai.types.EmbedContentConfig(
+                        task_type="RETRIEVAL_QUERY" if query else "RETRIEVAL_DOCUMENT",
+                        auto_truncate=False,
+                    ),
+                )
+            embeddings = [list(item.values or []) for item in response.embeddings or []]
+            if len(embeddings) != len(texts) or any(
+                not vector or not all(math.isfinite(v) for v in vector) for vector in embeddings
+            ):
+                raise ValueError("invalid embedding result")
+            return embeddings
+        except Exception as exc:
+            raise SourceUnavailable("scene embeddings unavailable") from exc
+
+    return BigQuerySceneVectors(store, embed)
+
+
 def _build_live_use_cases(
     *,
     runner: Runner = run_traced_in_background,
@@ -398,6 +457,8 @@ def _build_live_use_cases(
     gemini_model = _required_env("GEMINI_MODEL")
     gemini_model_lite = _required_env("GEMINI_MODEL_LITE")
     providers = ProviderConfig.read(os.environ, gemini_model, gemini_model_lite, provider_config)
+    selected = providers.frozen()
+    gemini_model, gemini_model_lite = providers.gemini_model, providers.gemini_model_lite
     parallel_api_key = _required_env("PARALLEL_API_KEY")
     clickhouse_host = bare_host(_required_env("CLICKHOUSE_HOST"))
     clickhouse_user = _required_env("CLICKHOUSE_USER")
@@ -453,11 +514,9 @@ def _build_live_use_cases(
     embeddings.client.close()
     embeddings.client = embedding_client
     if vector_store is None:
-        vector_store = BigQueryVectorStore(
-            embedding=embeddings,
-            project_id=project,
-            dataset_name=_BIGQUERY_DATASET,
-            table_name=_BIGQUERY_LORE_TABLE,
+        vector_store = BigQueryVectors(
+            bigquery.Client(project=project, location=_GCP_LOCATION),
+            f"{project}.{_BIGQUERY_DATASET}.{_BIGQUERY_LORE_TABLE}",
             location=_GCP_LOCATION,
         )
     if storage_client is None:
@@ -505,6 +564,7 @@ def _build_live_use_cases(
         bind=bind_context,
     )
     return _UseCaseGraph(
+        provider_config_json=json.dumps(selected, sort_keys=True),
         activity=ClickHouseActivity(ch_client),
         analyze_script=analyze_script,
         evaluate_delta=evaluate_delta,
@@ -556,7 +616,15 @@ def _default_build_dir() -> Path:
     return Path(__file__).resolve().parent.parent.parent / "web" / "dist"
 
 
-def _register_api(app: Flask, graph: _UseCaseGraph, mode: str, build_dir: Path) -> None:
+def _register_api(
+    app: Flask,
+    graph: _UseCaseGraph,
+    mode: str,
+    build_dir: Path,
+    access: ProjectAccess | None = None,
+    owned_files: OwnedFiles | None = None,
+    client_config: dict[str, str] | None = None,
+) -> None:
     """Mounts the six domain blueprints, then the SPA.
 
     Order is load-bearing and is the reason this is one function rather than
@@ -564,7 +632,7 @@ def _register_api(app: Flask, graph: _UseCaseGraph, mode: str, build_dir: Path) 
     unmatched path, so a domain registered after it would resolve to the
     SPA's JSON 404 for `/api` paths. It goes last, once.
     """
-    app.register_blueprint(create_system_blueprint(mode, build_spec))
+    app.register_blueprint(create_system_blueprint(mode, build_spec, client_config))
     app.register_blueprint(
         create_projects_blueprint(graph.create_project, graph.list_projects, graph.get_project)
     )
@@ -616,7 +684,40 @@ def create_app(build_dir: Path | None = None, *, analysis_runner: Runner | None 
         )
 
     app = Flask(__name__)
+    access: FirestoreProjectAccess | None = None
+    if mode == _LIVE_MODE:
+        firebase_app = firebase_admin.initialize_app(
+            options={"projectId": _required_env("GOOGLE_CLOUD_PROJECT")},
+            name=f"clearcut-{id(app)}",
+        )
+        access = FirestoreProjectAccess(
+            firestore.Client(project=_required_env("GOOGLE_CLOUD_PROJECT"))
+        )
+        install_identity_boundary(app, FirebaseIdentityVerifier(firebase_app), access)
+    voice_options = json.loads(use_cases.provider_config_json)
+    speech = (
+        GoogleSpeechTranscription(
+            SpeechClient(client_options={"api_endpoint": "us-central1-speech.googleapis.com"}),
+            _required_env("GOOGLE_CLOUD_PROJECT"),
+            model=voice_options.get("speech_model", "chirp_2"),
+            timeout=float(voice_options.get("speech_timeout", 45)),
+        )
+        if mode == _LIVE_MODE
+        else None
+    )
+    app.register_blueprint(create_voice_blueprint(speech))
     _register_api(
-        app, use_cases, mode, build_dir if build_dir is not None else _default_build_dir()
+        app,
+        use_cases,
+        mode,
+        build_dir if build_dir is not None else _default_build_dir(),
+        access,
+        access,
+        {
+            "apiKey": os.environ.get("FIREBASE_WEB_API_KEY", ""),
+            "authDomain": os.environ.get("FIREBASE_WEB_AUTH_DOMAIN", ""),
+            "projectId": os.environ.get("GOOGLE_CLOUD_PROJECT", ""),
+            "appId": os.environ.get("FIREBASE_WEB_APP_ID", ""),
+        },
     )
     return app

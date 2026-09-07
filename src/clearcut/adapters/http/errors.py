@@ -22,6 +22,7 @@ from flask import jsonify
 from flask.typing import ResponseReturnValue
 
 from clearcut.domain.errors import RecordNotFound, SourceUnavailable
+from clearcut.domain.identity import AccessDenied
 
 JsonDict = dict[str, Any]
 JsonBody = JsonDict | list[JsonDict]
@@ -50,6 +51,8 @@ def run_use_case(
     """
     try:
         body = build()
+    except AccessDenied:
+        return error_response(403, "workspace does not allow this action")
     except RecordNotFound as error:
         return error_response(404, str(error))
     except SourceUnavailable:

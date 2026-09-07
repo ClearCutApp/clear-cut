@@ -1,6 +1,10 @@
 import type { ReactElement } from "react";
 import { Route, Routes } from "react-router";
 
+import { RequireIdentity } from "./auth/RequireIdentity";
+import { LandingView } from "./views/LandingView";
+import { AuthView } from "./views/AuthView";
+import { VerifyEmailView } from "./views/VerifyEmailView";
 import { AppShell } from "./shell/AppShell";
 import { ProjectLayout } from "./shell/ProjectLayout";
 import { AnalyzeView } from "./views/AnalyzeView";
@@ -18,6 +22,11 @@ import { ScriptView } from "./views/ScriptView";
 export function App(): ReactElement {
   return (
     <Routes>
+      <Route index element={<LandingView />} />
+      <Route path="login" element={<AuthView />} />
+      <Route path="signup" element={<AuthView signup />} />
+      <Route path="verify-email" element={<VerifyEmailView />} />
+      <Route element={<RequireIdentity />}>
       <Route element={<AppShell />}>
         <Route index element={<ProjectsView />} />
         <Route path="projects/:projectId" element={<ProjectLayout />}>
@@ -27,6 +36,7 @@ export function App(): ReactElement {
           <Route path="ask" element={<AskView />} />
         </Route>
         <Route path="*" element={<NotFoundView />} />
+      </Route>
       </Route>
     </Routes>
   );

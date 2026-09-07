@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   API_DOCS_PATH,
+  setIdentityTokenProvider,
   ApiError,
   askProjectQuestion,
   createProject,
@@ -25,6 +26,7 @@ const originalFetch = globalThis.fetch;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  setIdentityTokenProvider(async () => null);
 });
 
 function respondWith(status: number, body: string): typeof fetch {
@@ -391,4 +393,20 @@ describe("uploadScriptFile", () => {
     expect((failure as ApiError).status).toBe(413);
     expect((failure as ApiError).message).toBe("the file is over 25 MiB");
   });
+});
+
+
+it("attaches a fresh identity token without inventing a multipart Content-Type", async () => {
+  let headers: Headers | undefined;
+  let sentBody: BodyInit | null | undefined;
+  globalThis.fetch = async (_input, init) => {
+    headers = new Headers(init?.headers); sentBody = init?.body;
+    return new Response(JSON.stringify({ file_id: "owned", gcs_uri: "gs://bucket/owned",
+      filename: "draft.pdf", size_bytes: 4, content_type: "application/pdf" }), { status: 201 });
+  };
+  setIdentityTokenProvider(async () => "fresh-token");
+  await uploadScriptFile("project-one", new File(["%PDF"], "draft.pdf", { type: "application/pdf" }));
+  expect(headers?.get("Authorization")).toBe("Bearer fresh-token");
+  expect(headers?.has("Content-Type")).toBe(false);
+  expect(sentBody).toBeInstanceOf(FormData);
 });

@@ -238,11 +238,29 @@ function errorMessage(status: number, body: string): string {
   return trimmed;
 }
 
-async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, init);
+let identityToken: () => Promise<string | null> = async () => null;
+export function setIdentityTokenProvider(provider: () => Promise<string | null>): void {
+  identityToken = provider;
+}
+
+async function requestResponse(path: string, init?: RequestInit): Promise<Response> {
+  const publicRead = path === "/api/health" || path === "/api/jurisdictions" || path === "/api/client-config";
+  const token = publicRead ? null : await identityToken();
+  let authenticated = init;
+  if (token) {
+    const headers = new Headers(init?.headers);
+    headers.set("Authorization", `Bearer ${token}`);
+    authenticated = { ...init, headers };
+  }
+  const response = await fetch(path, authenticated);
   if (!response.ok) {
     throw new ApiError(response.status, errorMessage(response.status, await response.text()));
   }
+  return response;
+}
+
+async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await requestResponse(path, init);
   try {
     return (await response.json()) as T;
   } catch {
@@ -270,6 +288,77 @@ function trackerItemPath(projectId: string, itemId: string): string {
 
 export function getHealth(): Promise<Health> {
   return requestJson<Health>("/api/health");
+}
+
+export interface ClientConfig { apiKey: string; authDomain: string; projectId: string; appId: string; }
+export function getClientConfig(): Promise<ClientConfig> {
+  return requestJson<ClientConfig>("/api/client-config");
+}
+export interface IdentityContext { user_id: string; email: string; }
+export interface Organization { organization_id: string; name: string; role: string; }
+export type WorkspaceRole = "owner" | "admin" | "producer" | "writer" | "viewer";
+export interface WorkspaceMember { user_id: string; email?: string; role: WorkspaceRole; active: boolean; version?: number; }
+export interface WorkspaceInvitation { invitation_id: string; email: string; role: WorkspaceRole; state: string; version: number; expires_at: string; }
+export interface ProjectMembers { organization_id: string; version: number; can_manage: boolean; can_edit?: boolean; members: { user_id: string; email: string; role: WorkspaceRole }[]; }
+export interface ProductionLocation { country: string; location: string; }
+export interface ProjectSettings { project_id: string; title: string; jurisdiction_code: string; version: number; locations: ProductionLocation[]; }
+export function getWorkspaceMembers(organizationId: string): Promise<{ members: WorkspaceMember[] }> {
+  return requestJson(`/api/organizations/${encodeURIComponent(organizationId)}/members`);
+}
+export function getWorkspaceInvitations(organizationId: string): Promise<{ invitations: WorkspaceInvitation[] }> {
+  return requestJson(`/api/organizations/${encodeURIComponent(organizationId)}/invitations`);
+}
+export function inviteWorkspaceMember(organizationId: string, email: string, role: WorkspaceRole): Promise<{ invitation: WorkspaceInvitation; token: string }> {
+  return requestJson(`/api/organizations/${encodeURIComponent(organizationId)}/invitations`, jsonRequest("POST", { email, role }));
+}
+export function revokeWorkspaceInvitation(organizationId: string, invitation: WorkspaceInvitation): Promise<unknown> {
+  return requestJson(`/api/organizations/${encodeURIComponent(organizationId)}/invitations/${encodeURIComponent(invitation.invitation_id)}/revocation`,
+    jsonRequest("POST", { expected_version: invitation.version }));
+}
+export function changeWorkspaceMember(organizationId: string, member: WorkspaceMember, role: WorkspaceRole, active: boolean): Promise<unknown> {
+  return requestJson(`/api/organizations/${encodeURIComponent(organizationId)}/members/${encodeURIComponent(member.user_id)}`,
+    jsonRequest("PATCH", { expected_version: member.version ?? 1, role, active }));
+}
+export function acceptWorkspaceInvitation(token: string): Promise<{ organization_id: string }> {
+  return requestJson("/api/invitations/accept", jsonRequest("POST", { token }));
+}
+export function getProjectMembers(projectId: string): Promise<ProjectMembers> {
+  return requestJson(`${projectPath(projectId)}/members`);
+}
+export function assignProjectMember(projectId: string, userId: string, role: WorkspaceRole | null, expectedVersion: number): Promise<unknown> {
+  return requestJson(`${projectPath(projectId)}/members/${encodeURIComponent(userId)}`,
+    jsonRequest("PATCH", { role, expected_version: expectedVersion }));
+}
+export function getProjectSettings(projectId: string): Promise<ProjectSettings> {
+  return requestJson(`${projectPath(projectId)}/settings`);
+}
+export function saveProjectSettings(projectId: string, settings: ProjectSettings): Promise<ProjectSettings> {
+  return requestJson(`${projectPath(projectId)}/settings`, jsonRequest("PUT", {
+    expected_version: settings.version, title: settings.title,
+    jurisdiction_code: settings.jurisdiction_code, locations: settings.locations,
+  }));
+}
+export interface LocalResearchRecord {
+  research_id: string; project_id: string; created_at: string; settings_version: number;
+  location: ProductionLocation; question: string; text: string; citations: Citation[];
+  status: "evidence_found" | "coverage_gap"; human_clearance: false; provider: string;
+}
+export function listLocalResearch(projectId: string): Promise<{ configured: boolean; research: LocalResearchRecord[] }> {
+  return requestJson(`${projectPath(projectId)}/local-research`);
+}
+export function researchProductionLocation(projectId: string, settingsVersion: number, locationIndex: number, question: string): Promise<LocalResearchRecord> {
+  return requestJson(`${projectPath(projectId)}/local-research`, jsonRequest("POST", {
+    expected_settings_version: settingsVersion, location_index: locationIndex, question,
+  }));
+}
+export function getIdentity(): Promise<IdentityContext> {
+  return requestJson<IdentityContext>("/api/me");
+}
+export function listOrganizations(): Promise<Organization[]> {
+  return requestJson<Organization[]>("/api/organizations");
+}
+export function createOrganization(name: string): Promise<Organization> {
+  return requestJson<Organization>("/api/organizations", jsonRequest("POST", { name }));
 }
 
 // ------------------------------------------------------------ projects --

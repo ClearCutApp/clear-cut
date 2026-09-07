@@ -2,13 +2,14 @@ openapi: 3.1.0
 
 info:
   title: ClearCut API
-  version: 1.0.0
+  version: 1.1.0
   summary: Agentic script clearance for independent film production.
   description: |
     Upload a screenplay version and every rights event that could stop the film
     comes back with the law it triggers, who holds the rights, and an action to
     resolve it.
 
+    Live requests require a verified Firebase identity and explicit project grants.
     This document is the contract, not a description of what is deployed today.
     Four verticals build against it in parallel, so a field named here is the
     field they each implement.
@@ -45,9 +46,47 @@ tags:
   - name: Questions
     description: Grounded questions about one project's clearance state.
 
+security:
+  - FirebaseIdentity: []
+
 paths:
+  /api/client-config:
+    get:
+      tags: [System]
+      operationId: getClientConfig
+      security: []
+      summary: Public Firebase web app identifiers
+      responses:
+        '200':
+          description: Public app config.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [apiKey, authDomain, projectId, appId]
+                properties:
+                  apiKey: {type: string}
+                  authDomain: {type: string}
+                  projectId: {type: string}
+                  appId: {type: string}
+        '503': {description: Account access is awaiting configuration.}
+      summary: Verified identity context
+      responses:
+        '200':
+          description: Verified user.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user_id, email]
+                properties:
+                  user_id: {type: string}
+                  email: {type: string}
+        '401': {description: Sign in required.}
+        '503': {description: Identity or authorization service unavailable.}
   /api/health:
     get:
+      security: []
       tags: [System]
       operationId: getHealth
       summary: Whether this instance runs live or serves the demo sample
@@ -66,6 +105,7 @@ paths:
 
   /api/openapi.json:
     get:
+      security: []
       tags: [System]
       operationId: getOpenApiDocument
       summary: This document, as JSON, from the running service
@@ -82,6 +122,7 @@ paths:
 
   /api/docs:
     get:
+      security: []
       tags: [System]
       operationId: getApiDocs
       summary: Swagger UI over the document above
@@ -97,6 +138,7 @@ paths:
 
   /api/jurisdictions:
     get:
+      security: []
       tags: [Projects]
       operationId: listJurisdictions
       summary: The jurisdictions a project can be cleared against
@@ -331,10 +373,23 @@ paths:
 
   /api/projects/{project_id}/analyses/{analysis_id}:
     parameters:
-      - $ref: '#/components/parameters/ProjectId'
-      - $ref: '#/components/parameters/AnalysisId'
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    - name: analysis_id
+      in: path
+      required: true
+      description: One queued analysis, as returned by the 202 that created it.
+      schema:
+        type: string
+        minLength: 1
     get:
-      tags: [Scripts]
+      tags:
+      - Scripts
       operationId: getAnalysis
       summary: The state of one queued analysis
       description: |
@@ -350,15 +405,31 @@ paths:
               schema:
                 $ref: '#/components/schemas/AnalysisJob'
         '404':
-          $ref: '#/components/responses/NotFound'
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
-          $ref: '#/components/responses/InternalError'
+          description: The server failed for a reason it does not attribute. The body carries a message
+            and never a stack trace.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /api/projects/{project_id}/tracker-items:
     parameters:
-      - $ref: '#/components/parameters/ProjectId'
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
     get:
-      tags: [Tracker]
+      tags:
+      - Tracker
       operationId: listTrackerItems
       summary: This project's tracker items
       responses:
@@ -373,16 +444,26 @@ paths:
                 items:
                   $ref: '#/components/schemas/TrackerItem'
         '404':
-          $ref: '#/components/responses/NotFound'
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
-          $ref: '#/components/responses/InternalError'
+          description: The server failed for a reason it does not attribute. The body carries a message
+            and never a stack trace.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /api/projects/{project_id}/tracker-items/{item_id}:
     parameters:
       - $ref: '#/components/parameters/ProjectId'
       - $ref: '#/components/parameters/ItemId'
     get:
-      tags: [Tracker]
+      tags:
+      - Tracker
       operationId: getTrackerItem
       summary: One tracker item
       responses:
@@ -393,11 +474,21 @@ paths:
               schema:
                 $ref: '#/components/schemas/TrackerItem'
         '404':
-          $ref: '#/components/responses/NotFound'
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
-          $ref: '#/components/responses/InternalError'
+          description: The server failed for a reason it does not attribute. The body carries a message
+            and never a stack trace.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     patch:
-      tags: [Tracker]
+      tags:
+      - Tracker
       operationId: updateTrackerItemState
       summary: Move one item between states
       description: |
@@ -425,7 +516,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '404':
-          $ref: '#/components/responses/NotFound'
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/InternalError'
 
@@ -434,14 +529,21 @@ paths:
       - $ref: '#/components/parameters/ProjectId'
       - $ref: '#/components/parameters/ItemId'
     post:
-      tags: [Tracker]
+      tags:
+      - Tracker
       operationId: createTrackerItemEmailDraft
       summary: Draft the outreach email for one item
       description: |
         Fills the outreach template from the item's rights holder, contact and
         required document, and stores it on the item as `draft_email`. The
-        system never sends it: a producer copies the draft and sends it
-        themselves.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrackerExpectedVersion'
+        document, and stores it on the item as `draft_email`. The system never sends it: a producer
+        copies the draft and sends it themselves.'
       responses:
         '201':
           description: The item at its new version, carrying the draft.
@@ -450,7 +552,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/TrackerItem'
         '404':
-          $ref: '#/components/responses/NotFound'
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/InternalError'
   /api/projects/{project_id}/tracker-items/{item_id}/notifications:
@@ -458,7 +564,8 @@ paths:
       - $ref: '#/components/parameters/ProjectId'
       - $ref: '#/components/parameters/ItemId'
     post:
-      tags: [Tracker]
+      tags:
+      - Tracker
       operationId: createTrackerItemNotification
       summary: Notify the producer about one item
       description: Posts the item and the reason to the configured outbound webhook.
@@ -492,7 +599,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '500':
-          $ref: '#/components/responses/InternalError'
+          description: The server failed for a reason it does not attribute. The body carries a message
+            and never a stack trace.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /api/projects/{project_id}/bible:
     parameters:
@@ -533,12 +645,17 @@ paths:
       responses:
         '201':
           description: The fact as stored, carrying the id the server assigned.
+          description: Verified identity required
           description: Draft changed; response includes current_version. Preserve local
+          description: Verified identity required
           description: Draft changed; response includes current_version. Preserve local
         description: Canonical screenplay JSON is limited to 8 MiB; block IDs unique
+          description: Verified identity required
           description: Draft changed; response includes current_version. Preserve local
+          description: Verified identity required
           description: Draft changed; response includes current_version. Preserve local
         description: Canonical screenplay JSON is limited to 8 MiB; block IDs unique
+          description: Verified identity required
           description: Draft changed; response includes current_version. Preserve local
     post:
       tags:
@@ -610,14 +727,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalError'
 
   /api/projects/{project_id}/questions:
     parameters:
-      - $ref: '#/components/parameters/ProjectId'
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
     post:
       tags: [Questions]
       operationId: askProjectQuestion
@@ -631,14 +750,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/QuestionCreate'
+              $ref: '#/components/schemas/ProjectSearch'
       responses:
         '200':
           description: The answer, the bible facts behind it, and its citations.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/QuestionAnswer'
+                type: object
         '400':
           description: |
             `question` is missing, blank, or whitespace only, or
@@ -648,17 +767,31 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '404':
-          $ref: '#/components/responses/NotFound'
-        '502':
-          description: The grounding service could not answer.
+          description: No record at this path.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-        '500':
-          $ref: '#/components/responses/InternalError'
+        '409':
+          description: Results changed; restart search.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '502':
+          description: A search source is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
 components:
+  securitySchemes:
+    FirebaseIdentity:
+      type: http
+      scheme: bearer
+      bearerFormat: Firebase ID token
+      description: Required in live mode; mock is an isolated public demo.
   parameters:
     ProjectId:
       name: project_id
@@ -725,6 +858,13 @@ components:
             $ref: '#/components/schemas/Error'
 
   schemas:
+    Organization:
+      type: object
+      required: [organization_id, name, role]
+      properties:
+        organization_id: {type: string}
+        name: {type: string}
+        role: {type: string}
     Error:
       type: object
       description: The one error shape every failing response returns.
@@ -764,6 +904,9 @@ components:
       type: object
       required: [title, jurisdiction_code]
       properties:
+        organization_id:
+          type: string
+          description: Required in live mode.
         title:
           type: string
           minLength: 1
@@ -799,6 +942,9 @@ components:
       description: One uploaded screenplay in Cloud Storage.
       required: [gcs_uri, filename, size_bytes, content_type]
       properties:
+        file_id:
+          type: string
+          description: Owned upload ID; required for live analysis.
         gcs_uri:
           type: string
           description: Pass this to `POST /api/projects/{project_id}/scripts`.
@@ -817,8 +963,16 @@ components:
 
     ScriptCreate:
       type: object
-      required: [gcs_uri, version, jurisdiction_code]
+      required:
+      - jurisdiction_code
+      description: Live analysis requires revision_id. Mock mode retains gcs_uri and version.
       properties:
+        revision_id:
+          type: string
+          description: Immutable saved revision in this project; required in live mode.
+        file_id:
+          type: string
+          description: Owned upload ID; required for live analysis.
         gcs_uri:
           type: string
           description: The URI `POST /api/projects/{project_id}/script-files` returned.
@@ -826,33 +980,39 @@ components:
         version:
           type: integer
           minimum: 1
-          description: |
-            1 runs the full pipeline. Above 1 diffs against the stored previous
-            version and re-analyzes only the scenes whose content hash changed.
-          examples: [2]
+          description: 1 runs the full pipeline. Above 1 diffs against the stored previous version and
+            re-analyzes only the scenes whose content hash changed.
         jurisdiction_code:
           type: string
-          examples: ['AR']
       additionalProperties: false
 
     AnalysisState:
       type: string
-      enum: [QUEUED, RUNNING, SUCCEEDED, FAILED]
-      description: |
-        `SUCCEEDED` and `FAILED` are terminal: a job in either never moves
-        again, and a later run of the same script is a new analysis.
+      enum:
+      - QUEUED
+      - RUNNING
+      - SUCCEEDED
+      - FAILED
+      - CANCELLED
+      description: '`SUCCEEDED` and `FAILED` are terminal: a job in either never moves again, and a later
+        run of the same script is a new analysis.'
 
     AnalysisJob:
       type: object
       required:
-        [analysis_id, project_id, script_id, state, created_at, updated_at, error, version]
+      - analysis_id
+      - project_id
+      - script_id
+      - state
+      - created_at
+      - updated_at
+      - error
+      - version
       properties:
         analysis_id:
           type: string
-          examples: ['ana-91c3']
         project_id:
           type: string
-          examples: ['prj-4f2a']
         script_id:
           type: string
           description: |
@@ -866,12 +1026,10 @@ components:
         created_at:
           type: string
           format: date-time
-          examples: ['2026-09-05T12:00:00Z']
         updated_at:
           type: string
           format: date-time
           description: When this version was written. Polling compares it to spot a stalled run.
-          examples: ['2026-09-05T12:04:11Z']
         error:
           type: string
           description: Why the run failed. Empty in every state but `FAILED`, and never empty in `FAILED`.
@@ -879,7 +1037,6 @@ components:
           type: integer
           minimum: 1
           description: Each transition writes a new version rather than mutating this row.
-          examples: [3]
       additionalProperties: false
 
     ActivityEvent:
@@ -937,24 +1094,27 @@ components:
     Script:
       type: object
       description: One script version, with every scene and every finding raised against it.
-      required: [script_id, project_id, version, gcs_uri, jurisdiction_code, scenes, findings]
+      required:
+      - script_id
+      - project_id
+      - version
+      - gcs_uri
+      - jurisdiction_code
+      - scenes
+      - findings
       properties:
         script_id:
           type: string
-          examples: ['scr-77b1']
         project_id:
           type: string
-          examples: ['prj-4f2a']
         version:
           type: integer
           minimum: 1
-          examples: [2]
         gcs_uri:
           type: string
           examples: ['gs://clearcut-scripts/prj-4f2a/el-ultimo-verano-v2.pdf']
         jurisdiction_code:
           type: string
-          examples: ['AR']
         scenes:
           type: array
           description: Ordered by `number`, which strictly increases.
@@ -1149,7 +1309,10 @@ components:
 
     TrackerState:
       type: string
-      enum: [BLOCKED, IN_PROGRESS, CLEARED]
+      enum:
+      - BLOCKED
+      - IN_PROGRESS
+      - CLEARED
       description: Where a tracker item stands. Every ordered pair is a legal transition.
 
     TrackerItem:
@@ -1172,13 +1335,10 @@ components:
       properties:
         item_id:
           type: string
-          examples: ['itm-0031']
         project_id:
           type: string
-          examples: ['prj-4f2a']
         finding_id:
           type: string
-          examples: ['EVT-014']
         scene_numbers:
           type: array
           description: |
@@ -1188,7 +1348,6 @@ components:
           items:
             type: integer
             minimum: 1
-          examples: [[12, 41]]
         state:
           $ref: '#/components/schemas/TrackerState'
         needs_review:
@@ -1198,20 +1357,19 @@ components:
             silently kept nor silently dropped: a producer looks at it again.
         required_document:
           type: string
-          examples: ['Sync License']
         contact:
           type: string
           description: The rights holder to reach, as resolved by rights research.
-          examples: ['licensing@example.com']
         litigation_posture:
           type: string
           description: What the holder is known to have done about unlicensed use.
-          examples: ['no enforcement on record']
         draft_email:
           description: |
             The outreach draft, once `email-drafts` has been posted. Null before
-            that. The system never sends it.
-          type: [string, 'null']
+            system never sends it.
+          type:
+          - string
+          - 'null'
         note:
           type: string
           description: |
@@ -1221,7 +1379,6 @@ components:
         updated_at:
           type: string
           format: date-time
-          examples: ['2026-09-05T12:04:11Z']
         version:
           type: integer
           minimum: 1
@@ -1239,13 +1396,14 @@ components:
 
     NotificationCreate:
       type: object
-      required: [reason]
+      required:
+      - reason
       properties:
         reason:
           type: string
           minLength: 1
+          maxLength: 2000
           description: What the producer is being told, in one sentence.
-          examples: ['no answer from the rights holder in 14 days']
       additionalProperties: false
 
     FactKind:
@@ -1306,16 +1464,17 @@ components:
 
     QuestionCreate:
       type: object
-      required: [question, jurisdiction_code]
+      required:
+      - question
+      - jurisdiction_code
       properties:
         question:
           type: string
           minLength: 1
-          examples: ['Can we use the Coca-Cola sign in scene 12 without a license?']
+          maxLength: 4000
         jurisdiction_code:
           type: string
           description: The corpus the answer is grounded in.
-          examples: ['AR']
       additionalProperties: false
 
     QuestionAnswer:

@@ -32,23 +32,10 @@ describe("TopBar", () => {
     );
   });
 
-  it("draws the design's three global affordances", () => {
+  it("offers a language control and honest workspace context", () => {
     renderTopBar();
-
-    expect(screen.getByText("Search ClearCut & the web")).toBeInTheDocument();
-    expect(screen.getByText("Notifications").closest("li")).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
-    expect(screen.getByText("Account")).toBeInTheDocument();
-  });
-
-  it("offers no search box, no count and no identity, and says why", () => {
-    renderTopBar();
-
-    expect(screen.queryByRole("searchbox")).toBeNull();
-    expect(screen.queryByRole("textbox")).toBeNull();
-    expect(screen.getAllByRole("button")).toHaveLength(1);
-    expect(screen.getByText(/this API does not have/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "English / Español" })).toBeInTheDocument();
+    expect(screen.getByText("Production workspace")).toBeInTheDocument();
+    expect(screen.queryByText(/this API does not have/)).toBeNull();
   });
 });

@@ -1,24 +1,17 @@
 import {
-  Building2,
   ExternalLink,
-  FileChartColumn,
   FileText,
-  Files,
   FolderOpen,
   LayoutDashboard,
-  LifeBuoy,
   LogOut,
   MessageSquare,
-  Settings,
-  ShieldCheck,
-  UserCheck,
-  Users,
 } from "lucide-react";
 import type { ReactElement } from "react";
 import { NavLink } from "react-router";
 
+import { logOut, useAuth } from "../state/AuthContext";
+import { useLocale } from "../state/LocaleContext";
 import { API_DOCS_PATH } from "../api/client";
-import { UnavailableNav } from "./UnavailableNav";
 
 export interface SidebarProps {
   /** The open project, or null on routes outside one. */
@@ -33,60 +26,57 @@ function linkClass({ isActive }: { isActive: boolean }): string {
   return isActive ? "sidebar__link sidebar__link--active" : "sidebar__link";
 }
 
-const UNSERVED_MAIN = [
-  { label: "Clearances", icon: <ShieldCheck aria-hidden="true" size={ICON_SIZE} /> },
-  { label: "Documents", icon: <Files aria-hidden="true" size={ICON_SIZE} /> },
-  { label: "Reports", icon: <FileChartColumn aria-hidden="true" size={ICON_SIZE} /> },
-];
-
-const ORGANIZATION = [
-  { label: "Company & Profile", icon: <Building2 aria-hidden="true" size={ICON_SIZE} /> },
-  { label: "Team & Roles", icon: <Users aria-hidden="true" size={ICON_SIZE} /> },
-  { label: "Authorized Users", icon: <UserCheck aria-hidden="true" size={ICON_SIZE} /> },
-  { label: "Settings", icon: <Settings aria-hidden="true" size={ICON_SIZE} /> },
-];
-
-const SUPPORT = [
-  { label: "Help & Support", icon: <LifeBuoy aria-hidden="true" size={ICON_SIZE} /> },
-  { label: "Log Out", icon: <LogOut aria-hidden="true" size={ICON_SIZE} /> },
-];
-
-/**
- * The design's whole sidebar, with each entry either wired or greyed.
- *
- * Wired: Projects, and -- while a project is open -- its Dashboard, Script
- * and Ask. Those are the four screens the API can answer.
- *
- * Greyed, with the reason beside them: Clearances, Documents and Reports;
- * the Organization group; Help and Log Out. There is no auth, no user, no
- * team, no document store and no report endpoint in the contract, so none
- * of them has anywhere to go. The company selector and the notification
- * count in the design are the same story and are handled in the top bar.
- */
+/** Project navigation exposes working destinations and identity actions. */
 export function Sidebar({ projectId, onNavigate }: SidebarProps): ReactElement {
+  const { user } = useAuth();
+  const { text } = useLocale();
   const projectPath =
     projectId === null ? null : `/projects/${encodeURIComponent(projectId)}`;
   return (
     <aside className="sidebar">
       <div className="sidebar__brand">ClearCut</div>
       <nav className="sidebar__nav" aria-label="Main">
-        <NavLink to="/" end className={linkClass} onClick={onNavigate}>
+        <NavLink to="/projects" end className={linkClass} onClick={onNavigate}>
           <FolderOpen aria-hidden="true" size={ICON_SIZE} />
-          Projects
+          {text("Projects", "Proyectos")}
         </NavLink>
+        {user && <NavLink to="/team" className={linkClass} onClick={onNavigate}>
+          <FolderOpen aria-hidden="true" size={ICON_SIZE} />{text("Team", "Equipo")}
+        </NavLink>}
         {projectPath !== null && (
           <>
             <NavLink to={projectPath} end className={linkClass} onClick={onNavigate}>
               <LayoutDashboard aria-hidden="true" size={ICON_SIZE} />
-              Dashboard
+              {text("Overview", "Resumen")}
+            </NavLink>
+            <NavLink to={`${projectPath}/editor`} className={linkClass} onClick={onNavigate}>
+              <FileText aria-hidden="true" size={ICON_SIZE} />{text("Write", "Escribir")}
             </NavLink>
             <NavLink to={`${projectPath}/script`} className={linkClass} onClick={onNavigate}>
               <FileText aria-hidden="true" size={ICON_SIZE} />
-              Script
+              {text("Script", "Guion")}
+            </NavLink>
+            <NavLink to={`${projectPath}/documents`} className={linkClass} onClick={onNavigate}>
+              <FileText aria-hidden="true" size={ICON_SIZE} />{text("Documents", "Documentos")}
             </NavLink>
             <NavLink to={`${projectPath}/ask`} className={linkClass} onClick={onNavigate}>
               <MessageSquare aria-hidden="true" size={ICON_SIZE} />
-              Ask
+              {text("Ask", "Preguntar")}
+            </NavLink>
+            <NavLink to={`${projectPath}/reports`} className={linkClass} onClick={onNavigate}>
+              <FileText aria-hidden="true" size={ICON_SIZE} />{text("Reports", "Informes")}
+            </NavLink>
+            <NavLink to={`${projectPath}/search`} className={linkClass} onClick={onNavigate}>
+              <LayoutDashboard aria-hidden="true" size={ICON_SIZE} />{text("Search", "Buscar")}
+            </NavLink>
+            <NavLink to={`${projectPath}/notifications`} className={linkClass} onClick={onNavigate}>
+              <LayoutDashboard aria-hidden="true" size={ICON_SIZE} />{text("Notifications", "Notificaciones")}
+            </NavLink>
+            <NavLink to={`${projectPath}/activity`} className={linkClass} onClick={onNavigate}>
+              <LayoutDashboard aria-hidden="true" size={ICON_SIZE} />{text("Activity", "Actividad")}
+            </NavLink>
+            <NavLink to={`${projectPath}/settings`} className={linkClass} onClick={onNavigate}>
+              <FolderOpen aria-hidden="true" size={ICON_SIZE} />{text("Production", "Producción")}
             </NavLink>
           </>
         )}
@@ -96,24 +86,14 @@ export function Sidebar({ projectId, onNavigate }: SidebarProps): ReactElement {
           Dashboard, Script and Ask open once a project is open.
         </p>
       )}
-      <UnavailableNav
-        entries={UNSERVED_MAIN}
-        reason="Clearances, documents and reports have no resource in the API: a clearance is the state of a tracker item, and nothing stores files or renders a report."
-      />
-      <UnavailableNav
-        label="Organization"
-        entries={ORGANIZATION}
-        reason="The API has no accounts, no teams and no settings, so there is no company to show or membership to manage."
-      />
       <footer className="sidebar__footer">
         <a className="sidebar__link" href={API_DOCS_PATH}>
           <ExternalLink aria-hidden="true" size={ICON_SIZE} />
           API docs
         </a>
-        <UnavailableNav
-          entries={SUPPORT}
-          reason="There is no sign-in to leave and no support desk to reach: the API has no authentication."
-        />
+        {user && <button type="button" className="sidebar__link" onClick={() => void logOut()}>
+          <LogOut aria-hidden="true" size={ICON_SIZE} />{text("Sign out", "Cerrar sesión")}
+        </button>}
       </footer>
     </aside>
   );
