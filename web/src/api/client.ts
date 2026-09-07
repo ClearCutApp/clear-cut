@@ -58,6 +58,7 @@ export interface Project {
 }
 
 export interface ProjectCreate {
+  organization_id?: string;
   title: string;
   jurisdiction_code: string;
 }

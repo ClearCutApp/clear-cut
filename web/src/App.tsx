@@ -12,6 +12,8 @@ import { AskView } from "./views/AskView";
 import { NotFoundView } from "./views/NotFoundView";
 import { OverviewView } from "./views/OverviewView";
 import { ProjectsView } from "./views/ProjectsView";
+import { TeamView } from "./views/TeamView";
+import { JoinWorkspaceView } from "./views/JoinWorkspaceView";
 import { ScriptView } from "./views/ScriptView";
 
 /**
@@ -28,7 +30,9 @@ export function App(): ReactElement {
       <Route path="verify-email" element={<VerifyEmailView />} />
       <Route element={<RequireIdentity />}>
       <Route element={<AppShell />}>
-        <Route index element={<ProjectsView />} />
+        <Route path="projects" element={<ProjectsView />} />
+        <Route path="team" element={<TeamView />} />
+        <Route path="join" element={<JoinWorkspaceView />} />
         <Route path="projects/:projectId" element={<ProjectLayout />}>
           <Route index element={<OverviewView />} />
           <Route path="analyze" element={<AnalyzeView />} />

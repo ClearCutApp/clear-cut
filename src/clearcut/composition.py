@@ -86,8 +86,10 @@ from clearcut.adapters.demo.in_memory import (
 from clearcut.adapters.gcp.document_ai import DocumentAIIngestion
 from clearcut.adapters.gcp.firebase_identity import FirebaseIdentityVerifier
 from clearcut.adapters.gcp.firestore_access import FirestoreProjectAccess
+from clearcut.adapters.gcp.project_settings import FirestoreProjectSettings
 from clearcut.adapters.gcp.speech import GoogleSpeechTranscription
 from clearcut.adapters.gcp.storage import GcsScriptStorage, _StorageClient
+from clearcut.adapters.gcp.teams import FirestoreTeams
 from clearcut.adapters.gcp.vertex_search import VertexSearchGrounding
 from clearcut.adapters.gemini.continuity import GeminiContinuityCheck
 from clearcut.adapters.gemini.extractor import GeminiSceneExtractor
@@ -101,6 +103,7 @@ from clearcut.adapters.http.spa import create_spa_blueprint
 from clearcut.adapters.http.system import create_system_blueprint
 from clearcut.adapters.http.tracker import create_tracker_blueprint
 from clearcut.adapters.http.voice import create_voice_blueprint
+from clearcut.adapters.http.workspaces import create_workspaces_blueprint
 from clearcut.adapters.notify.webhook import WebhookNotifier
 from clearcut.adapters.parallel.research import ParallelRightsResearch
 from clearcut.application.activity_ports import ActivityStore
@@ -634,7 +637,9 @@ def _register_api(
     """
     app.register_blueprint(create_system_blueprint(mode, build_spec, client_config))
     app.register_blueprint(
-        create_projects_blueprint(graph.create_project, graph.list_projects, graph.get_project)
+        create_projects_blueprint(
+            graph.create_project, graph.list_projects, graph.get_project, access
+        )
     )
     app.register_blueprint(
         create_scripts_blueprint(
@@ -706,6 +711,18 @@ def create_app(build_dir: Path | None = None, *, analysis_runner: Runner | None 
         else None
     )
     app.register_blueprint(create_voice_blueprint(speech))
+    app.register_blueprint(
+        create_workspaces_blueprint(
+            FirestoreTeams(firestore.Client(project=_required_env("GOOGLE_CLOUD_PROJECT")))
+            if access is not None
+            else None,
+            FirestoreProjectSettings(
+                firestore.Client(project=_required_env("GOOGLE_CLOUD_PROJECT"))
+            )
+            if access is not None
+            else None,
+        )
+    )
     _register_api(
         app,
         use_cases,

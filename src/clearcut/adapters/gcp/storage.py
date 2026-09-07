@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from pathlib import PurePosixPath
 from typing import Protocol
+from uuid import uuid4
 
 from clearcut.domain.errors import SourceUnavailable
 
@@ -45,7 +46,9 @@ class ScriptUploadFailed(SourceUnavailable):
 class _Blob(Protocol):
     """The one `google.cloud.storage.Blob` method this adapter calls."""
 
-    def upload_from_string(self, data: bytes, content_type: str) -> None: ...
+    def upload_from_string(
+        self, data: bytes, content_type: str, *, if_generation_match: int = 0
+    ) -> None: ...
 
 
 class _Bucket(Protocol):
@@ -68,10 +71,10 @@ class GcsScriptStorage:
         self._bucket = bucket
 
     def store(self, project_id: str, filename: str, content: bytes) -> str:
-        blob_name = f"{_checked_project_id(project_id)}/{_basename(filename)}"
+        blob_name = f"{_checked_project_id(project_id)}/{uuid4().hex}/{_basename(filename)}"
         try:
             blob = self._client.bucket(self._bucket).blob(blob_name)
-            blob.upload_from_string(content, content_type=_CONTENT_TYPE)
+            blob.upload_from_string(content, content_type=_CONTENT_TYPE, if_generation_match=0)
         except Exception as exc:
             # Broader than `document_ai.py`'s `except GoogleAPIError` on
             # purpose: one upload can raise out of three unrelated
@@ -86,7 +89,12 @@ class GcsScriptStorage:
 
 
 def _checked_project_id(project_id: str) -> str:
-    if not project_id.strip():
+    if (
+        not project_id.strip()
+        or project_id in {".", ".."}
+        or "/" in project_id
+        or "\\" in project_id
+    ):
         raise ValueError("project_id must not be blank")
     return project_id
 

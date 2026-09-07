@@ -29,6 +29,7 @@ from clearcut.adapters.http import (
     system,
     tracker,
     voice,
+    workspaces,
 )
 
 JsonDict = dict[str, Any]
@@ -51,6 +52,7 @@ class Domain(Protocol):
 
 
 DOMAINS: tuple[Domain, ...] = (
+    workspaces,
     system,
     projects,
     scripts,

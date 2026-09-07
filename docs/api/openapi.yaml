@@ -10,6 +10,7 @@ info:
     resolve it.
 
     Live requests require a verified Firebase identity and explicit project grants.
+    POST /api/projects requires organization_id in live mode; legacy data is quarantined.
     This document is the contract, not a description of what is deployed today.
     Four verticals build against it in parallel, so a field named here is the
     field they each implement.
@@ -70,6 +71,42 @@ paths:
                   projectId: {type: string}
                   appId: {type: string}
         '503': {description: Account access is awaiting configuration.}
+  /api/organizations:
+    get:
+      tags: [Projects]
+      operationId: listOrganizations
+      summary: Active memberships of this user
+      responses:
+        '200':
+          description: Workspaces.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Organization'}
+    post:
+      tags: [Projects]
+      operationId: createOrganization
+      summary: Create a private workspace and owner membership
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: {type: string, minLength: 1}
+      responses:
+        '201':
+          description: Workspace.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Organization'}
+  /api/me:
+    get:
+      tags: [System]
+      operationId: getIdentity
       summary: Verified identity context
       responses:
         '200':
@@ -143,7 +180,7 @@ paths:
       operationId: listJurisdictions
       summary: The jurisdictions a project can be cleared against
       description: |
-        The ten codes `jurisdiction_code` accepts anywhere in this API. A
+        The selectable codes `jurisdiction_code` accepts anywhere in this API. A
         jurisdiction's legal corpus prefix is deliberately absent: it names a
         bucket layout, which is the server's business.
       responses:
@@ -594,6 +631,7 @@ paths:
           $ref: '#/components/responses/NotFound'
         '502':
           description: The webhook rejected the notification. Nothing was recorded.
+          description: Notification storage is unavailable.
           content:
             application/json:
               schema:
@@ -645,18 +683,24 @@ paths:
       responses:
         '201':
           description: The fact as stored, carrying the id the server assigned.
+  /api/projects/{project_id}/questions:
+            no supported jurisdiction.'
+  /api/projects/{project_id}/draft:
           description: Verified identity required
           description: Draft changed; response includes current_version. Preserve local
           description: Verified identity required
           description: Draft changed; response includes current_version. Preserve local
         description: Canonical screenplay JSON is limited to 8 MiB; block IDs unique
+  /api/projects/{project_id}/revisions:
           description: Verified identity required
           description: Draft changed; response includes current_version. Preserve local
           description: Verified identity required
           description: Draft changed; response includes current_version. Preserve local
         description: Canonical screenplay JSON is limited to 8 MiB; block IDs unique
+  /api/projects/{project_id}/revisions/{revision_id}:
           description: Verified identity required
           description: Draft changed; response includes current_version. Preserve local
+  /api/projects/{project_id}/transcriptions:
     post:
       tags:
       operationId: transcribeQuestion
@@ -700,20 +744,479 @@ paths:
         '503':
           description: Speech is not available in this environment
 
+  /api/projects/{project_id}/documents:
           description: Owned immutable file or saved screenplay
           description: Draft changed; original retained in project documents
           description: Owned immutable file or saved screenplay
           description: Draft changed; original retained in project documents
+  /api/projects/{project_id}/documents/{file_id}:
           description: Owned immutable file or saved screenplay
           description: Draft changed; original retained in project documents
+  /api/projects/{project_id}/imports:
           description: Owned immutable file or saved screenplay
           description: Draft changed; original retained in project documents
+  /api/projects/{project_id}/revisions/{revision_id}/exports/{format}:
           description: Owned immutable file or saved screenplay
           description: Draft changed; original retained in project documents
+  /api/projects/{project_id}/tracker-items/{item_id}/history:
+  /api/projects/{project_id}/tracker-items/{item_id}/details:
                 $ref: '#/components/schemas/TrackerItem'
+  /api/projects/{project_id}/tracker-items/{item_id}/permission-request:
+  /api/projects/{project_id}/analyses/{analysis_id}/cancellation:
+  /api/projects/{project_id}/reports:
+  /api/projects/{project_id}/reports/context:
+  /api/projects/{project_id}/reports/{report_id}/download:
+  /api/projects/{project_id}/tracker-items/{item_id}/reconfirmation:
                 $ref: '#/components/schemas/TrackerItem'
+  /api/projects/{project_id}/activity:
                       $ref: '#/components/schemas/ActivityEvent'
                       $ref: '#/components/schemas/ActivityEvent'
+  /api/organizations/{organization_id}/members:
+    parameters:
+    - name: organization_id
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      tags:
+      - Workspaces
+      operationId: getWorkspaceMembers
+      summary: List members for workspace management
+      responses:
+        '200':
+          description: Authorized result.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Invalid input.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Workspace permission required.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Expected version changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/organizations/{organization_id}/members/{user_id}:
+    parameters:
+    - name: organization_id
+      in: path
+      required: true
+      schema:
+        type: string
+    - name: user_id
+      in: path
+      required: true
+      schema:
+        type: string
+    patch:
+      tags:
+      - Workspaces
+      operationId: changeWorkspaceMember
+      summary: Change a member with last-owner protection
+      responses:
+        '200':
+          description: Authorized result.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Invalid input.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Workspace permission required.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Expected version changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - role
+              - active
+              properties:
+                  type: integer
+                  minimum: 1
+                role:
+                  type: string
+                  enum:
+                  - owner
+                  - admin
+                  - producer
+                  - writer
+                  - viewer
+                active:
+                  type: boolean
+
+  /api/organizations/{organization_id}/invitations:
+    parameters:
+    - name: organization_id
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      tags:
+      - Workspaces
+      operationId: getWorkspaceInvitations
+      summary: List invitation states without tokens
+      responses:
+        '200':
+          description: Authorized result.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Invalid input.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Workspace permission required.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Expected version changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+      - Workspaces
+      operationId: createWorkspaceInvitation
+      summary: Create a seven-day verified-email invitation; no email is sent
+      responses:
+        '200':
+          description: Authorized result.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Invalid input.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Workspace permission required.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Expected version changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - email
+              - role
+              properties:
+                email:
+                  type: string
+                  format: email
+                role:
+                  type: string
+                  enum:
+                  - admin
+                  - producer
+                  - writer
+                  - viewer
+
+  /api/organizations/{organization_id}/invitations/{invitation_id}/revocation:
+    parameters:
+    - name: organization_id
+      in: path
+      required: true
+      schema:
+        type: string
+    - name: invitation_id
+      in: path
+      required: true
+      schema:
+        type: string
+    post:
+      tags:
+      - Workspaces
+      operationId: revokeWorkspaceInvitation
+      summary: Revoke a pending invitation
+      responses:
+        '200':
+          description: Authorized result.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Invalid input.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Workspace permission required.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Expected version changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              properties:
+                  type: integer
+                  minimum: 1
+
+  /api/invitations/accept:
+    post:
+      tags:
+      - Workspaces
+      operationId: acceptWorkspaceInvitation
+      summary: Join a workspace without acquiring project access
+      responses:
+        '200':
+          description: Authorized result.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Invalid input.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Workspace permission required.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Expected version changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - token
+              properties:
+                token:
+                  type: string
+                  minLength: 1
+
+  /api/projects/{project_id}/members:
+    parameters:
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    get:
+      tags:
+      - Workspaces
+      operationId: getProjectMembers
+      summary: List active explicitly assigned project members
+      responses:
+        '200':
+          description: Authorized result.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Invalid input.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Workspace permission required.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Expected version changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/projects/{project_id}/members/{user_id}:
+    parameters:
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    - name: user_id
+      in: path
+      required: true
+      schema:
+        type: string
+    patch:
+      tags:
+      - Workspaces
+      operationId: assignProjectMember
+      summary: Change private project access
+      responses:
+        '200':
+          description: Authorized result.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Invalid input.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Workspace permission required.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Expected version changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - role
+              properties:
+                  type: integer
+                  minimum: 1
+                role:
+                  type:
+                  - string
+                  - 'null'
+                  enum:
+                  - admin
+                  - producer
+                  - writer
+                  - viewer
+                  - null
+
+  /api/projects/{project_id}/settings:
+  /api/projects/{project_id}/local-research:
+  /api/projects/{project_id}/notifications:
+  /api/projects/{project_id}/notifications/{notification_id}/read:
           content:
             application/json:
               schema:
@@ -728,7 +1231,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /api/projects/{project_id}/questions:
+  /api/projects/{project_id}/search:
     parameters:
     - name: project_id
       in: path
@@ -742,9 +1245,9 @@ paths:
       operationId: askProjectQuestion
       summary: Ask about this project's clearance state
       description: |
-        Answers from the project's own bible facts and the jurisdiction's legal
-        corpus, and returns the citations the answer rests on. An answer with
-        no citation is an answer this API does not give.
+      tags:
+      - Search
+      operationId: searchProject
       requestBody:
         required: true
         content:
@@ -759,9 +1262,7 @@ paths:
               schema:
                 type: object
         '400':
-          description: |
-            `question` is missing, blank, or whitespace only, or
-            `jurisdiction_code` names no supported jurisdiction.
+          description: Invalid query or cursor.
           content:
             application/json:
               schema:
@@ -1015,12 +1516,8 @@ components:
           type: string
         script_id:
           type: string
-          description: |
-            The script version this analysis produces. Assigned when the job is
-            queued, readable at
-            `/api/projects/{project_id}/scripts/{script_id}` once `state` is
-            `SUCCEEDED`.
-          examples: ['scr-77b1']
+          description: The script version this analysis produces. Assigned when the job is queued, readable
+            at `/api/projects/{project_id}/scripts/{script_id}` once `state` is `SUCCEEDED`.
         state:
           $ref: '#/components/schemas/AnalysisState'
         created_at:
