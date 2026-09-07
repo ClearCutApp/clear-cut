@@ -404,3 +404,13 @@ export function askProjectQuestion(
     jsonRequest("POST", { jurisdiction_code: jurisdictionCode, question }),
   );
 }
+export type SpeechLanguage = "en-US" | "es-419" | "es-ES";
+export interface Transcription { text: string; language: SpeechLanguage; }
+export function transcribeQuestion(projectId: string, audio: Blob, language: SpeechLanguage, signal?: AbortSignal): Promise<Transcription> {
+  const body = new FormData();
+  body.append("audio", audio, "question");
+  body.append("language", language);
+  return requestJson(`${projectPath(projectId)}/transcriptions`, { method: "POST", body, signal });
+}
+
+

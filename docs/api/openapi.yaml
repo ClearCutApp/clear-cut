@@ -540,6 +540,49 @@ paths:
           description: Draft changed; response includes current_version. Preserve local
         description: Canonical screenplay JSON is limited to 8 MiB; block IDs unique
           description: Draft changed; response includes current_version. Preserve local
+    post:
+      tags:
+      operationId: transcribeQuestion
+      summary: Transcribe a recording for review
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+              - audio
+              - language
+              properties:
+                audio:
+                  type: string
+                  format: binary
+                language:
+                  enum:
+                  - en-US
+                  - es-419
+                  - es-ES
+      responses:
+        '200':
+          description: Editable transcript; audio not stored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transcription'
+        '400':
+          description: Empty, invalid or unsupported recording/language; maximum 60
+            seconds
+        '413':
+          description: Audio exceeds 8 MiB
+        '503':
+          description: Speech is not available in this environment
+
           description: Owned immutable file or saved screenplay
           description: Draft changed; original retained in project documents
           description: Owned immutable file or saved screenplay
@@ -1293,3 +1336,6 @@ components:
           items:
             $ref: '#/components/schemas/Citation'
       additionalProperties: false
+    Transcription:
+      type: object
+      required:

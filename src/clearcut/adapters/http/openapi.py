@@ -28,6 +28,7 @@ from clearcut.adapters.http import (
     scripts,
     system,
     tracker,
+    voice,
 )
 
 JsonDict = dict[str, Any]
@@ -49,7 +50,15 @@ class Domain(Protocol):
     SCHEMAS: JsonDict
 
 
-DOMAINS: tuple[Domain, ...] = (system, projects, scripts, tracker, bible, questions)
+DOMAINS: tuple[Domain, ...] = (
+    system,
+    projects,
+    scripts,
+    tracker,
+    bible,
+    questions,
+    voice,
+)
 
 INFO: JsonDict = {
     "title": "ClearCut API",
