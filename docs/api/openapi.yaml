@@ -533,6 +533,8 @@ paths:
       responses:
         '201':
           description: The fact as stored, carrying the id the server assigned.
+                      $ref: '#/components/schemas/ActivityEvent'
+                      $ref: '#/components/schemas/ActivityEvent'
           content:
             application/json:
               schema:
@@ -820,6 +822,26 @@ components:
           description: Each transition writes a new version rather than mutating this row.
           examples: [3]
       additionalProperties: false
+
+    ActivityEvent:
+      type: object
+      required:
+      - event_id
+      - kind
+      - occurred_at
+      - payload
+      properties:
+        event_id:
+          type: string
+        kind:
+          type: string
+        occurred_at:
+          type: string
+          format: date-time
+        source_version:
+          type: integer
+        payload:
+          type: object
 
     ScriptSummary:
       type: object

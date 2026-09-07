@@ -31,6 +31,8 @@ to take.
 
 import time
 from collections import Counter
+from threading import RLock
+from typing import Any
 
 from opentelemetry import metrics, trace
 
@@ -297,6 +299,8 @@ class InMemoryTrackerStore:
 
     def __init__(self, scripts: InMemoryScriptStore | None = None) -> None:
         self._items: dict[tuple[str, str], TrackerItem] = {}
+        self._lock = RLock()
+        self._events: dict[tuple[str, str], list[dict[str, Any]]] = {}
         self._scripts = scripts if scripts is not None else InMemoryScriptStore()
 
     def save(self, items: list[TrackerItem]) -> None:

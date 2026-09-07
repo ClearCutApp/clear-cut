@@ -56,6 +56,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from clearcut.adapters.bigquery.lore_store import BigQueryLoreStore, _VectorStore
+from clearcut.adapters.clickhouse.activity import ClickHouseActivity
 from clearcut.adapters.clickhouse.analyses import ClickHouseAnalysisJobStore
 from clearcut.adapters.clickhouse.client import _ChClient, bare_host
 from clearcut.adapters.clickhouse.findings import ClickHouseFindingStore
@@ -92,6 +93,7 @@ from clearcut.adapters.http.system import create_system_blueprint
 from clearcut.adapters.http.tracker import create_tracker_blueprint
 from clearcut.adapters.notify.webhook import WebhookNotifier
 from clearcut.adapters.parallel.research import ParallelRightsResearch
+from clearcut.application.activity_ports import ActivityStore
 from clearcut.application.add_bible_facts import AddBibleFacts
 from clearcut.application.analyze_script import AnalyzeScript
 from clearcut.application.answer_project_question import AnswerProjectQuestion
@@ -285,6 +287,7 @@ class _UseCaseGraph:
     get_bible: GetBible
     add_bible_facts: AddBibleFacts
     answer_project_question: AnswerProjectQuestion
+    activity: ActivityStore | None = None
 
 
 def _build_mock_use_cases(runner: Runner) -> _UseCaseGraph:
@@ -502,6 +505,7 @@ def _build_live_use_cases(
         bind=bind_context,
     )
     return _UseCaseGraph(
+        activity=ClickHouseActivity(ch_client),
         analyze_script=analyze_script,
         evaluate_delta=evaluate_delta,
         start_analysis=StartAnalysis(
