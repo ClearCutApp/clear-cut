@@ -377,6 +377,10 @@
 }
 
 .auth-google {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
   width: 100%;
   padding: 13px;
   background: transparent;
@@ -385,11 +389,30 @@
   cursor: pointer;
   border-radius: var(--brand-radius);
   margin-top: 25px;
+  transition: border-color 180ms, background 180ms;
 }
 
+/* `not-allowed`, not `default`: the button is refusing, and a cursor that says
+   nothing leaves the reader clicking a control that will never answer. The
+   notice above it carries the reason, and `aria-describedby` ties the two. */
 .auth-google:disabled {
   opacity: 0.5;
-  cursor: default;
+  cursor: not-allowed;
+}
+
+.auth-google:hover:not(:disabled) {
+  border-color: var(--brand-auth-text);
+  background: var(--brand-auth-field);
+}
+
+.google-mark {
+  flex: none;
+}
+
+.auth-notice {
+  color: var(--brand-auth-copy);
+  border-left: 2px solid var(--color-amber);
+  padding-left: 12px;
 }
 
 .auth-divider {
