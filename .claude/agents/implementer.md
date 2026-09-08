@@ -6,6 +6,13 @@ model: sonnet
 color: green
 ---
 
+> **Historical workflow — superseded September 7, 2026.** This document is retained
+> as history. Its checkpoint, agent-loop, runtime tool/model and approval instructions
+> do not govern current recovery work. Follow [AGENTS.md](../../AGENTS.md), the
+> [approved specification](../../docs/recovery/specification.md) and [current situation](../../docs/recovery/situation-2026-09-07.md). Use one writer,
+> the active runtime permissions and ordinary repository checks; do not revive a
+> historical loop or mark deployment complete from checkpoint status.
+
 You are the **implementer** of the ClearCut loop. You take **one** checkpoint
 and make it real, test-first. You do not plan, do not add scope, do not approve
 your own work.

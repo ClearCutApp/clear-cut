@@ -30,21 +30,27 @@ The span is opened inside the runner instead, and the runner is supplied here
 because `application/` may not import opentelemetry.
 """
 
+import json
 import logging
+import math
 import os
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import cast
+from typing import TypeVar, cast
 
 import clickhouse_connect
+import firebase_admin
 import httpx
 from flask import Flask
 from google import genai
+from google.cloud import bigquery, firestore, storage
 from google.cloud import documentai_v1 as documentai
-from google.cloud import storage
-from langchain_google_community import BigQueryVectorStore  # type: ignore[import-untyped]
+from google.cloud.speech_v2 import SpeechClient
 from langchain_google_vertexai import VertexAIEmbeddings
+from opentelemetry import context as otel_context
 from opentelemetry import metrics, trace
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -54,12 +60,14 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from clearcut.adapters.bigquery.lore_store import BigQueryLoreStore, _VectorStore
+from clearcut.adapters.bigquery.scene_vectors import BigQuerySceneVectors
+from clearcut.adapters.bigquery.vectors import BigQueryVectors
+from clearcut.adapters.clickhouse.activity import ClickHouseActivity
 from clearcut.adapters.clickhouse.analyses import ClickHouseAnalysisJobStore
 from clearcut.adapters.clickhouse.client import _ChClient, bare_host
-from clearcut.adapters.clickhouse.findings import ClickHouseFindingStore
 from clearcut.adapters.clickhouse.projects import ClickHouseProjectStore
-from clearcut.adapters.clickhouse.scripts import ClickHouseScriptStore
-from clearcut.adapters.clickhouse.tracker import ClickHouseTrackerStore
+from clearcut.adapters.demo.documents import MemoryProjectDocuments
+from clearcut.adapters.demo.drafts import MemoryDraftStore, MemoryScreenplayContent
 from clearcut.adapters.demo.in_memory import (
     InMemoryAnalysisJobStore,
     InMemoryContinuityCheck,
@@ -74,26 +82,67 @@ from clearcut.adapters.demo.in_memory import (
     InMemoryScriptStorage,
     InMemoryScriptStore,
     InMemoryTrackerStore,
+    InMemoryWebGrounding,
 )
+from clearcut.adapters.documents.permission_export import permission_document
+from clearcut.adapters.documents.screenplay_export import screenplay_fdx, screenplay_pdf
+from clearcut.adapters.documents.screenplay_import import ScreenplayImporter
+from clearcut.adapters.gcp.activity_outbox import FirestoreActivityOutbox
+from clearcut.adapters.gcp.analysis_artifacts import GcsAnalysisArtifacts
+from clearcut.adapters.gcp.analysis_jobs import FirestoreAnalysisJobs
 from clearcut.adapters.gcp.document_ai import DocumentAIIngestion
+from clearcut.adapters.gcp.documents import GcpProjectDocuments
+from clearcut.adapters.gcp.drafts import FirestoreDraftStore
+from clearcut.adapters.gcp.firebase_identity import FirebaseIdentityVerifier
+from clearcut.adapters.gcp.firestore_access import FirestoreProjectAccess
+from clearcut.adapters.gcp.job_launcher import CloudRunAnalysisLauncher
+from clearcut.adapters.gcp.local_research import FirestoreLocalResearch
+from clearcut.adapters.gcp.lore_projection import FirestoreLoreProjection
+from clearcut.adapters.gcp.notifications import FirestoreNotifications
+from clearcut.adapters.gcp.project_settings import FirestoreProjectSettings
+from clearcut.adapters.gcp.screenplay_content import GcsScreenplayContent
+from clearcut.adapters.gcp.speech import GoogleSpeechTranscription
 from clearcut.adapters.gcp.storage import GcsScriptStorage, _StorageClient
+from clearcut.adapters.gcp.teams import FirestoreTeams
+from clearcut.adapters.gcp.tracker import FirestoreTrackerStore
 from clearcut.adapters.gcp.vertex_search import VertexSearchGrounding
 from clearcut.adapters.gemini.continuity import GeminiContinuityCheck
 from clearcut.adapters.gemini.extractor import GeminiSceneExtractor
+from clearcut.adapters.http.activity import create_activity_blueprint
 from clearcut.adapters.http.bible import create_bible_blueprint
+from clearcut.adapters.http.clearance_details import create_clearance_details_blueprint
+from clearcut.adapters.http.documents import create_documents_blueprint
+from clearcut.adapters.http.drafts import create_drafts_blueprint
+from clearcut.adapters.http.identity import install_identity_boundary
+from clearcut.adapters.http.local_research import create_local_research_blueprint
+from clearcut.adapters.http.notifications import create_notifications_blueprint
 from clearcut.adapters.http.openapi import build_spec
 from clearcut.adapters.http.projects import create_projects_blueprint
 from clearcut.adapters.http.questions import create_questions_blueprint
 from clearcut.adapters.http.scripts import create_scripts_blueprint
+from clearcut.adapters.http.search import create_search_blueprint
 from clearcut.adapters.http.spa import create_spa_blueprint
 from clearcut.adapters.http.system import create_system_blueprint
 from clearcut.adapters.http.tracker import create_tracker_blueprint
+from clearcut.adapters.http.voice import create_voice_blueprint
+from clearcut.adapters.http.workspaces import create_workspaces_blueprint
 from clearcut.adapters.notify.webhook import WebhookNotifier
 from clearcut.adapters.parallel.research import ParallelRightsResearch
+from clearcut.adapters.parallel.search import ParallelWebSearch
+from clearcut.application.activity_ports import ActivityStore
 from clearcut.application.add_bible_facts import AddBibleFacts
 from clearcut.application.analyze_script import AnalyzeScript
 from clearcut.application.answer_project_question import AnswerProjectQuestion
 from clearcut.application.create_project import CreateProject
+from clearcut.application.current_scene_lore import CurrentSceneLore
+from clearcut.application.dispatch_notifications import DispatchNotifications
+from clearcut.application.document_ports import ProjectDocuments
+from clearcut.application.draft_ports import DraftStore, ScreenplayContent
+from clearcut.application.durable_ports import (
+    AnalysisArtifacts,
+    AnalysisManifestReader,
+    ClearanceSnapshots,
+)
 from clearcut.application.evaluate_delta import EvaluateDelta
 from clearcut.application.get_analysis import GetAnalysis
 from clearcut.application.get_bible import GetBible
@@ -103,10 +152,24 @@ from clearcut.application.get_tracker_item import GetTrackerItem
 from clearcut.application.list_projects import ListProjects
 from clearcut.application.list_scripts import ListScripts
 from clearcut.application.list_tracker_items import ListTrackerItems
+from clearcut.application.local_research_answer import LocalResearchAnswer
+from clearcut.application.local_research_ports import LocalResearchStore
+from clearcut.application.notification_ports import ProjectNotifications
+from clearcut.application.project_activity import ProjectActivity
+from clearcut.application.project_analysis_lore import ProjectAnalysisLore
+from clearcut.application.reconfirm_clearance import ReconfirmClearance
+from clearcut.application.research_production_location import ResearchProductionLocation
 from clearcut.application.resolve_finding import ResolveFinding
+from clearcut.application.run_durable_analysis import RunDurableAnalysis
+from clearcut.application.search_project import SearchProject
 from clearcut.application.start_analysis import Runner, StartAnalysis, Work
+from clearcut.application.tracker_mutations import ClearanceConfirmation
 from clearcut.application.upload_script_file import UploadScriptFile
+from clearcut.application.workspace_ports import OwnedFiles, ProjectAccess
+from clearcut.domain.errors import SourceUnavailable
 from clearcut.domain.finding import Finding
+from clearcut.observability import stage_span
+from clearcut.provider_config import ProviderConfig
 
 logger = logging.getLogger(__name__)
 
@@ -128,12 +191,17 @@ _BIGQUERY_LORE_TABLE = "lore_vectors"
 _EMBEDDING_MODEL = "text-embedding-005"
 
 _MODE_ENV_VAR = "CLEARCUT_MODE"
+
 _MOCK_MODE = "mock"
 _LIVE_MODE = "live"
 
 _OTEL_ENDPOINT_ENV_VAR = "OTEL_EXPORTER_OTLP_ENDPOINT"
 
 _ANALYSIS_SPAN = "analyze"
+
+# What `bind_context` hands back, unchanged: it wraps a callable, it does not
+# decide what that callable returns.
+_R = TypeVar("_R")
 
 
 def _span_exporter() -> OTLPSpanExporter | None:
@@ -211,9 +279,37 @@ def run_traced(script_id: str, work: Work) -> None:
     before `_configure_telemetry` installs the real provider caches that
     first resolution permanently.
     """
-    with trace.get_tracer(__name__).start_as_current_span(_ANALYSIS_SPAN) as span:
+    with stage_span(trace.get_tracer(__name__), _ANALYSIS_SPAN) as span:
         span.set_attribute("script_id", script_id)
         work()
+
+
+def bind_context(work: Callable[[], _R]) -> Callable[[], _R]:
+    """Carries this thread's OpenTelemetry context onto whichever thread runs
+    `work`, so a span opened inside it nests under the caller's span instead
+    of starting a trace of its own.
+
+    Here rather than in `application/concurrency.py` for the same reason
+    `run_traced` is here rather than in a use case: `application/` may not
+    import opentelemetry (AGENT.md Section 2 rule 2). Without this, the
+    per-finding `ground` and `research` spans the adapters open on a pool
+    thread each become a root span with a fresh trace id, and one analysis
+    arrives in Grafana as a handful of unrelated traces.
+
+    `attach` returns a token that `detach` needs back, and the pool reuses its
+    threads across items, so the `try/finally` is not decoration: a leaked
+    attach would leave the next item running under a finished span's context.
+    """
+    context = otel_context.get_current()
+
+    def bound() -> _R:
+        token = otel_context.attach(context)
+        try:
+            return work()
+        finally:
+            otel_context.detach(token)
+
+    return bound
 
 
 def run_traced_in_background(script_id: str, work: Work) -> None:
@@ -249,6 +345,17 @@ class _UseCaseGraph:
     get_bible: GetBible
     add_bible_facts: AddBibleFacts
     answer_project_question: AnswerProjectQuestion
+    durable_analysis: RunDurableAnalysis | None = None
+    durable_jobs: FirestoreAnalysisJobs | None = None
+    manifests: AnalysisManifestReader | None = None
+    provider_config_json: str = "{}"
+    analysis_artifacts: AnalysisArtifacts | None = None
+    clearance_snapshots: ClearanceSnapshots | None = None
+    confirmations: ClearanceConfirmation | None = None
+    activity: ActivityStore | None = None
+    notifications: ProjectNotifications | None = None
+    local_research: LocalResearchStore | None = None
+    research_location: ResearchProductionLocation | None = None
 
 
 def _build_mock_use_cases(runner: Runner) -> _UseCaseGraph:
@@ -259,6 +366,7 @@ def _build_mock_use_cases(runner: Runner) -> _UseCaseGraph:
     ingestion = InMemoryScriptIngestion()
     extractor = InMemorySceneExtractor()
     grounding = InMemoryLegalGrounding()
+    web_search = InMemoryWebGrounding()
     research = InMemoryRightsResearch()
     continuity = InMemoryContinuityCheck()
     lore = InMemoryLoreStore()
@@ -270,10 +378,27 @@ def _build_mock_use_cases(runner: Runner) -> _UseCaseGraph:
     jobs = InMemoryAnalysisJobStore()
     script_storage = InMemoryScriptStorage()
     analyze_script = AnalyzeScript(
-        ingestion, extractor, grounding, research, lore, tracker, continuity, findings
+        ingestion,
+        extractor,
+        grounding,
+        research,
+        lore,
+        tracker,
+        continuity,
+        findings,
+        bind=bind_context,
     )
     evaluate_delta = EvaluateDelta(
-        ingestion, extractor, grounding, research, lore, tracker, continuity, notifier, findings
+        ingestion,
+        extractor,
+        grounding,
+        research,
+        lore,
+        tracker,
+        continuity,
+        notifier,
+        findings,
+        bind=bind_context,
     )
     return _UseCaseGraph(
         analyze_script=analyze_script,
@@ -294,10 +419,10 @@ def _build_mock_use_cases(runner: Runner) -> _UseCaseGraph:
         get_script=GetScript(scripts, findings),
         list_tracker_items=ListTrackerItems(tracker),
         get_tracker_item=GetTrackerItem(tracker),
-        resolve_finding=ResolveFinding(tracker, notifier),
+        resolve_finding=ResolveFinding(tracker, notifier, tracker),
         get_bible=GetBible(lore),
         add_bible_facts=AddBibleFacts(lore),
-        answer_project_question=AnswerProjectQuestion(lore, grounding, tracker),
+        answer_project_question=AnswerProjectQuestion(lore, grounding, tracker, web_search),
     )
 
 
@@ -315,12 +440,109 @@ def _required_env(name: str) -> str:
     return value
 
 
+def build_analysis_dispatcher() -> tuple[FirestoreAnalysisJobs, CloudRunAnalysisLauncher]:
+    from google.cloud import run_v2
+
+    project = _required_env("GOOGLE_CLOUD_PROJECT")
+    region = os.environ.get("CLOUD_RUN_REGION", "us-central1")
+    name = os.environ.get("CLEARCUT_ANALYSIS_JOB", "")
+    if not name:
+        raise RuntimeError("dispatcher requires CLEARCUT_ANALYSIS_JOB")
+    if "/" in name:
+        raise ValueError("CLEARCUT_ANALYSIS_JOB must contain only the configured job name")
+    return (
+        FirestoreAnalysisJobs(firestore.Client(project=project)),
+        CloudRunAnalysisLauncher(
+            run_v2.JobsClient(), f"projects/{project}/locations/{region}/jobs/{name}"
+        ),
+    )
+
+
+def build_activity_dispatcher() -> ProjectActivity:
+    project = _required_env("GOOGLE_CLOUD_PROJECT")
+    client = cast(
+        _ChClient,
+        clickhouse_connect.get_client(
+            host=bare_host(_required_env("CLICKHOUSE_HOST")),
+            username=_required_env("CLICKHOUSE_USER"),
+            password=_required_env("CLICKHOUSE_PASSWORD"),
+            secure=True,
+            connect_timeout=10,
+            send_receive_timeout=30,
+            query_retries=0,
+        ),
+    )
+    return ProjectActivity(
+        FirestoreActivityOutbox(firestore.Client(project=project)),
+        ClickHouseActivity(client),
+        lambda: datetime.now(UTC),
+    )
+
+
+def _scene_vectors(project: str) -> BigQuerySceneVectors:
+    def options(raw: str) -> ProviderConfig:
+        return ProviderConfig.read({}, "unused", "unused", json.loads(raw))
+
+    def store(raw: str) -> _VectorStore:
+        providers = options(raw)
+        return BigQueryVectors(
+            bigquery.Client(project=project, location=_GCP_LOCATION),
+            f"{project}.{_BIGQUERY_DATASET}.analysis_scene_vectors",
+            location=_GCP_LOCATION,
+            timeout=providers.bigquery_timeout,
+            extra_columns=("organization_id", "analysis_id", "revision_id", "scene_id"),
+        )
+
+    def embed(texts: list[str], raw: str, query: bool) -> list[list[float]]:
+        providers = options(raw)
+        try:
+            with genai.Client(
+                vertexai=True,
+                project=project,
+                location=_GCP_LOCATION,
+                http_options=genai.types.HttpOptions(
+                    timeout=int(providers.genai_timeout * 1000),
+                    retry_options=genai.types.HttpRetryOptions(attempts=1),
+                ),
+            ) as client:
+                response = client.models.embed_content(
+                    model=providers.embedding_model,
+                    contents=cast(list[genai.types.ContentUnionDict], texts),
+                    config=genai.types.EmbedContentConfig(
+                        task_type="RETRIEVAL_QUERY" if query else "RETRIEVAL_DOCUMENT",
+                        auto_truncate=False,
+                    ),
+                )
+            embeddings = [list(item.values or []) for item in response.embeddings or []]
+            if len(embeddings) != len(texts) or any(
+                not vector or not all(math.isfinite(v) for v in vector) for vector in embeddings
+            ):
+                raise ValueError("invalid embedding result")
+            return embeddings
+        except Exception as exc:
+            raise SourceUnavailable("scene embeddings unavailable") from exc
+
+    return BigQuerySceneVectors(store, embed)
+
+
+def build_lore_dispatcher() -> tuple[FirestoreLoreProjection, ProjectAnalysisLore]:
+    project = _required_env("GOOGLE_CLOUD_PROJECT")
+    queue = FirestoreLoreProjection(firestore.Client(project=project))
+    artifacts = GcsAnalysisArtifacts(
+        storage.Client(project=project), _required_env("SCRIPTS_INTAKE_BUCKET")
+    )
+    return queue, ProjectAnalysisLore(
+        queue, artifacts, _scene_vectors(project), lambda: datetime.now(UTC)
+    )
+
+
 def _build_live_use_cases(
     *,
     runner: Runner = run_traced_in_background,
     ch_client: _ChClient | None = None,
     vector_store: _VectorStore | None = None,
     storage_client: _StorageClient | None = None,
+    provider_config: dict[str, str] | None = None,
 ) -> _UseCaseGraph:
     """The live wiring seam CP-049 fills (Decision D38): the live adapters,
     built from environment-read credentials, with the vendor clients that
@@ -340,6 +562,9 @@ def _build_live_use_cases(
     processor_id = _required_env("DOCAI_PROCESSOR_ID")
     gemini_model = _required_env("GEMINI_MODEL")
     gemini_model_lite = _required_env("GEMINI_MODEL_LITE")
+    providers = ProviderConfig.read(os.environ, gemini_model, gemini_model_lite, provider_config)
+    selected = providers.frozen()
+    gemini_model, gemini_model_lite = providers.gemini_model, providers.gemini_model_lite
     parallel_api_key = _required_env("PARALLEL_API_KEY")
     clickhouse_host = bare_host(_required_env("CLICKHOUSE_HOST"))
     clickhouse_user = _required_env("CLICKHOUSE_USER")
@@ -359,45 +584,159 @@ def _build_live_use_cases(
                 username=clickhouse_user,
                 password=clickhouse_password,
                 secure=True,
+                connect_timeout=providers.clickhouse_connect_timeout,
+                send_receive_timeout=providers.clickhouse_request_timeout,
+                query_retries=0,
             ),
         )
 
-    embeddings = VertexAIEmbeddings(project=project, location=_GCP_LOCATION, model=_EMBEDDING_MODEL)
+    genai_client = genai.Client(
+        vertexai=True,
+        project=project,
+        location=_GENAI_LOCATION,
+        http_options=genai.types.HttpOptions(
+            timeout=int(providers.genai_timeout * 1000),
+            retry_options=genai.types.HttpRetryOptions(attempts=1),
+        ),
+    )
+    embedding_client = genai.Client(
+        vertexai=True,
+        project=project,
+        location=_GCP_LOCATION,
+        http_options=genai.types.HttpOptions(
+            timeout=int(providers.genai_timeout * 1000),
+            retry_options=genai.types.HttpRetryOptions(attempts=1),
+        ),
+    )
+    embeddings = VertexAIEmbeddings(
+        project=project,
+        location=_GCP_LOCATION,
+        model=providers.embedding_model,
+        client=embedding_client,
+        max_retries=1,
+    )
+    # SDK 3.2.4's validator replaces the constructor's public client field.
+    # Assign it after validation so embeddings retain their regional budget.
+    embeddings.client.close()
+    embeddings.client = embedding_client
     if vector_store is None:
-        vector_store = BigQueryVectorStore(
-            embedding=embeddings,
-            project_id=project,
-            dataset_name=_BIGQUERY_DATASET,
-            table_name=_BIGQUERY_LORE_TABLE,
+        vector_store = BigQueryVectors(
+            bigquery.Client(project=project, location=_GCP_LOCATION),
+            f"{project}.{_BIGQUERY_DATASET}.{_BIGQUERY_LORE_TABLE}",
             location=_GCP_LOCATION,
+            timeout=providers.bigquery_timeout,
         )
     if storage_client is None:
         storage_client = storage.Client(project=project)
 
-    genai_client = genai.Client(vertexai=True, project=project, location=_GENAI_LOCATION)
     documentai_client = documentai.DocumentProcessorServiceClient()
 
-    ingestion = DocumentAIIngestion(documentai_client, processor_id)
+    ingestion = DocumentAIIngestion(
+        documentai_client, processor_id, timeout=providers.document_timeout
+    )
     extractor = GeminiSceneExtractor(genai_client, gemini_model)
-    grounding = VertexSearchGrounding(genai_client.models, data_store_id)
-    research = ParallelRightsResearch(httpx.Client(), parallel_api_key)
+    grounding = VertexSearchGrounding(
+        genai_client.models, data_store_id, model=providers.grounding_model
+    )
+    research = ParallelRightsResearch(
+        httpx.Client(),
+        parallel_api_key,
+        processor=providers.research_processor,
+        create_timeout=providers.research_create_timeout,
+        result_timeout=providers.research_result_timeout,
+    )
+    # The same key, a second Parallel surface (ADR 0003 as amended): the Task
+    # API researches a rights holder over minutes, the Search API answers the
+    # producer's on-camera question inside a second. No new `_required_env`
+    # call -- adding one would change the environment contract
+    # (`tests/unit/test_environment_contract.py`) for a credential that is
+    # already read.
+    web_search = ParallelWebSearch(
+        httpx.Client(), parallel_api_key, timeout=providers.search_timeout
+    )
     continuity = GeminiContinuityCheck(genai_client, gemini_model_lite)
     lore = BigQueryLoreStore(vector_store, embeddings)
-    tracker = ClickHouseTrackerStore(ch_client)
-    notifier = WebhookNotifier(httpx.Client(), webhook_url)
+    from datetime import UTC, datetime
+
+    from clearcut.adapters.documents.screenplay_export import screenplay_layout
+    from clearcut.adapters.gcp.clearance_generations import FirestoreClearanceGenerations
+    from clearcut.adapters.gcp.published_analysis import PublishedAnalysis, PublishedFindings
+    from clearcut.application.calculate_revision import CalculateRevision
+    from clearcut.application.checkpointed_providers import (
+        CheckpointedContinuity,
+        CheckpointedExtractor,
+        CheckpointedGrounding,
+        CheckpointedLore,
+    )
+    from clearcut.application.checkpointed_research import CheckpointedResearch
+
+    firestore_client = firestore.Client(project=project)
+    artifacts = GcsAnalysisArtifacts(storage_client, intake_bucket)
+    scripts = PublishedAnalysis(firestore_client, artifacts)
+    tracker = FirestoreTrackerStore(firestore_client, scripts)
+    notifier = WebhookNotifier(httpx.Client(), webhook_url, enabled=False)
+    notifications = FirestoreNotifications(firestore_client)
     projects = ClickHouseProjectStore(ch_client)
-    scripts = ClickHouseScriptStore(ch_client)
-    findings = ClickHouseFindingStore(ch_client)
+    findings = PublishedFindings(scripts)
     jobs = ClickHouseAnalysisJobStore(ch_client)
     script_storage = GcsScriptStorage(storage_client, intake_bucket)
+    durable_jobs = FirestoreAnalysisJobs(firestore_client)
+    calculator = CalculateRevision(
+        GcsScreenplayContent(storage_client, intake_bucket),
+        screenplay_layout,
+        lambda steps: AnalyzeScript(
+            ingestion,
+            CheckpointedExtractor(extractor, steps),
+            CheckpointedGrounding(grounding, steps),
+            CheckpointedResearch(research, steps),
+            CheckpointedLore(lore, steps),
+            tracker,
+            CheckpointedContinuity(continuity, steps),
+            findings,
+            bind=bind_context,
+        ),
+    )
+    durable_analysis = RunDurableAnalysis(
+        durable_jobs,
+        artifacts,
+        tracker,
+        FirestoreClearanceGenerations(firestore_client),
+        calculator,
+        lambda: datetime.now(UTC),
+    )
 
     analyze_script = AnalyzeScript(
-        ingestion, extractor, grounding, research, lore, tracker, continuity, findings
+        ingestion,
+        extractor,
+        grounding,
+        research,
+        lore,
+        tracker,
+        continuity,
+        findings,
+        bind=bind_context,
     )
     evaluate_delta = EvaluateDelta(
-        ingestion, extractor, grounding, research, lore, tracker, continuity, notifier, findings
+        ingestion,
+        extractor,
+        grounding,
+        research,
+        lore,
+        tracker,
+        continuity,
+        notifier,
+        findings,
+        bind=bind_context,
     )
     return _UseCaseGraph(
+        durable_analysis=durable_analysis,
+        durable_jobs=durable_jobs,
+        manifests=scripts,
+        provider_config_json=json.dumps(selected, sort_keys=True),
+        analysis_artifacts=artifacts,
+        clearance_snapshots=tracker,
+        confirmations=tracker,
+        activity=ClickHouseActivity(ch_client),
         analyze_script=analyze_script,
         evaluate_delta=evaluate_delta,
         start_analysis=StartAnalysis(
@@ -416,10 +755,26 @@ def _build_live_use_cases(
         get_script=GetScript(scripts, findings),
         list_tracker_items=ListTrackerItems(tracker),
         get_tracker_item=GetTrackerItem(tracker),
-        resolve_finding=ResolveFinding(tracker, notifier),
+        resolve_finding=ResolveFinding(tracker, notifier, tracker, notifications),
+        notifications=notifications,
         get_bible=GetBible(lore),
         add_bible_facts=AddBibleFacts(lore),
-        answer_project_question=AnswerProjectQuestion(lore, grounding, tracker),
+        answer_project_question=AnswerProjectQuestion(
+            lore,
+            grounding,
+            tracker,
+            web_search,
+            LocalResearchAnswer(
+                FirestoreProjectSettings(firestore_client), FirestoreLocalResearch(firestore_client)
+            ),
+            CurrentSceneLore(FirestoreLoreProjection(firestore_client), _scene_vectors(project)),
+        ),
+        local_research=FirestoreLocalResearch(firestore_client),
+        research_location=ResearchProductionLocation(
+            FirestoreProjectSettings(firestore_client),
+            FirestoreLocalResearch(firestore_client),
+            web_search,
+        ),
     )
 
 
@@ -448,7 +803,16 @@ def _default_build_dir() -> Path:
     return Path(__file__).resolve().parent.parent.parent / "web" / "dist"
 
 
-def _register_api(app: Flask, graph: _UseCaseGraph, mode: str, build_dir: Path) -> None:
+def _register_api(
+    app: Flask,
+    graph: _UseCaseGraph,
+    mode: str,
+    build_dir: Path,
+    access: ProjectAccess | None = None,
+    owned_files: OwnedFiles | None = None,
+    client_config: dict[str, str] | None = None,
+    drafts: DraftStore | None = None,
+) -> None:
     """Mounts the six domain blueprints, then the SPA.
 
     Order is load-bearing and is the reason this is one function rather than
@@ -456,9 +820,11 @@ def _register_api(app: Flask, graph: _UseCaseGraph, mode: str, build_dir: Path) 
     unmatched path, so a domain registered after it would resolve to the
     SPA's JSON 404 for `/api` paths. It goes last, once.
     """
-    app.register_blueprint(create_system_blueprint(mode, build_spec))
+    app.register_blueprint(create_system_blueprint(mode, build_spec, client_config))
     app.register_blueprint(
-        create_projects_blueprint(graph.create_project, graph.list_projects, graph.get_project)
+        create_projects_blueprint(
+            graph.create_project, graph.list_projects, graph.get_project, access
+        )
     )
     app.register_blueprint(
         create_scripts_blueprint(
@@ -467,6 +833,11 @@ def _register_api(app: Flask, graph: _UseCaseGraph, mode: str, build_dir: Path) 
             graph.get_script,
             graph.start_analysis,
             graph.get_analysis,
+            owned_files,
+            graph.durable_jobs,
+            drafts,
+            graph.manifests,
+            graph.provider_config_json,
         )
     )
     app.register_blueprint(
@@ -508,7 +879,171 @@ def create_app(build_dir: Path | None = None, *, analysis_runner: Runner | None 
         )
 
     app = Flask(__name__)
+    access: FirestoreProjectAccess | None = None
+    if mode == _LIVE_MODE:
+        firebase_app = firebase_admin.initialize_app(
+            options={"projectId": _required_env("GOOGLE_CLOUD_PROJECT")},
+            name=f"clearcut-{id(app)}",
+        )
+        access = FirestoreProjectAccess(
+            firestore.Client(project=_required_env("GOOGLE_CLOUD_PROJECT"))
+        )
+        install_identity_boundary(app, FirebaseIdentityVerifier(firebase_app), access)
+    draft_store: DraftStore = MemoryDraftStore()
+    screenplay_content: ScreenplayContent = MemoryScreenplayContent()
+    if mode == _LIVE_MODE:
+        draft_store = FirestoreDraftStore(
+            firestore.Client(project=_required_env("GOOGLE_CLOUD_PROJECT"))
+        )
+        screenplay_content = GcsScreenplayContent(
+            storage.Client(project=_required_env("GOOGLE_CLOUD_PROJECT")),
+            _required_env("SCRIPTS_INTAKE_BUCKET"),
+        )
+    app.register_blueprint(create_drafts_blueprint(draft_store, screenplay_content))
+    voice_options = json.loads(use_cases.provider_config_json)
+    speech = (
+        GoogleSpeechTranscription(
+            SpeechClient(client_options={"api_endpoint": "us-central1-speech.googleapis.com"}),
+            _required_env("GOOGLE_CLOUD_PROJECT"),
+            model=voice_options.get("speech_model", "chirp_2"),
+            timeout=float(voice_options.get("speech_timeout", 45)),
+        )
+        if mode == _LIVE_MODE
+        else None
+    )
+    app.register_blueprint(create_voice_blueprint(speech))
+    documents: ProjectDocuments = MemoryProjectDocuments()
+    importer = ScreenplayImporter()
+    if mode == _LIVE_MODE:
+        documents = GcpProjectDocuments(
+            firestore.Client(project=_required_env("GOOGLE_CLOUD_PROJECT")),
+            storage.Client(project=_required_env("GOOGLE_CLOUD_PROJECT")),
+            _required_env("SCRIPTS_INTAKE_BUCKET"),
+        )
+        importer = ScreenplayImporter(
+            DocumentAIIngestion(
+                documentai.DocumentProcessorServiceClient(),
+                _required_env("DOCAI_PROCESSOR_ID"),
+                timeout=float(voice_options.get("document_timeout", 120)),
+            )
+        )
+    app.register_blueprint(
+        create_documents_blueprint(
+            documents, draft_store, screenplay_content, importer, screenplay_pdf, screenplay_fdx
+        )
+    )
+    app.register_blueprint(
+        create_clearance_details_blueprint(
+            use_cases.resolve_finding,
+            documents,
+            use_cases.get_tracker_item,
+            lambda item, format_name: permission_document(
+                item,
+                format_name,
+                access.get_project(item.project_id).title
+                if access is not None
+                else use_cases.get_project.execute(item.project_id).title,
+            ),
+            ReconfirmClearance(
+                use_cases.clearance_snapshots, use_cases.analysis_artifacts, use_cases.confirmations
+            )
+            if use_cases.clearance_snapshots is not None
+            and use_cases.analysis_artifacts is not None
+            and use_cases.confirmations is not None
+            else None,
+        )
+    )
+    app.register_blueprint(create_activity_blueprint(use_cases.activity))
+    app.register_blueprint(create_notifications_blueprint(use_cases.notifications))
+    app.register_blueprint(
+        create_search_blueprint(
+            SearchProject(
+                draft_store,
+                screenplay_content,
+                use_cases.list_tracker_items,
+                documents,
+                use_cases.local_research,
+            )
+        )
+    )
+    app.register_blueprint(
+        create_local_research_blueprint(use_cases.local_research, use_cases.research_location)
+    )
+    app.register_blueprint(
+        create_workspaces_blueprint(
+            FirestoreTeams(firestore.Client(project=_required_env("GOOGLE_CLOUD_PROJECT")))
+            if access is not None
+            else None,
+            FirestoreProjectSettings(
+                firestore.Client(project=_required_env("GOOGLE_CLOUD_PROJECT"))
+            )
+            if access is not None
+            else None,
+        )
+    )
+    from clearcut.adapters.documents.report_export import ClearanceReportRenderer
+    from clearcut.adapters.gcp.reports import FirestoreReports
+    from clearcut.adapters.http.reports import create_reports_blueprint
+    from clearcut.application.create_report import CreateReport
+
+    reports = None
+    create_report = None
+    if mode == _LIVE_MODE:
+        reports = FirestoreReports(firestore.Client(project=_required_env("GOOGLE_CLOUD_PROJECT")))
+        assert (
+            use_cases.durable_jobs is not None
+            and use_cases.analysis_artifacts is not None
+            and use_cases.clearance_snapshots is not None
+        )
+        create_report = CreateReport(
+            use_cases.durable_jobs,
+            use_cases.clearance_snapshots,
+            use_cases.analysis_artifacts,
+            reports,
+            ClearanceReportRenderer(),
+            draft_store,
+            documents,
+            use_cases.local_research,
+        )
+    app.register_blueprint(
+        create_reports_blueprint(
+            reports,
+            create_report,
+            use_cases.clearance_snapshots,
+            use_cases.analysis_artifacts,
+            lambda project_id: (
+                access.get_project(project_id).title
+                if access
+                else use_cases.get_project.execute(project_id).title
+            ),
+        )
+    )
     _register_api(
-        app, use_cases, mode, build_dir if build_dir is not None else _default_build_dir()
+        app,
+        use_cases,
+        mode,
+        build_dir if build_dir is not None else _default_build_dir(),
+        access,
+        access,
+        {
+            "apiKey": os.environ.get("FIREBASE_WEB_API_KEY", ""),
+            "authDomain": os.environ.get("FIREBASE_WEB_AUTH_DOMAIN", ""),
+            "projectId": os.environ.get("GOOGLE_CLOUD_PROJECT", ""),
+            "appId": os.environ.get("FIREBASE_WEB_APP_ID", ""),
+        },
+        draft_store,
     )
     return app
+
+
+def build_notification_dispatcher() -> "DispatchNotifications":
+    from datetime import UTC, datetime
+
+    from clearcut.adapters.gcp.notification_delivery import FirestoreNotificationDelivery
+    from clearcut.adapters.notify.delivery import BoundNotificationSender
+
+    return DispatchNotifications(
+        FirestoreNotificationDelivery(firestore.Client(project=os.environ["GOOGLE_CLOUD_PROJECT"])),
+        BoundNotificationSender(os.environ),
+        lambda: datetime.now(UTC),
+    )

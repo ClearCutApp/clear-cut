@@ -1,4 +1,11 @@
 # clear-cut
+
+Current production recovery scope and evidence: [specification](docs/recovery/specification.md),
+[situation](docs/recovery/situation-2026-09-06.md), and [remaining work](docs/recovery/checklist.md).
+The public entry is `/`; the workspace is `/projects`. Live account access requires
+[Firebase/Firestore provisioning](docs/recovery/provisioning.md). Production readiness
+remains unverified; historical MVP completion claims do not establish release status.
+
 The Ultimate Agentic Cinema Clearance Engine
 
 ## Run locally

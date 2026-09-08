@@ -21,13 +21,23 @@ from collections.abc import Iterable
 from typing import Any, Protocol
 
 from clearcut.adapters.http import (
+    activity,
     bible,
+    clearance_details,
+    documents,
+    drafts,
+    local_research,
+    notifications,
     projects,
     questions,
+    reports,
     schemas,
     scripts,
+    search,
     system,
     tracker,
+    voice,
+    workspaces,
 )
 
 JsonDict = dict[str, Any]
@@ -49,11 +59,28 @@ class Domain(Protocol):
     SCHEMAS: JsonDict
 
 
-DOMAINS: tuple[Domain, ...] = (system, projects, scripts, tracker, bible, questions)
+DOMAINS: tuple[Domain, ...] = (
+    activity,
+    workspaces,
+    system,
+    projects,
+    scripts,
+    search,
+    tracker,
+    bible,
+    clearance_details,
+    questions,
+    drafts,
+    local_research,
+    notifications,
+    voice,
+    documents,
+    reports,
+)
 
 INFO: JsonDict = {
     "title": "ClearCut API",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "summary": "Agentic script clearance for independent film production.",
     "description": (
         "Upload a screenplay version and every rights event that could stop the film "
@@ -111,18 +138,30 @@ def merge_paths(sources: Iterable[JsonDict]) -> JsonDict:
 
 def build_spec() -> JsonDict:
     """The served document: the six domains' paths, schemas and tags."""
-    return {
+    spec: JsonDict = {
         "openapi": "3.1.0",
         "info": INFO,
         "servers": [{"url": "/", "description": "The service serving this document."}],
         "tags": [{"name": domain.TAG, "description": domain.TAG_DESCRIPTION} for domain in DOMAINS],
         "paths": merge_paths(domain.PATHS for domain in DOMAINS),
+        "security": [{"FirebaseIdentity": []}],
         "components": {
+            "securitySchemes": {
+                "FirebaseIdentity": {
+                    "type": "http",
+                    "scheme": "bearer",
+                    "bearerFormat": "Firebase ID token",
+                    "description": "Required in live mode; mock is an isolated public demo.",
+                }
+            },
             "schemas": schemas.merge_schemas(
                 [schemas.SHARED, *(domain.SCHEMAS for domain in DOMAINS)]
-            )
+            ),
         },
     }
+    for path in ("/api/health", "/api/docs", "/api/openapi.json", "/api/jurisdictions"):
+        spec["paths"][path]["get"]["security"] = []
+    return spec
 
 
 def operations(spec: JsonDict) -> set[tuple[str, str]]:

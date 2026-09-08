@@ -23,7 +23,10 @@ class FakeBlob:
         self.name = name
         self._bucket = bucket
 
-    def upload_from_string(self, data: bytes, content_type: str) -> None:
+    def upload_from_string(
+        self, data: bytes, content_type: str, *, if_generation_match: int = 0
+    ) -> None:
+        assert if_generation_match == 0
         self._bucket.uploads.append((self.name, data, content_type))
 
 
@@ -59,7 +62,9 @@ class ExplodingStorageClient:
 
 
 class ExplodingBlob:
-    def upload_from_string(self, data: bytes, content_type: str) -> None:
+    def upload_from_string(
+        self, data: bytes, content_type: str, *, if_generation_match: int = 0
+    ) -> None:
         from google.auth.exceptions import RefreshError
 
         raise RefreshError("simulated credential failure")  # type: ignore[no-untyped-call]
@@ -89,18 +94,19 @@ def test_store_returns_the_gs_uri_document_ai_reads_back() -> None:
 
     uri = adapter.store("prj-4f2a", "el-ultimo-verano-v2.pdf", _PDF)
 
-    assert uri == "gs://clearcut-scripts/prj-4f2a/el-ultimo-verano-v2.pdf"
+    assert uri.startswith("gs://clearcut-scripts/prj-4f2a/")
+    assert uri.endswith("/el-ultimo-verano-v2.pdf")
 
 
 def test_store_writes_the_bytes_under_the_projects_own_prefix() -> None:
     client = FakeStorageClient()
     adapter = GcsScriptStorage(client, bucket="clearcut-scripts")
 
-    adapter.store("prj-4f2a", "draft.pdf", _PDF)
+    uri = adapter.store("prj-4f2a", "draft.pdf", _PDF)
 
     assert client.requested == ["clearcut-scripts"]
     assert client.buckets["clearcut-scripts"].uploads == [
-        ("prj-4f2a/draft.pdf", _PDF, "application/pdf")
+        (uri.removeprefix("gs://clearcut-scripts/"), _PDF, "application/pdf")
     ]
 
 
@@ -129,8 +135,11 @@ def test_store_keeps_only_the_basename_of_a_filename_carrying_a_path() -> None:
 
     uri = adapter.store("prj-4f2a", "../prj-other/draft.pdf", _PDF)
 
-    assert uri == "gs://clearcut-scripts/prj-4f2a/draft.pdf"
-    assert client.buckets["clearcut-scripts"].uploads[0][0] == "prj-4f2a/draft.pdf"
+    assert uri.startswith("gs://clearcut-scripts/prj-4f2a/")
+    assert uri.endswith("/draft.pdf")
+    assert client.buckets["clearcut-scripts"].uploads[0][0] == uri.removeprefix(
+        "gs://clearcut-scripts/"
+    )
 
 
 @pytest.mark.parametrize("filename", ["", "   ", "/", "..", "../.."])
@@ -167,3 +176,18 @@ def test_a_credential_failure_during_upload_becomes_a_domain_error() -> None:
 
     with pytest.raises(ScriptUploadFailed):
         adapter.store("prj-4f2a", "draft.pdf", _PDF)
+
+
+def test_same_name_uploads_preserve_both_originals() -> None:
+    client = FakeStorageClient()
+    adapter = GcsScriptStorage(client, bucket="clearcut-scripts")
+    first = adapter.store("prj-1", "draft.pdf", b"first")
+    second = adapter.store("prj-1", "draft.pdf", b"second")
+    assert first != second
+    assert len({row[0] for row in client.buckets["clearcut-scripts"].uploads}) == 2
+
+
+@pytest.mark.parametrize("project_id", ["../other", "a/b", "a\\b", ".", ".."])
+def test_project_key_cannot_escape_its_namespace(project_id: str) -> None:
+    with pytest.raises(ValueError):
+        GcsScriptStorage(FakeStorageClient(), bucket="scripts").store(project_id, "x.pdf", b"x")

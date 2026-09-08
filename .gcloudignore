@@ -1,6 +1,5 @@
-# Mirrors .dockerignore. Without this file gcloud generates one from
-# .gitignore, which does not exclude .env -- and .env is not in .gitignore's
-# job description, it is in this one.
+# Mirrors .dockerignore and explicitly excludes secrets and developer tools
+# from the build upload, independently of Git's tracked-file rules.
 # Secrets. .env carries ten live credentials; a COPY of the repo root would
 # bake them into a layer readable by anyone who can pull the image.
 .env
@@ -26,6 +25,8 @@ web/dist/
 .git/
 .github/
 .claude/
+.codex/
+.agents/
 .atl/
 tests/
 infra/

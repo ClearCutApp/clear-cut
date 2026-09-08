@@ -16,6 +16,7 @@ import {
   createTrackerItemEmailDraft,
   createTrackerItemNotification,
   getAnalysis,
+  getCurrentAnalysis,
   getProject,
   getScript,
   listScripts,
@@ -36,6 +37,7 @@ import { DEMO_PROJECT } from "../app/demo";
 import { pollUntilSettled } from "../features/analysis/model";
 import { attempt, fail, failureMessage, succeed, type Outcome } from "./outcome";
 import { jurisdictionFor, rememberProject } from "./recentProjects";
+import { useServerMode } from "./ServerModeContext";
 
 export interface ProjectContextValue {
   projectId: string;
@@ -57,6 +59,7 @@ export interface ProjectContextValue {
   pendingItemIds: ReadonlySet<string>;
   selectedItemId: string | null;
   refreshTracker: () => Promise<void>;
+  refreshMetadata?: () => Promise<void>;
   runAnalysis: (request: ScriptCreate) => Promise<Outcome<Script>>;
   changeState: (itemId: string, state: TrackerState) => Promise<Outcome<TrackerItem>>;
   draftEmail: (itemId: string) => Promise<Outcome<TrackerItem>>;
@@ -143,6 +146,7 @@ export function ProjectProvider({
   const [pendingItemIds, setPendingItemIds] = useState<ReadonlySet<string>>(new Set());
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
 
+  const mode = useServerMode();
   const loadTracker = useCallback(
     async (isCancelled: () => boolean): Promise<void> => {
       try {
@@ -188,6 +192,34 @@ export function ProjectProvider({
     };
   }, [projectId]);
 
+  useEffect(() => {
+    if (mode !== "live") return;
+    let cancelled = false;
+    void (async () => {
+      const queued = await getCurrentAnalysis(projectId);
+      if (!queued || cancelled) return;
+      setJob(queued);
+      if (queued.state !== "QUEUED" && queued.state !== "RUNNING") return;
+      const result = await pollUntilSettled(queued, {
+        readJob: async () => {
+          if (cancelled) throw new Error("Project changed");
+          const current = await getAnalysis(projectId, queued.analysis_id);
+          if (!cancelled) setJob(current);
+          return current;
+        }, wait: pollWait, now: () => Date.now(),
+      });
+      if (cancelled) return;
+      if (result.kind === "ready") {
+        const completed = await getScript(projectId, result.scriptId);
+        if (!cancelled) {
+          setAnalysis(completed); setAnalysisError(null);
+          void loadTracker(() => cancelled);
+        }
+      } else setAnalysisError(result.message);
+    })().catch(() => { /* Existing script remains usable when polling is unavailable. */ });
+    return () => { cancelled = true; };
+  }, [projectId, mode, pollWait, loadTracker]);
+
   // The newest stored version, so a finding survives a reload. `listScripts`
   // answers newest first, and an empty list means no analysis ever ran --
   // which is not an error and leaves `analysis` null.
@@ -225,6 +257,10 @@ export function ProjectProvider({
   }, [projectId]);
 
   const refreshTracker = useCallback(() => loadTracker(() => false), [loadTracker]);
+  const refreshMetadata = useCallback(async () => {
+    try { const found = await getProject(projectId); setProject(found); setProjectError(null); }
+    catch { setProjectError("Project details could not be refreshed."); }
+  }, [projectId]);
 
   /**
    * Queues the analysis, then polls the job the 202 handed back until it
@@ -246,7 +282,11 @@ export function ProjectProvider({
       const settled = await attempt(
         () =>
           pollUntilSettled(queued.value, {
-            readJob: () => getAnalysis(projectId, analysisId),
+            readJob: async () => {
+              const current = await getAnalysis(projectId, analysisId);
+              setJob(current);
+              return current;
+            },
             wait: pollWait,
             now: () => Date.now(),
           }),
@@ -303,14 +343,14 @@ export function ProjectProvider({
 
   const changeState = useCallback(
     (itemId: string, state: TrackerState) =>
-      runMutation(itemId, () => updateTrackerItemState(projectId, itemId, state)),
-    [runMutation, projectId],
+      runMutation(itemId, () => updateTrackerItemState(projectId, itemId, state, tracker?.find((item) => item.item_id === itemId)?.version ?? 0)),
+    [runMutation, projectId, tracker],
   );
 
   const draftEmail = useCallback(
     (itemId: string) =>
-      runMutation(itemId, () => createTrackerItemEmailDraft(projectId, itemId)),
-    [runMutation, projectId],
+      runMutation(itemId, () => createTrackerItemEmailDraft(projectId, itemId, tracker?.find((item) => item.item_id === itemId)?.version ?? 0)),
+    [runMutation, projectId, tracker],
   );
 
   const notify = useCallback(
@@ -368,6 +408,7 @@ export function ProjectProvider({
       pendingItemIds,
       selectedItemId,
       refreshTracker,
+      refreshMetadata,
       runAnalysis,
       uploadScript,
       changeState,
@@ -393,6 +434,7 @@ export function ProjectProvider({
       pendingItemIds,
       selectedItemId,
       refreshTracker,
+      refreshMetadata,
       runAnalysis,
       uploadScript,
       changeState,

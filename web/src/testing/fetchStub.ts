@@ -17,6 +17,7 @@ export type RouteKind =
   | "create-project"
   | "scripts"
   | "script"
+  | "upload-script"
   | "create-script"
   | "analysis"
   | "tracker"
@@ -63,6 +64,9 @@ function classify(input: RequestInfo | URL, init?: RequestInit): RouteKind {
     return "patch";
   }
   if (method === "POST") {
+    if (url.includes("script-files")) {
+      return "upload-script";
+    }
     if (url.includes("email-drafts")) {
       return "email-draft";
     }

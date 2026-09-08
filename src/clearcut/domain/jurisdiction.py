@@ -1,4 +1,4 @@
-"""Jurisdiction value object and the ten jurisdictions ClearCut supports.
+"""Jurisdiction value object and the jurisdictions ClearCut can select.
 
 `corpus_prefix` values mirror the folder layout under
 `gs://clearcut-legal-corpus/` (docs/plan/infrastructure.md Section 2): Argentina,
@@ -25,6 +25,7 @@ JURISDICTIONS: tuple[Jurisdiction, ...] = (
     Jurisdiction("ES", "Spain", "spain/"),
     Jurisdiction("MX", "Mexico", "mexico/"),
     Jurisdiction("CA", "Canada", "canada/"),
+    Jurisdiction("CO", "Colombia", "colombia/"),
     Jurisdiction("FR", "France", "france/"),
     Jurisdiction("GB", "United Kingdom", "uk/"),
     Jurisdiction("IN", "India", "india/"),

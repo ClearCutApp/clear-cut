@@ -222,3 +222,31 @@
     display: none;
   }
 }
+
+
+.clearance-details fieldset {
+  display: grid;
+  gap: 0.9rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.clearance-details label {
+  display: grid;
+  gap: 0.4rem;
+  overflow-wrap: anywhere;
+}
+
+.clearance-details textarea,
+.clearance-details input:not([type="checkbox"]) {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.clearance-details textarea {
+  min-height: 5rem;
+  resize: vertical;
+}

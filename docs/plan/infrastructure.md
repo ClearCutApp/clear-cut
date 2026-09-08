@@ -163,7 +163,8 @@ the `x-api-key` header. The Python SDK is `parallel-web` on PyPI, imported as
 environment. The API overview is at
 https://docs.parallel.ai/getting-started/overview.
 
-Three surfaces carry ClearCut's traffic.
+Two surfaces carry ClearCut's traffic. A third, MCP, is documented below and
+deliberately unused.
 
 **Task API** at `POST https://api.parallel.ai/v1/tasks/runs` runs the
 rights-holder research that `docs/plan/sdd.md` section 3 assigns to the
@@ -175,20 +176,43 @@ producer can check the source before sending a legal request. See
 https://docs.parallel.ai/task-api/task-quickstart and
 https://docs.parallel.ai/task-api/guides/access-research-basis.
 
-**Search API** at `POST https://api.parallel.ai/v1/search` takes an `objective`
-in plain language plus two or three `search_queries`, and returns ranked
-excerpts with URLs and publish dates. Its `mode` field sets the latency floor:
-`turbo` near 250ms, `fast` near 700ms, `advanced` near 3s. See
+**Search API** at `POST https://api.parallel.ai/v1/search` runs the live legal
+grounding that `docs/plan/sdd.md` section 3 assigns to the `WebGrounding` port.
+It takes an `objective` in plain language plus two or three keyword
+`search_queries` of three to six words each, and returns ranked excerpts with
+URLs and publish dates. The adapter is `adapters/parallel/search.py`, and its
+one call site is `AnswerProjectQuestion`, which reaches for it when the
+licensed corpus produced no citation for a legal question. See
 https://docs.parallel.ai/search/search-quickstart.
 
-**Search MCP** at `https://search.parallel.ai/mcp` wraps that same search for
-tool calling and needs no auth header, though a bearer token raises the rate
-limit. It is registered with the agent in Agent Builder as a tool endpoint,
-which gives the agent live web search inside a clearance pass. A separate Task
-MCP at `https://task-mcp.parallel.ai/mcp` exposes `createDeepResearch`,
-`createTaskGroup`, `getStatus`, and `getResultMarkdown`, and stays available if
-we later drive deep research from the agent instead of from our own adapter.
-See https://docs.parallel.ai/integrations/mcp/quickstart.
+Its `mode` field sets the latency floor and the price band, and there are four
+of them:
+
+| Mode | Median latency | Price |
+|---|---|---|
+| `turbo` | 200ms | $1 per 1,000 |
+| `fast` | under 1s | $1 per 1,000 |
+| `basic` | 1s | $5 per 1,000 |
+| `advanced` | 3s | $5 per 1,000 |
+
+**`advanced` is what the API uses when `mode` is omitted**, which is the one
+thing to know about that table: a caller that does not set the field buys the
+slowest and most expensive tier by default. The adapter sets `fast`
+explicitly. That tier is near-premium quality at the cheapest band, and unlike
+`turbo` it still returns the excerpts the adapter turns into citations.
+
+**Search MCP, not used at runtime.** The server at
+`https://search.parallel.ai/mcp` wraps that same search for tool calling and
+needs no auth header, though a bearer token raises the rate limit. It is meant
+to be registered with an agent in Agent Builder as a tool endpoint. ClearCut
+has no such agent: the Search API adapter above is what the deployed service
+calls, and the only place that MCP URL appears in this repository is
+`.mcp.json`, which configures Claude Code for the people developing ClearCut.
+A separate Task MCP at `https://task-mcp.parallel.ai/mcp` exposes
+`createDeepResearch`, `createTaskGroup`, `getStatus`, and `getResultMarkdown`.
+Both are kept here for whoever later drives research from an agent instead of
+from our own adapter, and for nothing else. See
+https://docs.parallel.ai/integrations/mcp/quickstart.
 
 Parallel keeps working examples for all of these in
 https://github.com/parallel-web/parallel-cookbook, split into
@@ -216,13 +240,17 @@ sites, which is what `core` is sized for.
 
 That tier does not fit inside the three-minute demo in `docs/plan/proposal.md`; a
 `core` run at 1.5 minutes median eats half the recording. The demo therefore
-splits the two call paths. The live lookup on camera goes through Search MCP
-in `fast` mode, which answers inside a second. The Task API run for the same
+splits the two call paths. The live lookup on camera goes through the Search
+API in `fast` mode, which answers inside a second. The Task API run for the same
 finding starts at script upload, so its cited result is already stored by the
 time we open the Hotel California finding. Both are real runtime traffic,
 which is what the partner requirement asks for (section 11).
 
 ## 8. Secrets and configuration
+
+Recovery amendment: `CLEARCUT_PROVIDER_OPTIONS` is an optional JSON object for
+validated model and operation-budget overrides; see docs/recovery/provider-config.md.
+Queued analyses retain the exact options that applied when they were created.
 
 Locally, a `.env` file at the repo root holds everything; it is gitignored and
 never committed. In the deployed Cloud Run service, the same names come from
@@ -231,9 +259,11 @@ Secret Manager entries mounted as environment variables. The full set:
 | Variable | Holds |
 |---|---|
 | `CLEARCUT_MODE` | `mock` for the in-memory demo, `live` for the real adapter graph; unset defaults to `live` |
+| `CLEARCUT_ANALYSIS_JOB` | Worker job name; required by the scheduled dispatcher, not the HTTP service |
+| `CLOUD_RUN_REGION` | Dispatcher worker region; defaults to `us-central1` |
 | `GOOGLE_CLOUD_PROJECT` | project ID, `clearcut-hack` |
 | `DOCAI_PROCESSOR_ID` | Document AI processor from section 3, as a full resource name: `projects/clearcut-hack/locations/us/processors/<id>` |
-| `PARALLEL_API_KEY` | Parallel Task API, Search API, and MCP auth (`x-api-key`) |
+| `PARALLEL_API_KEY` | Parallel Task API and Search API auth (`x-api-key`) |
 | `CLICKHOUSE_HOST` | ClickHouse Cloud endpoint |
 | `CLICKHOUSE_USER` | ClickHouse user |
 | `CLICKHOUSE_PASSWORD` | ClickHouse password |
@@ -246,6 +276,13 @@ Secret Manager entries mounted as environment variables. The full set:
 | `VERTEX_SEARCH_DATA_STORE_ID` | data store from section 5, as a full resource name: `projects/clearcut-hack/locations/global/collections/default_collection/dataStores/clearcut-legal-corpus` |
 | `NOTIFY_WEBHOOK_URL` | outbound webhook the Notifier posts to |
 | `SCRIPTS_INTAKE_BUCKET` | bucket an uploaded screenplay is written to, `clearcut-scripts-intake`, as the bare name without a `gs://` prefix; section 2 creates it and Document AI reads the object back out of it |
+| `FIREBASE_WEB_API_KEY` | Public Firebase web app key served by `/api/client-config`; also used by disposable live identity checks |
+| `FIREBASE_WEB_AUTH_DOMAIN` | Public Firebase authorized auth domain; runtime browser config |
+| `FIREBASE_WEB_APP_ID` | Public Firebase web app ID; runtime browser config |
+| `VITE_FIREBASE_API_KEY` | Optional public browser build override for Firebase API key |
+| `VITE_FIREBASE_AUTH_DOMAIN` | Optional public browser build override for auth domain |
+| `VITE_FIREBASE_PROJECT_ID` | Optional public browser build override for project ID |
+| `VITE_FIREBASE_APP_ID` | Optional public browser build override for web app ID |
 | `CLEARCUT_LIVE_SCRIPT_GCS_URI` | `gs://clearcut-scripts-intake/demo-project/v1.pdf` -- the planted screenplay `infra/build_planted_script.py` emits and uploads, in place since 2026-09-03. Read only by the live tier, never by the running service. Both `tests/live/test_document_ai_live.py` and `test_end_to_end_live.py` skip without it, and for three days they skipped while the file they wanted was already in the bucket |
 
 The Notifier delivers every notification as an HTTP POST to
@@ -260,6 +297,16 @@ of a code search.
 echo -n "$VALUE" | gcloud secrets create PARALLEL_API_KEY --data-file=-
 # repeat per secret, then reference them in the deploy command below
 ```
+
+Optional current deployed acceptance variables (see [the acceptance guide](../recovery/deployed-acceptance.md)):
+
+| Variable | Purpose |
+| --- | --- |
+| `CLEARCUT_ACCEPTANCE_TARGET` | Deployed HTTPS origin for opt-in synthetic acceptance |
+| `CLEARCUT_ACCEPTANCE_ID_TOKEN` | Ephemeral Firebase ID token; inject via environment only, never commit a value |
+| `CLEARCUT_ACCEPTANCE_RUN_ID` | Unique synthetic run marker, preserved when resuming |
+| `CLEARCUT_ACCEPTANCE_DIRECTORY` | Private persistent receipt directory, preserved when resuming |
+| `CLEARCUT_ACCEPTANCE_ADVANCE` | Set to yes only to authorize the opt-in live test to mutate synthetic resources |
 
 ## 9. Hosting: one Cloud Run service
 
@@ -327,7 +374,7 @@ judges a live multi-stage pipeline rather than a single prompt call.
 | Repository | public, with the Apache-2.0 `LICENSE` at root (already present) |
 | Demo video | 3 minutes, English or subtitled |
 | Devpost form | submitted before September 7, 2026 |
-| Runtime proof | the repo shows real runtime calls to Google Cloud (Gemini, Document AI) and Parallel (Task API, MCP), not mocked responses |
+| Runtime proof | the repo shows real runtime calls to Google Cloud (Gemini, Document AI) and Parallel (Task API for rights-holder research, Search API for live legal grounding), not mocked responses |
 
 The runtime-proof row is the one judges verify against the code, so keep the
 Parallel and Gemini call sites obvious in the repository rather than buried

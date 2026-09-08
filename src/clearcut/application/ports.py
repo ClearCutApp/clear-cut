@@ -1,12 +1,12 @@
-"""The thirteen ports the parallel verticals implement (docs/plan/sdd.md
+"""The fourteen ports the parallel verticals implement (docs/plan/sdd.md
 Section 3).
 
 Each port exists because it crosses a real I/O boundary: an HTTPS call to
-Document AI, Gemini, Vertex AI Search, or the Parallel Task API, a BigQuery
-read/write, a ClickHouse read/write, a Cloud Storage read/write, or an
-outbound webhook (AGENT.md Section 4 — a port only for a real boundary).
-`composition.py` is the only place a concrete adapter is wired to one of
-these.
+Document AI, Gemini, Vertex AI Search, the Parallel Task API or the Parallel
+Search API, a BigQuery read/write, a ClickHouse read/write, a Cloud Storage
+read/write, or an outbound webhook (AGENT.md Section 4 — a port only for a
+real boundary). `composition.py` is the only place a concrete adapter is
+wired to one of these.
 
 `TrackerStore` and `Notifier` cover the tracker's two boundaries: versioned
 persistence over ClickHouse, and producer notification over an outbound
@@ -19,7 +19,7 @@ against a different model (docs/plan/agentic-workflow.md Section 2.2).
 
 The five stores added for the REST surface — `ProjectStore`, `ScriptStore`,
 `FindingStore`, `AnalysisJobStore` and `ScriptStorage` — each cross the same
-kind of boundary the first eight do. They are separate ports rather than
+kind of boundary the first nine do. They are separate ports rather than
 methods on `TrackerStore` because a route that reads scripts has no business
 holding the tracker's writes (AGENT.md Section 3, ISP).
 """
@@ -87,6 +87,30 @@ class LegalGrounding(Protocol):
     """Grounds a legal question in one jurisdiction's corpus, with citations."""
 
     def ground(self, query: str, jurisdiction: Jurisdiction) -> GroundedAnswer: ...
+
+
+@runtime_checkable
+class WebGrounding(Protocol):
+    """Answers a legal question from the live web, with the citations it rests on.
+
+    Separate from `LegalGrounding` rather than a second implementation of it,
+    because the two make different claims about the same question.
+    `LegalGrounding` answers from one licensed corpus, filtered to the
+    jurisdiction asked about, whose citations are statutes ClearCut chose to
+    trust; this answers from whatever the open web ranked, which is a weaker
+    claim and has to reach the producer marked as one (ADR 0003,
+    docs/plan/infrastructure.md Section 7). It also crosses a different
+    boundary -- Parallel's Search API, not Vertex AI Search -- so an outage in
+    one says nothing about the other.
+
+    The method is `search`, not `ground`, on purpose: both ports take the same
+    two arguments and return the same `GroundedAnswer`, so a shared method name
+    would let `isinstance` and mypy accept either implementation wherever the
+    other is meant. Different names make that substitution impossible to make
+    by accident.
+    """
+
+    def search(self, question: str, jurisdiction: Jurisdiction) -> GroundedAnswer: ...
 
 
 @runtime_checkable

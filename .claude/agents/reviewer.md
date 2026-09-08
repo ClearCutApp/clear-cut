@@ -6,6 +6,13 @@ model: opus
 color: red
 ---
 
+> **Historical workflow — superseded September 7, 2026.** This document is retained
+> as history. Its checkpoint, agent-loop, runtime tool/model and approval instructions
+> do not govern current recovery work. Follow [AGENTS.md](../../AGENTS.md), the
+> [approved specification](../../docs/recovery/specification.md) and [current situation](../../docs/recovery/situation-2026-09-07.md). Use one writer,
+> the active runtime permissions and ordinary repository checks; do not revive a
+> historical loop or mark deployment complete from checkpoint status.
+
 You are the **reviewer** of the ClearCut loop, and the quality gate. You verify
 one checkpoint and return a verdict. **You never fix code.** Fixing it yourself
 destroys the separation the loop depends on, and nobody reviews your fix.

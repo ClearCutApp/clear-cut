@@ -2,13 +2,15 @@ openapi: 3.1.0
 
 info:
   title: ClearCut API
-  version: 1.0.0
+  version: 1.1.0
   summary: Agentic script clearance for independent film production.
   description: |
     Upload a screenplay version and every rights event that could stop the film
     comes back with the law it triggers, who holds the rights, and an action to
     resolve it.
 
+    Live requests require a verified Firebase identity and explicit project grants.
+    POST /api/projects requires organization_id in live mode; legacy data is quarantined.
     This document is the contract, not a description of what is deployed today.
     Four verticals build against it in parallel, so a field named here is the
     field they each implement.
@@ -45,9 +47,83 @@ tags:
   - name: Questions
     description: Grounded questions about one project's clearance state.
 
+security:
+  - FirebaseIdentity: []
+
 paths:
+  /api/client-config:
+    get:
+      tags: [System]
+      operationId: getClientConfig
+      security: []
+      summary: Public Firebase web app identifiers
+      responses:
+        '200':
+          description: Public app config.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [apiKey, authDomain, projectId, appId]
+                properties:
+                  apiKey: {type: string}
+                  authDomain: {type: string}
+                  projectId: {type: string}
+                  appId: {type: string}
+        '503': {description: Account access is awaiting configuration.}
+  /api/organizations:
+    get:
+      tags: [Projects]
+      operationId: listOrganizations
+      summary: Active memberships of this user
+      responses:
+        '200':
+          description: Workspaces.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Organization'}
+    post:
+      tags: [Projects]
+      operationId: createOrganization
+      summary: Create a private workspace and owner membership
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: {type: string, minLength: 1}
+      responses:
+        '201':
+          description: Workspace.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Organization'}
+  /api/me:
+    get:
+      tags: [System]
+      operationId: getIdentity
+      summary: Verified identity context
+      responses:
+        '200':
+          description: Verified user.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user_id, email]
+                properties:
+                  user_id: {type: string}
+                  email: {type: string}
+        '401': {description: Sign in required.}
+        '503': {description: Identity or authorization service unavailable.}
   /api/health:
     get:
+      security: []
       tags: [System]
       operationId: getHealth
       summary: Whether this instance runs live or serves the demo sample
@@ -66,6 +142,7 @@ paths:
 
   /api/openapi.json:
     get:
+      security: []
       tags: [System]
       operationId: getOpenApiDocument
       summary: This document, as JSON, from the running service
@@ -82,6 +159,7 @@ paths:
 
   /api/docs:
     get:
+      security: []
       tags: [System]
       operationId: getApiDocs
       summary: Swagger UI over the document above
@@ -97,11 +175,12 @@ paths:
 
   /api/jurisdictions:
     get:
+      security: []
       tags: [Projects]
       operationId: listJurisdictions
       summary: The jurisdictions a project can be cleared against
       description: |
-        The ten codes `jurisdiction_code` accepts anywhere in this API. A
+        The selectable codes `jurisdiction_code` accepts anywhere in this API. A
         jurisdiction's legal corpus prefix is deliberately absent: it names a
         bucket layout, which is the server's business.
       responses:
@@ -331,17 +410,28 @@ paths:
 
   /api/projects/{project_id}/analyses/{analysis_id}:
     parameters:
-      - $ref: '#/components/parameters/ProjectId'
-      - $ref: '#/components/parameters/AnalysisId'
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    - name: analysis_id
+      in: path
+      required: true
+      description: One queued analysis, as returned by the 202 that created it.
+      schema:
+        type: string
+        minLength: 1
     get:
-      tags: [Scripts]
+      tags:
+      - Scripts
       operationId: getAnalysis
       summary: The state of one queued analysis
-      description: |
-        `SUCCEEDED` carries the `script_id` to read. `FAILED` carries a
-        non-empty `error`. A run whose instance was reclaimed mid-run is
-        reported as `FAILED` by the read that finds it stale, so a job never
-        sits in `RUNNING` forever.
+      description: Live jobs resume expired leases through the scheduled dispatcher. SUCCEEDED, FAILED
+        and CANCELLED are terminal. Cancellation blocks publication; an already submitted provider task
+        may continue remotely.
       responses:
         '200':
           description: The analysis job at its newest version.
@@ -350,22 +440,37 @@ paths:
               schema:
                 $ref: '#/components/schemas/AnalysisJob'
         '404':
-          $ref: '#/components/responses/NotFound'
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
-          $ref: '#/components/responses/InternalError'
+          description: The server failed for a reason it does not attribute. The body carries a message
+            and never a stack trace.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /api/projects/{project_id}/tracker-items:
     parameters:
-      - $ref: '#/components/parameters/ProjectId'
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
     get:
-      tags: [Tracker]
+      tags:
+      - Tracker
       operationId: listTrackerItems
       summary: This project's tracker items
       responses:
         '200':
-          description: |
-            One entry per item, at its newest version. An empty array when the
-            project has no items.
+          description: One entry per item, at its newest version. An empty array when the project has
+            no items.
           content:
             application/json:
               schema:
@@ -373,16 +478,38 @@ paths:
                 items:
                   $ref: '#/components/schemas/TrackerItem'
         '404':
-          $ref: '#/components/responses/NotFound'
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
-          $ref: '#/components/responses/InternalError'
+          description: The server failed for a reason it does not attribute. The body carries a message
+            and never a stack trace.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /api/projects/{project_id}/tracker-items/{item_id}:
     parameters:
-      - $ref: '#/components/parameters/ProjectId'
-      - $ref: '#/components/parameters/ItemId'
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    - name: item_id
+      in: path
+      required: true
+      description: One tracker item.
+      schema:
+        type: string
+        minLength: 1
     get:
-      tags: [Tracker]
+      tags:
+      - Tracker
       operationId: getTrackerItem
       summary: One tracker item
       responses:
@@ -393,18 +520,26 @@ paths:
               schema:
                 $ref: '#/components/schemas/TrackerItem'
         '404':
-          $ref: '#/components/responses/NotFound'
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
-          $ref: '#/components/responses/InternalError'
+          description: The server failed for a reason it does not attribute. The body carries a message
+            and never a stack trace.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     patch:
-      tags: [Tracker]
+      tags:
+      - Tracker
       operationId: updateTrackerItemState
       summary: Move one item between states
-      description: |
-        Every ordered pair of states is legal, including back out of `CLEARED`
-        and into the state the item already holds. A transition is an audit
-        record of what a producer did, not a cache of where the item stands, so
-        each one writes a new version.
+      description: Every ordered pair of states is legal, including back out of `CLEARED` and into the
+        state the item already holds. A transition is an audit record of what a producer did, not a
+        cache of where the item stands, so each one writes a new version.
       requestBody:
         required: true
         content:
@@ -425,23 +560,55 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '404':
-          $ref: '#/components/responses/NotFound'
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
-          $ref: '#/components/responses/InternalError'
+          description: The server failed for a reason it does not attribute. The body carries a message
+            and never a stack trace.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Clearance changed; reload it before retrying.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /api/projects/{project_id}/tracker-items/{item_id}/email-drafts:
     parameters:
-      - $ref: '#/components/parameters/ProjectId'
-      - $ref: '#/components/parameters/ItemId'
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    - name: item_id
+      in: path
+      required: true
+      description: One tracker item.
+      schema:
+        type: string
+        minLength: 1
     post:
-      tags: [Tracker]
+      tags:
+      - Tracker
       operationId: createTrackerItemEmailDraft
       summary: Draft the outreach email for one item
-      description: |
-        Fills the outreach template from the item's rights holder, contact and
-        required document, and stores it on the item as `draft_email`. The
-        system never sends it: a producer copies the draft and sends it
-        themselves.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrackerExpectedVersion'
+      description: 'Fills the outreach template from the item''s rights holder, contact and required
+        document, and stores it on the item as `draft_email`. The system never sends it: a producer
+        copies the draft and sends it themselves.'
       responses:
         '201':
           description: The item at its new version, carrying the draft.
@@ -450,18 +617,48 @@ paths:
               schema:
                 $ref: '#/components/schemas/TrackerItem'
         '404':
-          $ref: '#/components/responses/NotFound'
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
-          $ref: '#/components/responses/InternalError'
+          description: The server failed for a reason it does not attribute. The body carries a message
+            and never a stack trace.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Clearance changed; reload it before retrying.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/projects/{project_id}/tracker-items/{item_id}/notifications:
     parameters:
-      - $ref: '#/components/parameters/ProjectId'
-      - $ref: '#/components/parameters/ItemId'
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    - name: item_id
+      in: path
+      required: true
+      description: One tracker item.
+      schema:
+        type: string
+        minLength: 1
     post:
-      tags: [Tracker]
+      tags:
+      - Tracker
       operationId: createTrackerItemNotification
       summary: Notify the producer about one item
-      description: Posts the item and the reason to the configured outbound webhook.
+      description: Records a private project notification. Optional external delivery is queued to an
+        explicit project binding; private reason text remains in-app.
       requestBody:
         required: true
         content:
@@ -470,29 +667,43 @@ paths:
               $ref: '#/components/schemas/NotificationCreate'
       responses:
         '201':
-          description: The item at its new version. The webhook accepted the notification.
+          description: The unchanged item. The notification was recorded, not necessarily delivered.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/TrackerItem'
         '400':
-          description: |
-            `reason` is missing, blank, or whitespace only. A notification with
-            no reason tells the producer nothing an unsent one would not.
+          description: '`reason` is missing, blank, or whitespace only. A notification with no reason
+            tells the producer nothing an unsent one would not.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '404':
-          $ref: '#/components/responses/NotFound'
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Clearance changed before recording the notification.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '502':
-          description: The webhook rejected the notification. Nothing was recorded.
+          description: Notification storage is unavailable.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '500':
-          $ref: '#/components/responses/InternalError'
+          description: The server failed for a reason it does not attribute. The body carries a message
+            and never a stack trace.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /api/projects/{project_id}/bible:
     parameters:
@@ -553,15 +764,22 @@ paths:
 
   /api/projects/{project_id}/questions:
     parameters:
-      - $ref: '#/components/parameters/ProjectId'
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
     post:
-      tags: [Questions]
+      tags:
+      - Questions
       operationId: askProjectQuestion
       summary: Ask about this project's clearance state
-      description: |
-        Answers from the project's own bible facts and the jurisdiction's legal
-        corpus, and returns the citations the answer rests on. An answer with
-        no citation is an answer this API does not give.
+      description: Answers from authorized project facts, cited legal sources or the completed scene
+        projection for the committed revision. Local questions require recorded production-location
+        evidence. Missing evidence and incomplete indexing are reported explicitly; research never grants
+        clearance.
       requestBody:
         required: true
         content:
@@ -576,25 +794,1680 @@ paths:
               schema:
                 $ref: '#/components/schemas/QuestionAnswer'
         '400':
-          description: |
-            `question` is missing, blank, or whitespace only, or
-            `jurisdiction_code` names no supported jurisdiction.
+          description: '`question` is missing, blank, or whitespace only, or `jurisdiction_code` names
+            no supported jurisdiction.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '404':
-          $ref: '#/components/responses/NotFound'
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '502':
-          description: The grounding service could not answer.
+          description: The grounding service or the web search could not answer.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '500':
-          $ref: '#/components/responses/InternalError'
+          description: The server failed for a reason it does not attribute. The body carries a message
+            and never a stack trace.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/projects/{project_id}/draft:
+    get:
+      tags:
+      - Screenplay editor
+      operationId: getDraft
+      summary: getDraft
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Saved document or immutable revision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreenplayDraft'
+        '400':
+          description: Invalid document or expected version
+        '401':
+          description: Verified identity required
+        '404':
+          description: Project or revision inaccessible
+        '409':
+          description: Draft changed; response includes current_version. Preserve local
+            edits before reloading.
+    put:
+      tags:
+      - Screenplay editor
+      operationId: saveDraft
+      summary: saveDraft
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Saved document or immutable revision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreenplayDraft'
+        '400':
+          description: Invalid document or expected version
+        '401':
+          description: Verified identity required
+        '404':
+          description: Project or revision inaccessible
+        '409':
+          description: Draft changed; response includes current_version. Preserve local
+            edits before reloading.
+      requestBody:
+        required: true
+        description: Canonical screenplay JSON is limited to 8 MiB; block IDs unique
+          and scene IDs stable.
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - expected_version
+              - document
+              properties:
+                expected_version:
+                  type: integer
+                  minimum: 0
+                document:
+                  $ref: '#/components/schemas/ScreenplayDocument'
+  /api/projects/{project_id}/revisions:
+    get:
+      tags:
+      - Screenplay editor
+      operationId: listRevisions
+      summary: listRevisions
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: before_version
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+        description: Exclusive cursor; at most 50 revisions per page.
+      responses:
+        '200':
+          description: Saved document or immutable revision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RevisionPage'
+        '400':
+          description: Invalid document or expected version
+        '401':
+          description: Verified identity required
+        '404':
+          description: Project or revision inaccessible
+        '409':
+          description: Draft changed; response includes current_version. Preserve local
+            edits before reloading.
+    post:
+      tags:
+      - Screenplay editor
+      operationId: freezeRevision
+      summary: freezeRevision
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '201':
+          description: Saved document or immutable revision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreenplayRevision'
+        '400':
+          description: Invalid document or expected version
+        '401':
+          description: Verified identity required
+        '404':
+          description: Project or revision inaccessible
+        '409':
+          description: Draft changed; response includes current_version. Preserve local
+            edits before reloading.
+      requestBody:
+        required: true
+        description: Canonical screenplay JSON is limited to 8 MiB; block IDs unique
+          and scene IDs stable.
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - expected_version
+              properties:
+                expected_version:
+                  type: integer
+                  minimum: 0
+  /api/projects/{project_id}/revisions/{revision_id}:
+    get:
+      tags:
+      - Screenplay editor
+      operationId: getRevision
+      summary: getRevision
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: revision_id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Saved document or immutable revision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreenplayRevision'
+        '400':
+          description: Invalid document or expected version
+        '401':
+          description: Verified identity required
+        '404':
+          description: Project or revision inaccessible
+        '409':
+          description: Draft changed; response includes current_version. Preserve local
+            edits before reloading.
+
+  /api/projects/{project_id}/transcriptions:
+    post:
+      tags:
+      - Voice questions
+      operationId: transcribeQuestion
+      summary: Transcribe a recording for review
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+              - audio
+              - language
+              properties:
+                audio:
+                  type: string
+                  format: binary
+                language:
+                  enum:
+                  - en-US
+                  - es-419
+                  - es-ES
+      responses:
+        '200':
+          description: Editable transcript; audio not stored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transcription'
+        '400':
+          description: Empty, invalid or unsupported recording/language; maximum 60
+            seconds
+        '413':
+          description: Audio exceeds 8 MiB
+        '503':
+          description: Speech is not available in this environment
+
+  /api/projects/{project_id}/documents:
+    get:
+      tags:
+      - Documents
+      operationId: listDocuments
+      summary: listDocuments
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: before
+        in: query
+        schema:
+          type: string
+        description: Exclusive last file ID cursor; at most 50 files.
+      responses:
+        '200':
+          description: Owned immutable file or saved screenplay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentPage'
+        '400':
+          description: Invalid document or unsupported format
+        '404':
+          description: Project, document or revision inaccessible
+        '409':
+          description: Draft changed; original retained in project documents
+        '413':
+          description: File exceeds 25 MiB
+    post:
+      tags:
+      - Documents
+      operationId: uploadDocument
+      summary: uploadDocument
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '201':
+          description: Owned immutable file or saved screenplay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectDocument'
+        '400':
+          description: Invalid document or unsupported format
+        '404':
+          description: Project, document or revision inaccessible
+        '409':
+          description: Draft changed; original retained in project documents
+        '413':
+          description: File exceeds 25 MiB
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+              - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+  /api/projects/{project_id}/documents/{file_id}:
+    get:
+      tags:
+      - Documents
+      operationId: downloadDocument
+      summary: downloadDocument
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: file_id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Owned immutable file or saved screenplay
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid document or unsupported format
+        '404':
+          description: Project, document or revision inaccessible
+        '409':
+          description: Draft changed; original retained in project documents
+        '413':
+          description: File exceeds 25 MiB
+  /api/projects/{project_id}/imports:
+    post:
+      tags:
+      - Documents
+      operationId: importScreenplay
+      summary: importScreenplay
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '201':
+          description: Owned immutable file or saved screenplay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreenplayImportResult'
+        '400':
+          description: Invalid document or unsupported format
+        '404':
+          description: Project, document or revision inaccessible
+        '409':
+          description: Draft changed; original retained in project documents
+        '413':
+          description: File exceeds 25 MiB
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+              - file
+              - expected_version
+              properties:
+                file:
+                  type: string
+                  format: binary
+                expected_version:
+                  type: integer
+                  minimum: 0
+  /api/projects/{project_id}/revisions/{revision_id}/exports/{format}:
+    get:
+      tags:
+      - Documents
+      operationId: exportScreenplay
+      summary: exportScreenplay
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: revision_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: format
+        in: path
+        required: true
+        schema:
+          enum:
+          - pdf
+          - fdx
+      responses:
+        '200':
+          description: Owned immutable file or saved screenplay
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid document or unsupported format
+        '404':
+          description: Project, document or revision inaccessible
+        '409':
+          description: Draft changed; original retained in project documents
+        '413':
+          description: File exceeds 25 MiB
+
+  /api/projects/{project_id}/tracker-items/{item_id}/history:
+    parameters:
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    - name: item_id
+      in: path
+      required: true
+      description: One tracker item.
+      schema:
+        type: string
+        minLength: 1
+    get:
+      tags:
+      - Tracker
+      operationId: listTrackerItemHistory
+      summary: Immutable clearance audit events, newest first
+      parameters:
+      - name: before_version
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+      responses:
+        '200':
+          description: At most 50 events. Legacy replacing rows are not reconstructed history.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/projects/{project_id}/tracker-items/{item_id}/details:
+    parameters:
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    - name: item_id
+      in: path
+      required: true
+      description: One tracker item.
+      schema:
+        type: string
+        minLength: 1
+    put:
+      tags:
+      - Clearance details
+      operationId: updateClearanceDetails
+      summary: Save evidence and permission details without changing clearance status
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClearanceDetailsUpdate'
+      responses:
+        '200':
+          description: New immutable item version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrackerItem'
+        '400':
+          description: Invalid details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Assignment or membership does not allow this action.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Clearance changed; preserve your local details and reload.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/projects/{project_id}/tracker-items/{item_id}/permission-request:
+    parameters:
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    - name: item_id
+      in: path
+      required: true
+      description: One tracker item.
+      schema:
+        type: string
+        minLength: 1
+    get:
+      tags:
+      - Clearance details
+      operationId: downloadPermissionRequest
+      summary: Download the reviewed permission draft at the expected item version
+      parameters:
+      - name: version
+        in: query
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+      - name: format
+        in: query
+        schema:
+          type: string
+          enum:
+          - pdf
+          - txt
+          default: pdf
+      responses:
+        '200':
+          description: Private attachment; never sent to a mailbox.
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+            text/plain:
+              schema:
+                type: string
+        '400':
+          description: Save a draft and provide valid parameters.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Clearance changed; reload before exporting.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/projects/{project_id}/analyses/{analysis_id}/cancellation:
+    parameters:
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    - name: analysis_id
+      in: path
+      required: true
+      description: One queued analysis, as returned by the 202 that created it.
+      schema:
+        type: string
+        minLength: 1
+    post:
+      tags:
+      - Scripts
+      operationId: cancelAnalysis
+      summary: Cancel a durable analysis before publication
+      responses:
+        '200':
+          description: Cancellation state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisJob'
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: The server failed for a reason it does not attribute. The body carries a message
+            and never a stack trace.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/projects/{project_id}/reports:
+    parameters:
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    get:
+      tags:
+      - Reports
+      operationId: listReports
+      responses:
+        '200':
+          description: Saved reports, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+    post:
+      tags:
+      - Reports
+      operationId: createReport
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - analysis_id
+              - revision_id
+              - expected_generation
+              - expected_epoch
+              - language
+              properties:
+                analysis_id:
+                  type: string
+                revision_id:
+                  type: string
+                expected_generation:
+                  type: string
+                expected_epoch:
+                  type: integer
+                  minimum: 0
+                language:
+                  type: string
+                  enum:
+                  - en
+                  - es
+      responses:
+        '201':
+          description: Fixed report published.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClearanceReport'
+        '409':
+          description: Clearance snapshot changed.
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /api/projects/{project_id}/reports/context:
+    parameters:
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    get:
+      tags:
+      - Reports
+      operationId: getReportContext
+      responses:
+        '200':
+          description: Current committed snapshot selection.
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /api/projects/{project_id}/reports/{report_id}/download:
+    parameters:
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    - name: report_id
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      tags:
+      - Reports
+      operationId: downloadReport
+      parameters:
+      - name: format
+        in: query
+        schema:
+          type: string
+          enum:
+          - pdf
+          - csv
+      responses:
+        '200':
+          description: The immutable saved PDF or CSV bytes.
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+            text/csv:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/projects/{project_id}/tracker-items/{item_id}/reconfirmation:
+    parameters:
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    - name: item_id
+      in: path
+      required: true
+      description: One tracker item.
+      schema:
+        type: string
+        minLength: 1
+    post:
+      tags:
+      - Clearance details
+      operationId: reconfirmClearance
+      summary: Explicitly confirm evidence and conditions apply to the current revision
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - expected_version
+              - revision_id
+              - acknowledged
+              properties:
+                expected_version:
+                  type: integer
+                  minimum: 1
+                revision_id:
+                  type: string
+                  minLength: 1
+                acknowledged:
+                  type: boolean
+                  const: true
+      responses:
+        '200':
+          description: Audited human confirmation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrackerItem'
+        '400':
+          description: Explicit acknowledgement and current binding required.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Clearance or analyzed revision changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/projects/{project_id}/activity:
+    parameters:
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    get:
+      tags:
+      - Activity
+      operationId: getProjectActivity
+      summary: Read deduplicated project history and committed analysis trends
+      parameters:
+      - name: before
+        in: query
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Private eventual projection.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  configured:
+                    type: boolean
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ActivityEvent'
+                  trends:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ActivityEvent'
+                  next_before:
+                    type:
+                    - string
+                    - 'null'
+        '400':
+          description: Invalid page cursor.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '502':
+          description: Activity projection unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/organizations/{organization_id}/members:
+    parameters:
+    - name: organization_id
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      tags:
+      - Workspaces
+      operationId: getWorkspaceMembers
+      summary: List members for workspace management
+      responses:
+        '200':
+          description: Authorized result.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Invalid input.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Workspace permission required.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Expected version changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/organizations/{organization_id}/members/{user_id}:
+    parameters:
+    - name: organization_id
+      in: path
+      required: true
+      schema:
+        type: string
+    - name: user_id
+      in: path
+      required: true
+      schema:
+        type: string
+    patch:
+      tags:
+      - Workspaces
+      operationId: changeWorkspaceMember
+      summary: Change a member with last-owner protection
+      responses:
+        '200':
+          description: Authorized result.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Invalid input.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Workspace permission required.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Expected version changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - expected_version
+              - role
+              - active
+              properties:
+                expected_version:
+                  type: integer
+                  minimum: 1
+                role:
+                  type: string
+                  enum:
+                  - owner
+                  - admin
+                  - producer
+                  - writer
+                  - viewer
+                active:
+                  type: boolean
+
+  /api/organizations/{organization_id}/invitations:
+    parameters:
+    - name: organization_id
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      tags:
+      - Workspaces
+      operationId: getWorkspaceInvitations
+      summary: List invitation states without tokens
+      responses:
+        '200':
+          description: Authorized result.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Invalid input.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Workspace permission required.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Expected version changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+      - Workspaces
+      operationId: createWorkspaceInvitation
+      summary: Create a seven-day verified-email invitation; no email is sent
+      responses:
+        '200':
+          description: Authorized result.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Invalid input.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Workspace permission required.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Expected version changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - email
+              - role
+              properties:
+                email:
+                  type: string
+                  format: email
+                role:
+                  type: string
+                  enum:
+                  - admin
+                  - producer
+                  - writer
+                  - viewer
+
+  /api/organizations/{organization_id}/invitations/{invitation_id}/revocation:
+    parameters:
+    - name: organization_id
+      in: path
+      required: true
+      schema:
+        type: string
+    - name: invitation_id
+      in: path
+      required: true
+      schema:
+        type: string
+    post:
+      tags:
+      - Workspaces
+      operationId: revokeWorkspaceInvitation
+      summary: Revoke a pending invitation
+      responses:
+        '200':
+          description: Authorized result.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Invalid input.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Workspace permission required.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Expected version changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - expected_version
+              properties:
+                expected_version:
+                  type: integer
+                  minimum: 1
+
+  /api/invitations/accept:
+    post:
+      tags:
+      - Workspaces
+      operationId: acceptWorkspaceInvitation
+      summary: Join a workspace without acquiring project access
+      responses:
+        '200':
+          description: Authorized result.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Invalid input.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Workspace permission required.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Expected version changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - token
+              properties:
+                token:
+                  type: string
+                  minLength: 1
+
+  /api/projects/{project_id}/members:
+    parameters:
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    get:
+      tags:
+      - Workspaces
+      operationId: getProjectMembers
+      summary: List active explicitly assigned project members
+      responses:
+        '200':
+          description: Authorized result.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Invalid input.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Workspace permission required.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Expected version changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/projects/{project_id}/members/{user_id}:
+    parameters:
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    - name: user_id
+      in: path
+      required: true
+      schema:
+        type: string
+    patch:
+      tags:
+      - Workspaces
+      operationId: assignProjectMember
+      summary: Change private project access
+      responses:
+        '200':
+          description: Authorized result.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Invalid input.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Workspace permission required.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Expected version changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - expected_version
+              - role
+              properties:
+                expected_version:
+                  type: integer
+                  minimum: 1
+                role:
+                  type:
+                  - string
+                  - 'null'
+                  enum:
+                  - admin
+                  - producer
+                  - writer
+                  - viewer
+                  - null
+
+  /api/projects/{project_id}/settings:
+    parameters:
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    get:
+      tags:
+      - Workspaces
+      operationId: getProjectSettings
+      summary: Read production settings and selected locations
+      responses:
+        '200':
+          description: Authorized result.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Invalid input.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Workspace permission required.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Expected version changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+      - Workspaces
+      operationId: saveProjectSettings
+      summary: Save expected-version production settings
+      responses:
+        '200':
+          description: Authorized result.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Invalid input.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Workspace permission required.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Expected version changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - expected_version
+              - title
+              - jurisdiction_code
+              - locations
+              properties:
+                expected_version:
+                  type: integer
+                  minimum: 1
+                title:
+                  type: string
+                  maxLength: 200
+                jurisdiction_code:
+                  type: string
+                  enum:
+                  - AR
+                  - MX
+                  - ES
+                  - CO
+                  - US
+                  - CA
+                locations:
+                  type: array
+                  maxItems: 30
+                  items:
+                    type: object
+                    required:
+                    - country
+                    - location
+                    properties:
+                      country:
+                        type: string
+                        minLength: 1
+                      location:
+                        type: string
+                        maxLength: 500
+
+  /api/projects/{project_id}/local-research:
+    parameters:
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    get:
+      tags:
+      - Local research
+      operationId: listLocalResearch
+      summary: Read the latest 50 saved location research records
+      responses:
+        '200':
+          description: Dated research records.
+          content:
+            application/json:
+              schema:
+                type: object
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+      - Local research
+      operationId: researchProductionLocation
+      summary: Research a saved location with Parallel and retain cited official evidence
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LocalResearchCreate'
+      responses:
+        '200':
+          description: Saved evidence or explicit coverage gap.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Invalid location or question.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Production settings changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '502':
+          description: Research provider unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/projects/{project_id}/notifications:
+    parameters:
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    get:
+      tags:
+      - Notifications
+      operationId: listProjectNotifications
+      summary: Read 50 notifications, newest first, with private read marks
+      parameters:
+      - name: before
+        in: query
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Notifications and optional next cursor.
+          content:
+            application/json:
+              schema:
+                type: object
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/projects/{project_id}/notifications/{notification_id}/read:
+    parameters:
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    - name: notification_id
+      in: path
+      required: true
+      schema:
+        type: string
+    post:
+      tags:
+      - Notifications
+      operationId: readProjectNotification
+      summary: Mark a notification read for the signed-in user
+      responses:
+        '200':
+          description: Read mark saved.
+          content:
+            application/json:
+              schema:
+                type: object
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/projects/{project_id}/search:
+    parameters:
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    post:
+      tags:
+      - Search
+      operationId: searchProject
+      summary: Search saved script, clearances, document names and recent local research
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectSearch'
+      responses:
+        '200':
+          description: At most 50 literal matches and a continuation cursor.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Invalid query or cursor.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Results changed; restart search.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '502':
+          description: A search source is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
 components:
+  securitySchemes:
+    FirebaseIdentity:
+      type: http
+      scheme: bearer
+      bearerFormat: Firebase ID token
+      description: Required in live mode; mock is an isolated public demo.
   parameters:
     ProjectId:
       name: project_id
@@ -661,6 +2534,13 @@ components:
             $ref: '#/components/schemas/Error'
 
   schemas:
+    Organization:
+      type: object
+      required: [organization_id, name, role]
+      properties:
+        organization_id: {type: string}
+        name: {type: string}
+        role: {type: string}
     Error:
       type: object
       description: The one error shape every failing response returns.
@@ -700,6 +2580,9 @@ components:
       type: object
       required: [title, jurisdiction_code]
       properties:
+        organization_id:
+          type: string
+          description: Required in live mode.
         title:
           type: string
           minLength: 1
@@ -735,6 +2618,9 @@ components:
       description: One uploaded screenplay in Cloud Storage.
       required: [gcs_uri, filename, size_bytes, content_type]
       properties:
+        file_id:
+          type: string
+          description: Owned upload ID; required for live analysis.
         gcs_uri:
           type: string
           description: Pass this to `POST /api/projects/{project_id}/scripts`.
@@ -753,73 +2639,173 @@ components:
 
     ScriptCreate:
       type: object
-      required: [gcs_uri, version, jurisdiction_code]
+      required:
+      - jurisdiction_code
+      description: Live analysis requires revision_id. Mock mode retains gcs_uri and version.
       properties:
+        revision_id:
+          type: string
+          description: Immutable saved revision in this project; required in live mode.
+        file_id:
+          type: string
+          description: Owned upload ID; required for live analysis.
         gcs_uri:
           type: string
           description: The URI `POST /api/projects/{project_id}/script-files` returned.
-          examples: ['gs://clearcut-scripts/prj-4f2a/el-ultimo-verano-v2.pdf']
         version:
           type: integer
           minimum: 1
-          description: |
-            1 runs the full pipeline. Above 1 diffs against the stored previous
-            version and re-analyzes only the scenes whose content hash changed.
-          examples: [2]
+          description: 1 runs the full pipeline. Above 1 diffs against the stored previous version and
+            re-analyzes only the scenes whose content hash changed.
         jurisdiction_code:
           type: string
-          examples: ['AR']
       additionalProperties: false
 
     AnalysisState:
       type: string
-      enum: [QUEUED, RUNNING, SUCCEEDED, FAILED]
-      description: |
-        `SUCCEEDED` and `FAILED` are terminal: a job in either never moves
-        again, and a later run of the same script is a new analysis.
+      enum:
+      - QUEUED
+      - RUNNING
+      - SUCCEEDED
+      - FAILED
+      - CANCELLED
+      description: '`SUCCEEDED` and `FAILED` are terminal: a job in either never moves again, and a later
+        run of the same script is a new analysis.'
 
     AnalysisJob:
       type: object
       required:
-        [analysis_id, project_id, script_id, state, created_at, updated_at, error, version]
+      - analysis_id
+      - project_id
+      - script_id
+      - state
+      - created_at
+      - updated_at
+      - error
+      - version
       properties:
+        revision_id:
+          type: string
+        stage:
+          type: string
+        attempt:
+          type: integer
+        cancel_requested:
+          type: boolean
         analysis_id:
           type: string
-          examples: ['ana-91c3']
         project_id:
           type: string
-          examples: ['prj-4f2a']
         script_id:
           type: string
-          description: |
-            The script version this analysis produces. Assigned when the job is
-            queued, readable at
-            `/api/projects/{project_id}/scripts/{script_id}` once `state` is
-            `SUCCEEDED`.
-          examples: ['scr-77b1']
+          description: The script version this analysis produces. Assigned when the job is queued, readable
+            at `/api/projects/{project_id}/scripts/{script_id}` once `state` is `SUCCEEDED`.
         state:
           $ref: '#/components/schemas/AnalysisState'
         created_at:
           type: string
           format: date-time
-          examples: ['2026-09-05T12:00:00Z']
         updated_at:
           type: string
           format: date-time
           description: When this version was written. Polling compares it to spot a stalled run.
-          examples: ['2026-09-05T12:04:11Z']
         error:
           type: string
-          description: |
-            Why the run failed. Empty in every state but `FAILED`, and never
-            empty in `FAILED`.
-          examples: ['Document AI returned no pages']
+          description: Why the run failed. Empty in every state but `FAILED`, and never empty in `FAILED`.
         version:
           type: integer
           minimum: 1
           description: Each transition writes a new version rather than mutating this row.
-          examples: [3]
       additionalProperties: false
+
+    ClearanceReport:
+      type: object
+      required:
+      - report_id
+      - analysis_id
+      - revision_id
+      - generation_id
+      - clearance_epoch
+      - created_at
+      - counts
+      properties:
+        report_id:
+          type: string
+        project_id:
+          type: string
+        analysis_id:
+          type: string
+        revision_id:
+          type: string
+        generation_id:
+          type: string
+        created_at:
+          type: string
+        created_by:
+          type: string
+        language:
+          type: string
+        formula_version:
+          type: string
+        template_version:
+          type: string
+        clearance_epoch:
+          type: integer
+        counts:
+          type: object
+
+    ActivityEvent:
+      type: object
+      required:
+      - event_id
+      - kind
+      - occurred_at
+      - payload
+      properties:
+        event_id:
+          type: string
+        kind:
+          type: string
+        occurred_at:
+          type: string
+          format: date-time
+        source_version:
+          type: integer
+        payload:
+          type: object
+
+    LocalResearchCreate:
+      type: object
+      required:
+      - expected_settings_version
+      - location_index
+      - question
+      properties:
+        expected_settings_version:
+          type: integer
+          minimum: 1
+        location_index:
+          type: integer
+          minimum: 0
+        question:
+          type: string
+          minLength: 1
+          maxLength: 2000
+      additionalProperties: false
+
+    ProjectSearch:
+      type: object
+      required:
+      - query
+      additionalProperties: false
+      properties:
+        query:
+          type: string
+          minLength: 2
+          maxLength: 200
+        cursor:
+          type: string
+          maxLength: 512
 
     ScriptSummary:
       type: object
@@ -856,24 +2842,44 @@ components:
     Script:
       type: object
       description: One script version, with every scene and every finding raised against it.
-      required: [script_id, project_id, version, gcs_uri, jurisdiction_code, scenes, findings]
+      required:
+      - script_id
+      - project_id
+      - version
+      - gcs_uri
+      - jurisdiction_code
+      - scenes
+      - findings
       properties:
+        revision_id:
+          type: string
+        revision_draft_version:
+          type: integer
+        settings_version:
+          type:
+          - integer
+          - 'null'
+        scene_anchors:
+          type: array
+          items:
+            type: object
+        clearance_bindings:
+          type: object
+        coverage_gaps:
+          type: array
+          items:
+            type: object
         script_id:
           type: string
-          examples: ['scr-77b1']
         project_id:
           type: string
-          examples: ['prj-4f2a']
         version:
           type: integer
           minimum: 1
-          examples: [2]
         gcs_uri:
           type: string
-          examples: ['gs://clearcut-scripts/prj-4f2a/el-ultimo-verano-v2.pdf']
         jurisdiction_code:
           type: string
-          examples: ['AR']
         scenes:
           type: array
           description: Ordered by `number`, which strictly increases.
@@ -1068,103 +3074,119 @@ components:
 
     TrackerState:
       type: string
-      enum: [BLOCKED, IN_PROGRESS, CLEARED]
+      enum:
+      - BLOCKED
+      - IN_PROGRESS
+      - CLEARED
       description: Where a tracker item stands. Every ordered pair is a legal transition.
 
     TrackerItem:
       type: object
       description: The actionable side of a finding.
       required:
-        - item_id
-        - project_id
-        - finding_id
-        - scene_numbers
-        - state
-        - needs_review
-        - required_document
-        - contact
-        - litigation_posture
-        - draft_email
-        - note
-        - updated_at
-        - version
+      - item_id
+      - project_id
+      - finding_id
+      - scene_numbers
+      - state
+      - needs_review
+      - required_document
+      - contact
+      - litigation_posture
+      - draft_email
+      - note
+      - updated_at
+      - version
+      - clearance_conditions
+      - due_date
+      - assignee_id
+      - evidence_file_ids
+      - rights_holder_citations
       properties:
         item_id:
           type: string
-          examples: ['itm-0031']
         project_id:
           type: string
-          examples: ['prj-4f2a']
         finding_id:
           type: string
-          examples: ['EVT-014']
         scene_numbers:
           type: array
-          description: |
-            Every scene this item covers. More than one when the same asset was
-            deduplicated across scenes.
+          description: Every scene this item covers. More than one when the same asset was deduplicated
+            across scenes.
           minItems: 1
           items:
             type: integer
             minimum: 1
-          examples: [[12, 41]]
         state:
           $ref: '#/components/schemas/TrackerState'
         needs_review:
           type: boolean
-          description: |
-            A cleared item whose scene changed in a later version. It is neither
-            silently kept nor silently dropped: a producer looks at it again.
+          description: 'A cleared item whose scene changed in a later version. It is neither silently
+            kept nor silently dropped: a producer looks at it again.'
         required_document:
           type: string
-          examples: ['Sync License']
         contact:
           type: string
           description: The rights holder to reach, as resolved by rights research.
-          examples: ['licensing@example.com']
         litigation_posture:
           type: string
           description: What the holder is known to have done about unlicensed use.
-          examples: ['no enforcement on record']
         draft_email:
-          description: |
-            The outreach draft, once `email-drafts` has been posted. Null before
-            that. The system never sends it.
-          type: [string, 'null']
+          description: The outreach draft, once `email-drafts` has been posted. Null before that. The
+            system never sends it.
+          type:
+          - string
+          - 'null'
         note:
           type: string
-          description: |
-            Why this item is in the state it is, when a version was written for
-            a reason the state alone does not carry. Empty otherwise.
-          examples: ['scene 7 removed in version 2']
+          description: Why this item is in the state it is, when a version was written for a reason the
+            state alone does not carry. Empty otherwise.
         updated_at:
           type: string
           format: date-time
-          examples: ['2026-09-05T12:04:11Z']
         version:
           type: integer
           minimum: 1
           description: Each action writes a new version rather than mutating this row.
-          examples: [4]
+        clearance_conditions:
+          type: string
+        due_date:
+          type: string
+        assignee_id:
+          type: string
+        evidence_file_ids:
+          type: array
+          items:
+            type: string
+        rights_holder_citations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Citation'
       additionalProperties: false
 
     TrackerItemStateUpdate:
       type: object
-      required: [state]
+      required:
+      - state
+      - expected_version
       properties:
         state:
           $ref: '#/components/schemas/TrackerState'
+        expected_version:
+          type: integer
+          minimum: 1
       additionalProperties: false
 
     NotificationCreate:
       type: object
-      required: [reason]
+      required:
+      - reason
       properties:
         reason:
           type: string
           minLength: 1
+          maxLength: 2000
           description: What the producer is being told, in one sentence.
-          examples: ['no answer from the rights holder in 14 days']
       additionalProperties: false
 
     FactKind:
@@ -1225,21 +3247,25 @@ components:
 
     QuestionCreate:
       type: object
-      required: [question, jurisdiction_code]
+      required:
+      - question
+      - jurisdiction_code
       properties:
         question:
           type: string
           minLength: 1
-          examples: ['Can we use the Coca-Cola sign in scene 12 without a license?']
+          maxLength: 4000
         jurisdiction_code:
           type: string
           description: The corpus the answer is grounded in.
-          examples: ['AR']
       additionalProperties: false
 
     QuestionAnswer:
       type: object
-      required: [text, facts, citations]
+      required:
+      - text
+      - facts
+      - citations
       properties:
         text:
           type: string
@@ -1251,7 +3277,264 @@ components:
             $ref: '#/components/schemas/BibleFact'
         citations:
           type: array
-          description: The legal sources the answer rests on.
+          description: Supporting legal sources or exact saved-revision scene references.
           items:
             $ref: '#/components/schemas/Citation'
+      additionalProperties: false
+
+    ScreenplayDocument:
+      type: object
+      required:
+      - type
+      - content
+      properties:
+        type:
+          const: doc
+        content:
+          type: array
+          minItems: 1
+          maxItems: 20000
+          items:
+            type: object
+            required:
+            - type
+            - attrs
+            properties:
+              type:
+                const: paragraph
+              attrs:
+                type: object
+                required:
+                - blockId
+                - sceneId
+                - kind
+                properties:
+                  blockId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  sceneId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  kind:
+                    enum:
+                    - scene-heading
+                    - action
+                    - character
+                    - dialogue
+                    - parenthetical
+                    - transition
+              content:
+                type: array
+                items:
+                  type: object
+                  required:
+                  - type
+                  properties:
+                    type:
+                      enum:
+                      - text
+                      - hardBreak
+                    text:
+                      type: string
+                    marks:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          type:
+                            enum:
+                            - bold
+                            - italic
+    ScreenplayDraft:
+      type: object
+      required:
+      - project_id
+      - version
+      - document
+      - updated_at
+      - updated_by
+      properties:
+        project_id:
+          type: string
+        version:
+          type: integer
+          minimum: 0
+        document:
+          anyOf:
+          - $ref: '#/components/schemas/ScreenplayDocument'
+          - type: 'null'
+        updated_at:
+          type: string
+        updated_by:
+          type: string
+    ScreenplayRevision:
+      type: object
+      required:
+      - revision_id
+      - project_id
+      - draft_version
+      - sha256
+      - created_at
+      - created_by
+      properties:
+        revision_id:
+          type: string
+        project_id:
+          type: string
+        draft_version:
+          type: integer
+        sha256:
+          type: string
+        created_at:
+          type: string
+        created_by:
+          type: string
+        document:
+          $ref: '#/components/schemas/ScreenplayDocument'
+    RevisionPage:
+      type: object
+      required:
+      - revisions
+      - next_before_version
+      properties:
+        revisions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScreenplayRevision'
+        next_before_version:
+          type:
+          - integer
+          - 'null'
+    Transcription:
+      type: object
+      required:
+      - text
+      - language
+      properties:
+        text:
+          type: string
+        language:
+          enum:
+          - en-US
+          - es-419
+          - es-ES
+    ProjectDocument:
+      type: object
+      required:
+      - file_id
+      - organization_id
+      - project_id
+      - filename
+      - content_type
+      - sha256
+      - kind
+      - created_by
+      - created_at
+      - revision_id
+      - size_bytes
+      properties:
+        file_id:
+          type: string
+        organization_id:
+          type: string
+        project_id:
+          type: string
+        filename:
+          type: string
+        content_type:
+          type: string
+        sha256:
+          type: string
+        kind:
+          type: string
+        created_by:
+          type: string
+        created_at:
+          type: string
+        revision_id:
+          type: string
+        size_bytes:
+          type: integer
+          minimum: 1
+    DocumentPage:
+      type: object
+      required:
+      - documents
+      - next_before
+      properties:
+        documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectDocument'
+        next_before:
+          type:
+          - string
+          - 'null'
+    ScreenplayImportResult:
+      type: object
+      required:
+      - draft
+      - original
+      - warnings
+      properties:
+        draft:
+          $ref: '#/components/schemas/ScreenplayDraft'
+        original:
+          $ref: '#/components/schemas/ProjectDocument'
+        warnings:
+          type: array
+          items:
+            type: string
+
+    TrackerExpectedVersion:
+      type: object
+      required:
+      - expected_version
+      properties:
+        expected_version:
+          type: integer
+          minimum: 1
+      additionalProperties: false
+
+    ClearanceDetailsUpdate:
+      type: object
+      required:
+      - expected_version
+      - note
+      - clearance_conditions
+      - due_date
+      - assignee_id
+      - evidence_file_ids
+      - draft_email
+      properties:
+        expected_version:
+          type: integer
+          minimum: 1
+        note:
+          type: string
+          maxLength: 4000
+        clearance_conditions:
+          type: string
+          maxLength: 4000
+        due_date:
+          type: string
+          description: YYYY-MM-DD or empty to remove the deadline.
+        assignee_id:
+          type: string
+          maxLength: 128
+        evidence_file_ids:
+          type: array
+          maxItems: 20
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+            maxLength: 128
+        draft_email:
+          type:
+          - string
+          - 'null'
+          maxLength: 20000
       additionalProperties: false

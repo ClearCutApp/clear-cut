@@ -74,14 +74,8 @@ def _formatted(at: datetime) -> str:
 
 
 def _failure_reason(exc: BaseException) -> str:
-    """A non-empty reason for `AnalysisJob.failed`, which refuses a blank one.
-
-    A bare `raise SomeError` and a `KeyError` whose message is the missing key
-    both stringify to something a producer cannot read, and `str(exc)` is
-    empty outright for an exception raised with no arguments. The class name
-    is the worst case, and it still names what went wrong.
-    """
-    return str(exc).strip() or type(exc).__name__
+    """Persist no provider body, screenplay content, credentials or traceback."""
+    return "analysis failed; retry or contact project support"
 
 
 class StartAnalysis:

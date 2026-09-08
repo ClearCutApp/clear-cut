@@ -1,3 +1,4 @@
+import { useLocale } from "../../state/LocaleContext";
 import type { ReactElement } from "react";
 
 export interface NeedsReviewBadgeProps {
@@ -12,8 +13,9 @@ export interface NeedsReviewBadgeProps {
 export function NeedsReviewBadge({
   needsReview,
 }: NeedsReviewBadgeProps): ReactElement | null {
+  const { text } = useLocale();
   if (!needsReview) {
     return null;
   }
-  return <span className="needs-review-badge">NEEDS_REVIEW</span>;
+  return <span className="needs-review-badge">{text("NEEDS_REVIEW", "REQUIERE REVISIÓN")}</span>;
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Find each jurisdiction's statutes with Parallel and load them into the corpus.
+"""Discover official-source candidates with Parallel; never ingest unreviewed results.
 
 `gs://clearcut-legal-corpus/` was populated by hand, which is why six of the
 eight clearance categories ground against nothing: nobody was going to
@@ -17,7 +17,7 @@ Usage:
 
 --dry-run prints the searches it would run and the terms behind each, and makes
 no network call, so it needs no key. A real run needs `PARALLEL_API_KEY` and
-uploads to the corpus bucket.
+prints candidates only. Use ingest_legal_corpus.py for reviewed ingestion.
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
@@ -48,6 +49,9 @@ OFFICIAL_SUFFIXES = (
     ".gov",
     ".gob.mx",
     ".gob.es",
+    "boe.es",
+    ".gov.co",
+    "comunidadandina.org",
     ".gouv.fr",
     ".gov.uk",
     ".gov.in",
@@ -77,8 +81,19 @@ def is_official(url: str) -> bool:
     Checked against the host, not the whole URL, so a path segment cannot
     smuggle an official-looking suffix past it.
     """
-    host = url.split("://", 1)[-1].split("/", 1)[0].split("?", 1)[0].lower()
-    return any(host == suffix.lstrip(".") or host.endswith(suffix) for suffix in OFFICIAL_SUFFIXES)
+    try:
+        parsed = urlsplit(url)
+        host = (parsed.hostname or "").lower().rstrip(".")
+        if parsed.scheme != "https" or parsed.username or parsed.password:
+            return False
+        if parsed.port not in (None, 443):
+            return False
+    except ValueError:
+        return False
+    return any(
+        host == suffix.lstrip(".") or host.endswith("." + suffix.lstrip("."))
+        for suffix in OFFICIAL_SUFFIXES
+    )
 
 
 def search_objective(jurisdiction_name: str, category: Category) -> str:

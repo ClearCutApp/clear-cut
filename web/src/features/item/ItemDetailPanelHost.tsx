@@ -16,19 +16,20 @@ interface MutationError {
 
 interface MutationErrorState {
   /** Runs a mutation and keeps its failure message, clearing any older one. */
-  record: (itemId: string, mutation: Promise<Outcome<TrackerItem>>) => Promise<void>;
+  record: (itemId: string, mutation: Promise<Outcome<TrackerItem>>) => Promise<boolean>;
   messageFor: (itemId: string) => string | null;
 }
 
 function useMutationError(): MutationErrorState {
   const [error, setError] = useState<MutationError | null>(null);
   const record = useCallback(
-    async (itemId: string, mutation: Promise<Outcome<TrackerItem>>): Promise<void> => {
+    async (itemId: string, mutation: Promise<Outcome<TrackerItem>>): Promise<boolean> => {
       setError(null);
       const outcome = await mutation;
       if (!outcome.ok) {
         setError({ itemId, message: outcome.message });
       }
+      return outcome.ok;
     },
     [],
   );
@@ -88,8 +89,12 @@ export function ItemDetailPanelHost(): ReactElement | null {
       error={messageFor(id)}
       onStateChange={(state) => void record(id, project.changeState(id, state))}
       onDraftEmail={() => void record(id, project.draftEmail(id))}
-      onNotify={(reason) => void record(id, project.notify(id, reason))}
+      onNotify={(reason) => record(id, project.notify(id, reason))}
       onClose={close}
+      onReload={() => void project.refreshTracker()}
+      confirmationRevision={project.analysis?.clearance_bindings?.[id]?.present
+        && project.analysis.clearance_bindings[id]?.revision_id === project.analysis.revision_id
+        ? project.analysis.revision_id : undefined}
     />
   );
 }

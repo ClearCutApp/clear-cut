@@ -17,6 +17,7 @@ from opentelemetry import metrics, trace
 
 from clearcut.domain.errors import SourceUnavailable
 from clearcut.domain.script import Scene
+from clearcut.observability import stage_span
 
 _SLUGLINE = re.compile(r"^(?:INT\.|EXT\.)(?:/(?:INT|EXT)\.)?[ \t]", re.MULTILINE)
 
@@ -52,7 +53,7 @@ class _DocumentProcessorClient(Protocol):
     """The one Document AI client method this adapter calls (a real I/O boundary)."""
 
     def process_document(
-        self, request: documentai.ProcessRequest
+        self, request: documentai.ProcessRequest, *, retry: None = None, timeout: float = 120
     ) -> documentai.ProcessResponse: ...
 
 
@@ -101,13 +102,16 @@ def _nearest_page(spans: list[tuple[int, int, int]], start: int, end: int) -> in
 class DocumentAIIngestion:
     """`ScriptIngestion` backed by a Document AI OCR processor."""
 
-    def __init__(self, client: _DocumentProcessorClient, processor_id: str) -> None:
+    def __init__(
+        self, client: _DocumentProcessorClient, processor_id: str, *, timeout: float = 120
+    ) -> None:
         self._client = client
         self._processor_id = processor_id
+        self._timeout = timeout
 
     def parse(self, gcs_uri: str, script_id: str) -> list[Scene]:
         stage_start = time.perf_counter()
-        with trace.get_tracer(__name__).start_as_current_span("ingest") as span:
+        with stage_span(trace.get_tracer(__name__), "ingest") as span:
             span.set_attribute("script_id", script_id)
             document = self._process(gcs_uri)
             starts = [match.start() for match in _SLUGLINE.finditer(document.text)]
@@ -150,7 +154,9 @@ class DocumentAIIngestion:
             gcs_document=documentai.GcsDocument(gcs_uri=gcs_uri, mime_type="application/pdf"),
         )
         try:
-            response = self._client.process_document(request=request)
+            response = self._client.process_document(
+                request=request, retry=None, timeout=self._timeout
+            )
         except GoogleAPIError as error:
             raise IngestionFailed(self._processor_id) from error
         return response.document

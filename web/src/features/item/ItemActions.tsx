@@ -1,38 +1,30 @@
+import { useLocale } from "../../state/LocaleContext";
 import { Bell, Mail } from "lucide-react";
 import { useId, useState, type FormEvent, type ReactElement } from "react";
 
 export interface ItemActionsProps {
   pending: boolean;
   onDraftEmail: () => void;
-  onNotify: (reason: string) => void;
+  onNotify: (reason: string) => void | Promise<boolean | void>;
 }
 
-/**
- * The two actions the server implements for a tracker item, and nothing
- * else. Assign, suggest alternatives, request authorization, find rights
- * holder and download have no route behind them and are recorded in the
- * Missing API registry rather than drawn as disabled buttons.
- *
- * Notify is a form rather than a bare button because the contract refuses a
- * notification with no reason (400): "a notification with no reason tells
- * the producer nothing an unsent one would not". The field is required, so
- * the browser stops an empty one before the request is spent.
- *
- * Both controls sit out a pending mutation so a second click cannot race
- * the first.
- */
 export function ItemActions({
   pending,
   onDraftEmail,
   onNotify,
 }: ItemActionsProps): ReactElement {
+  const { text } = useLocale();
+  const [recorded, setRecorded] = useState(false);
   const reasonId = useId();
   const [reason, setReason] = useState("");
 
-  function handleNotify(event: FormEvent<HTMLFormElement>): void {
+  async function handleNotify(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    onNotify(reason);
-    setReason("");
+    setRecorded(false);
+    try {
+      const accepted = await onNotify(reason);
+      if (accepted !== false) { setReason(""); setRecorded(true); }
+    } catch { /* The container shows the request failure; preserve the draft. */ }
   }
 
   return (
@@ -44,15 +36,16 @@ export function ItemActions({
         onClick={onDraftEmail}
       >
         <Mail aria-hidden="true" size={14} />
-        Draft email
+        {text("Draft email", "Preparar borrador")}
       </button>
       <form className="item-actions__notify" onSubmit={handleNotify}>
         <div className="field">
-          <label htmlFor={reasonId}>Reason to notify the producer</label>
+          <label htmlFor={reasonId}>{text("Reason to notify the producer", "Motivo para notificar al productor")}</label>
           <input
             id={reasonId}
             type="text"
             required
+            maxLength={2000}
             value={reason}
             disabled={pending}
             onChange={(event) => setReason(event.target.value)}
@@ -60,9 +53,10 @@ export function ItemActions({
         </div>
         <button type="submit" className="button button--secondary" disabled={pending}>
           <Bell aria-hidden="true" size={14} />
-          Notify
+          {text("Notify", "Notificar")}
         </button>
       </form>
+      {recorded && <p role="status">{text("Notification recorded.", "Notificación registrada.")}</p>}
     </div>
   );
 }

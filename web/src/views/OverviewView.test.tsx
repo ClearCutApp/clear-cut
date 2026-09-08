@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import { LanguageSwitch, LocaleProvider } from "../state/LocaleContext";
 import { ItemDetailPanelHost } from "../features/item/ItemDetailPanelHost";
 import { SCRIPT_FIXTURE, TRACKER_FIXTURE } from "../fixtures";
 import { stubFetch, type StubRoute } from "../testing/fetchStub";
@@ -18,6 +19,21 @@ function stub(routes: Record<string, StubRoute>) {
 }
 
 describe("OverviewView", () => {
+  it("keeps Spanish tracker actions, state labels and scene search aligned", async () => {
+    stub({ tracker: ok(TRACKER_FIXTURE) });
+    renderWithProject(<LocaleProvider><LanguageSwitch /><OverviewView /></LocaleProvider>, { analysis: SCRIPT_FIXTURE });
+    await screen.findByRole("heading", { name: "BLOCKED" });
+    fireEvent.click(screen.getByRole("button", { name: "English / Español" }));
+    expect(screen.getByRole("heading", { name: "Resumen" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "BLOQUEADOS" })).toBeInTheDocument();
+    expect(screen.getByText("Propiedad industrial")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Buscar"), { target: { value: "Escena" } });
+    expect(screen.getAllByRole("button", { name: /^Abrir EVT-/ })).toHaveLength(3);
+    fireEvent.click(screen.getByRole("button", { name: /Requieren revisión/ }));
+    expect(screen.getByText("Ningún elemento coincide con el filtro.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "English / Español" }));
+  });
+
   it("says it is loading until the tracker answers", () => {
     stub({ tracker: ok([]) });
 

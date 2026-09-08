@@ -14,13 +14,13 @@ does not exist" more honestly than a 500 from a handler that knows it does
 not exist (ADR 0012).
 
 Notifying writes nothing. `ResolveFinding` returns the item unchanged, and
-the 201 reports that the webhook accepted the notification, not that the item
+the 201 reports that the private notification was recorded, not that the item
 moved -- only a producer's own transition does that.
 """
 
 from typing import Any
 
-from flask import Blueprint
+from flask import Blueprint, g, request
 from flask.typing import ResponseReturnValue
 
 from clearcut.adapters.http import errors, schemas, serializers, validators
@@ -116,8 +116,17 @@ SCHEMAS: JsonDict = {
     },
     "TrackerItemStateUpdate": {
         "type": "object",
-        "required": ["state"],
-        "properties": {"state": schemas.ref("TrackerState")},
+        "required": ["state", "expected_version"],
+        "properties": {
+            "state": schemas.ref("TrackerState"),
+            "expected_version": {"type": "integer", "minimum": 1},
+        },
+        "additionalProperties": False,
+    },
+    "TrackerExpectedVersion": {
+        "type": "object",
+        "required": ["expected_version"],
+        "properties": {"expected_version": {"type": "integer", "minimum": 1}},
         "additionalProperties": False,
     },
     "NotificationCreate": {
@@ -127,6 +136,7 @@ SCHEMAS: JsonDict = {
             "reason": {
                 "type": "string",
                 "minLength": 1,
+                "maxLength": 2000,
                 "description": "What the producer is being told, in one sentence.",
             }
         },
@@ -195,6 +205,7 @@ PATHS: JsonDict = {
             "tags": [TAG],
             "operationId": "createTrackerItemEmailDraft",
             "summary": "Draft the outreach email for one item",
+            "requestBody": schemas.body(schemas.ref("TrackerExpectedVersion")),
             "description": (
                 "Fills the outreach template from the item's rights holder, contact and "
                 "required document, and stores it on the item as `draft_email`. The "
@@ -217,11 +228,14 @@ PATHS: JsonDict = {
             "tags": [TAG],
             "operationId": "createTrackerItemNotification",
             "summary": "Notify the producer about one item",
-            "description": ("Posts the item and the reason to the configured outbound webhook."),
+            "description": (
+                "Records a private project notification. Optional external delivery is queued "
+                "to an explicit project binding; private reason text remains in-app."
+            ),
             "requestBody": schemas.body(schemas.ref("NotificationCreate")),
             "responses": {
                 "201": schemas.ok(
-                    "The item at its new version. The webhook accepted the notification.",
+                    "The unchanged item. The notification was recorded, not necessarily delivered.",
                     schemas.json_of(schemas.ref("TrackerItem")),
                 ),
                 "400": schemas.failure(
@@ -229,14 +243,56 @@ PATHS: JsonDict = {
                     "no reason tells the producer nothing an unsent one would not."
                 ),
                 "404": schemas.NOT_FOUND,
-                "502": schemas.failure(
-                    "The webhook rejected the notification. Nothing was recorded."
-                ),
+                "409": schemas.failure("Clearance changed before recording the notification."),
+                "502": schemas.failure("Notification storage is unavailable."),
                 "500": schemas.INTERNAL_ERROR,
             },
         },
     },
 }
+
+
+SCHEMAS["TrackerItem"]["properties"].update(
+    {
+        "clearance_conditions": {"type": "string"},
+        "due_date": {"type": "string"},
+        "assignee_id": {"type": "string"},
+        "evidence_file_ids": {"type": "array", "items": {"type": "string"}},
+        "rights_holder_citations": {"type": "array", "items": schemas.ref("Citation")},
+    }
+)
+SCHEMAS["TrackerItem"]["required"].extend(
+    [
+        "clearance_conditions",
+        "due_date",
+        "assignee_id",
+        "evidence_file_ids",
+        "rights_holder_citations",
+    ]
+)
+
+PATHS[f"{_ITEM_PATH}/history"] = {
+    "parameters": [schemas.PROJECT_ID, schemas.ITEM_ID],
+    "get": {
+        "tags": [TAG],
+        "operationId": "listTrackerItemHistory",
+        "summary": "Immutable clearance audit events, newest first",
+        "parameters": [
+            {"name": "before_version", "in": "query", "schema": {"type": "integer", "minimum": 1}}
+        ],
+        "responses": {
+            "200": schemas.ok(
+                "At most 50 events. Legacy replacing rows are not reconstructed history.",
+                schemas.json_array_of({"type": "object"}),
+            ),
+            "404": schemas.NOT_FOUND,
+        },
+    },
+}
+for _path, _method in [(_ITEM_PATH, "patch"), (f"{_ITEM_PATH}/email-drafts", "post")]:
+    PATHS[_path][_method]["responses"]["409"] = schemas.failure(
+        "Clearance changed; reload it before retrying."
+    )
 
 
 def create_tracker_blueprint(
@@ -245,6 +301,15 @@ def create_tracker_blueprint(
     resolve_finding: ResolveFinding,
 ) -> Blueprint:
     bp = Blueprint("clearcut_tracker", __name__)
+
+    def actor() -> str:
+        identity = getattr(g, "identity", None)
+        return identity.user_id if identity else "demo"
+
+    def expected(body: JsonDict) -> int | None:
+        value = body.get("expected_version")
+        return value if type(value) is int and value >= 1 else None
+
     item_route = "/api/projects/<project_id>/tracker-items/<item_id>"
 
     @bp.route("/api/projects/<project_id>/tracker-items", methods=["GET"])
@@ -263,23 +328,34 @@ def create_tracker_blueprint(
 
     @bp.route(item_route, methods=["PATCH"])
     def tracker_patch(project_id: str, item_id: str) -> ResponseReturnValue:
-        state = validators.require_state(validators.json_body())
+        body = validators.json_body()
+        state = validators.require_state(body)
         if not isinstance(state, TrackerState):
             return state
+        version = expected(body)
+        if version is None:
+            return errors.error_response(400, "expected_version must be a positive integer")
         at = validators.now()
 
         def build() -> JsonDict:
-            item = resolve_finding.execute(project_id, item_id, Transition(state), at)
+            item = resolve_finding.execute(
+                project_id, item_id, Transition(state), at, expected_version=version, actor=actor()
+            )
             return serializers.tracker_item_json(item)
 
         return errors.run_use_case(build)
 
     @bp.route(f"{item_route}/email-drafts", methods=["POST"])
     def email_drafts_create(project_id: str, item_id: str) -> ResponseReturnValue:
+        version = expected(validators.json_body())
+        if version is None:
+            return errors.error_response(400, "expected_version must be a positive integer")
         at = validators.now()
 
         def build() -> JsonDict:
-            item = resolve_finding.execute(project_id, item_id, DraftEmail(), at)
+            item = resolve_finding.execute(
+                project_id, item_id, DraftEmail(), at, expected_version=version, actor=actor()
+            )
             return serializers.tracker_item_json(item)
 
         return errors.run_use_case(build, status=201)
@@ -292,9 +368,18 @@ def create_tracker_blueprint(
         at = validators.now()
 
         def build() -> JsonDict:
-            item = resolve_finding.execute(project_id, item_id, Notify(reason), at)
+            item = resolve_finding.execute(project_id, item_id, Notify(reason), at, actor=actor())
             return serializers.tracker_item_json(item)
 
         return errors.run_use_case(build, status=201)
+
+    @bp.route(f"{item_route}/history", methods=["GET"])
+    def tracker_history(project_id: str, item_id: str) -> ResponseReturnValue:
+        cursor = request.args.get("before_version")
+        if cursor is not None and (not cursor.isdecimal() or int(cursor) < 1):
+            return errors.error_response(400, "before_version must be positive")
+        return errors.run_use_case(
+            lambda: resolve_finding.history(project_id, item_id, int(cursor) if cursor else None)
+        )
 
     return bp

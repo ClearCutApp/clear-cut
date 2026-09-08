@@ -13,14 +13,16 @@ AGENT.md section 4 bans.
 
 from typing import Any
 
-from flask import Blueprint
+from flask import Blueprint, g, request
 from flask.typing import ResponseReturnValue
 
 from clearcut.adapters.http import errors, schemas, serializers, validators
 from clearcut.application.create_project import CreateProject
 from clearcut.application.get_project import GetProject
 from clearcut.application.list_projects import ListProjects
+from clearcut.application.workspace_ports import ProjectAccess
 from clearcut.domain.jurisdiction import JURISDICTIONS, Jurisdiction
+from clearcut.domain.project import Project
 
 JsonDict = dict[str, Any]
 
@@ -47,6 +49,7 @@ SCHEMAS: JsonDict = {
         "type": "object",
         "required": ["title", "jurisdiction_code"],
         "properties": {
+            "organization_id": {"type": "string", "description": "Required in live mode."},
             "title": {"type": "string", "minLength": 1},
             "jurisdiction_code": {
                 "type": "string",
@@ -72,14 +75,44 @@ SCHEMAS: JsonDict = {
     },
 }
 
+SCHEMAS["Organization"] = {
+    "type": "object",
+    "required": ["organization_id", "name", "role"],
+    "properties": {key: {"type": "string"} for key in ("organization_id", "name", "role")},
+}
 PATHS: JsonDict = {
+    "/api/organizations": {
+        "get": {
+            "tags": [TAG],
+            "operationId": "listOrganizations",
+            "summary": "Active memberships of this user",
+            "responses": {
+                "200": schemas.ok("Workspaces.", schemas.json_array_of(schemas.ref("Organization")))
+            },
+        },
+        "post": {
+            "tags": [TAG],
+            "operationId": "createOrganization",
+            "summary": "Create a private workspace and owner membership",
+            "requestBody": schemas.body(
+                {
+                    "type": "object",
+                    "required": ["name"],
+                    "properties": {"name": {"type": "string", "minLength": 1}},
+                }
+            ),
+            "responses": {
+                "201": schemas.ok("Workspace.", schemas.json_of(schemas.ref("Organization")))
+            },
+        },
+    },
     "/api/jurisdictions": {
         "get": {
             "tags": [TAG],
             "operationId": "listJurisdictions",
             "summary": "The jurisdictions a project can be cleared against",
             "description": (
-                "The ten codes `jurisdiction_code` accepts anywhere in this API. A "
+                "The selectable codes `jurisdiction_code` accepts anywhere in this API. A "
                 "jurisdiction's legal corpus prefix is deliberately absent: it names "
                 "a bucket layout, which is the server's business."
             ),
@@ -141,6 +174,7 @@ def create_projects_blueprint(
     create_project: CreateProject,
     list_projects: ListProjects,
     get_project: GetProject,
+    access: ProjectAccess | None = None,
 ) -> Blueprint:
     bp = Blueprint("clearcut_projects", __name__)
 
@@ -152,9 +186,15 @@ def create_projects_blueprint(
 
     @bp.route("/api/projects", methods=["GET"])
     def projects_index() -> ResponseReturnValue:
-        return errors.run_use_case(
-            lambda: [serializers.project_json(project) for project in list_projects.execute()]
-        )
+        def visible() -> list[JsonDict]:
+            if access is None:
+                return [serializers.project_json(project) for project in list_projects.execute()]
+            return [
+                serializers.project_json(access.get_project(project_id))
+                for project_id in sorted(access.visible_project_ids(g.identity.user_id))
+            ]
+
+        return errors.run_use_case(visible)
 
     @bp.route("/api/projects", methods=["POST"])
     def projects_create() -> ResponseReturnValue:
@@ -168,7 +208,15 @@ def create_projects_blueprint(
         project_id = validators.new_id()
         at = validators.now()
 
+        organization_id = str(payload.get("organization_id", ""))
+        if access is not None and (not organization_id or "/" in organization_id):
+            return errors.error_response(400, "organization_id is required")
+
         def build() -> JsonDict:
+            if access is not None:
+                project = Project(project_id, title, jurisdiction.code, at)
+                access.create_project(g.identity.user_id, organization_id, project)
+                return serializers.project_json(project)
             return serializers.project_json(
                 create_project.execute(project_id, title, jurisdiction, at)
             )
@@ -178,7 +226,29 @@ def create_projects_blueprint(
     @bp.route("/api/projects/<project_id>", methods=["GET"])
     def projects_show(project_id: str) -> ResponseReturnValue:
         return errors.run_use_case(
-            lambda: serializers.project_json(get_project.execute(project_id))
+            lambda: serializers.project_json(
+                access.get_project(project_id)
+                if access is not None
+                else get_project.execute(project_id)
+            )
         )
+
+    @bp.route("/api/organizations", methods=["GET", "POST"])
+    def organizations() -> ResponseReturnValue:
+        if access is None:
+            return errors.error_response(409, "workspaces require live identity")
+        if request.method == "GET":
+            return errors.run_use_case(lambda: list(access.organizations(g.identity.user_id)))
+        payload = validators.json_body()
+        name = validators.require_field(payload, "name")
+        if not isinstance(name, str):
+            return name
+        organization_id = validators.new_id()
+
+        def build_organization() -> JsonDict:
+            access.create_organization(g.identity.user_id, organization_id, name)
+            return {"organization_id": organization_id, "name": name, "role": "owner"}
+
+        return errors.run_use_case(build_organization, status=201)
 
     return bp

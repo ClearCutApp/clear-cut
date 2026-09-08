@@ -20,7 +20,7 @@ import time
 
 import httpx
 from opentelemetry import metrics, trace
-from parallel import APIConnectionError, APIStatusError, Parallel
+from parallel import APIConnectionError, APIResponseValidationError, APIStatusError, Parallel
 from parallel.types.citation import Citation as ParallelCitation
 from parallel.types.field_basis import FieldBasis
 from parallel.types.json_schema_param import JsonSchemaParam
@@ -32,6 +32,7 @@ from clearcut.application.ports import Confidence, RightsClaim
 from clearcut.domain.errors import EnrichmentMissing, SourceUnavailable
 from clearcut.domain.finding import Category, Citation
 from clearcut.domain.jurisdiction import Jurisdiction
+from clearcut.observability import stage_span
 
 # "core" is sized for a cross-referenced lookup (ASCAP/BMI Songview, SADAIC,
 # label sites) inside the demo clock (docs/plan/infrastructure.md Section
@@ -76,7 +77,7 @@ class NoRightsHolderFound(EnrichmentMissing):
     """Raised when every candidate claim in a Task API result is uncited."""
 
     def __init__(self, asset_name: str) -> None:
-        super().__init__(f"no cited rights holder found for {asset_name!r}")
+        super().__init__("no cited rights holder found")
         self.asset_name = asset_name
 
 
@@ -92,44 +93,85 @@ class ResearchUnavailable(SourceUnavailable):
 class ParallelRightsResearch:
     """Implements `RightsResearch` over the Parallel Task API."""
 
-    def __init__(self, http_client: httpx.Client, api_key: str) -> None:
+    def __init__(
+        self,
+        http_client: httpx.Client,
+        api_key: str,
+        *,
+        create_timeout: float = 30,
+        result_timeout: float = 300,
+        processor: str = _PROCESSOR,
+    ) -> None:
         # max_retries=0: a retry hides a transport failure behind exponential
         # backoff sleeps, which unit tests cannot afford and which would
         # leave a use case waiting well past the demo clock in production
         # (AGENT.md Section 5, docs/plan/infrastructure.md Section 7.1).
-        self._client = Parallel(api_key=api_key, http_client=http_client, max_retries=0)
+        # _strict_response_validation=True: the SDK defaults to lenient, which
+        # hands back a bare `str` when a proxy answers 200 with an HTML
+        # interstitial. The `AttributeError` on the next use of that value is
+        # mapped to 500 by `adapters/http/errors.py`, reporting an upstream
+        # outage as a ClearCut bug (ADR 0011, CP-056).
+        self._create_timeout = create_timeout
+        self._result_timeout = result_timeout
+        self._processor = processor
+        self._client = Parallel(
+            api_key=api_key,
+            http_client=http_client,
+            max_retries=0,
+            _strict_response_validation=True,
+        )
 
     def find(self, asset_name: str, category: Category, jurisdiction: Jurisdiction) -> RightsClaim:
         stage_start = time.perf_counter()
-        with trace.get_tracer(__name__).start_as_current_span("research"):
+        with stage_span(trace.get_tracer(__name__), "research"):
             claim = self._find(asset_name, category, jurisdiction)
         _record_stage("research", stage_start)
         return claim
 
     def _find(self, asset_name: str, category: Category, jurisdiction: Jurisdiction) -> RightsClaim:
+        return self.await_result(self.begin(asset_name, category, jurisdiction), asset_name)
+
+    def begin(self, asset_name: str, category: Category, jurisdiction: Jurisdiction) -> str:
+        """Create once; durable callers persist intent before this boundary."""
         try:
             run = self._client.task_run.create(
                 input=_query(asset_name, category, jurisdiction),
-                processor=_PROCESSOR,
+                processor=self._processor,
                 task_spec=_TASK_SPEC,
+                timeout=self._create_timeout,
             )
             if not run.run_id:
-                # A 2xx the SDK accepts but that names no run. Without this the
-                # next line raises a bare ValueError from inside the SDK, which
-                # `routes.py` maps to 500 -- an upstream shape change reported
-                # to the producer as a ClearCut bug (ADR 0011, CP-056).
                 raise ResearchUnavailable(
                     "Parallel Task API accepted the run but returned no run_id"
                 )
-            result = self._client.task_run.result(run.run_id)
+            return str(run.run_id)
+        except APIResponseValidationError as error:
+            raise ResearchUnavailable("Parallel Task API returned an invalid response") from error
         except APIStatusError as error:
             raise ResearchUnavailable(
                 f"Parallel Task API responded with status {error.status_code}",
                 status_code=error.status_code,
             ) from error
         except APIConnectionError as error:
-            raise ResearchUnavailable(f"Parallel Task API request failed: {error}") from error
+            raise ResearchUnavailable("Parallel Task API request failed") from error
 
+    def await_result(self, run_id: str, asset_name: str) -> RightsClaim:
+        """Resume polling a persisted run ID; this method never creates a task."""
+        try:
+            result = self._client.task_run.result(
+                run_id,
+                api_timeout=max(1, int(self._result_timeout) - 5),
+                timeout=self._result_timeout,
+            )
+        except APIResponseValidationError as error:
+            raise ResearchUnavailable("Parallel Task API returned an invalid response") from error
+        except APIStatusError as error:
+            raise ResearchUnavailable(
+                f"Parallel Task API responded with status {error.status_code}",
+                status_code=error.status_code,
+            ) from error
+        except APIConnectionError as error:
+            raise ResearchUnavailable("Parallel Task API request failed") from error
         return _first_cited_claim(result, asset_name)
 
 

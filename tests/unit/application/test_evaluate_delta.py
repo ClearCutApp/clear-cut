@@ -7,6 +7,8 @@ argument. The fakes mirror `test_analyze_script.py`'s, extended with a
 actually hold state, since this use case reads both.
 """
 
+import threading
+import time
 from typing import Any
 
 import pytest
@@ -699,3 +701,165 @@ def test_the_delta_grounding_query_never_contains_the_script_text() -> None:
     for query, _ in grounding.calls:
         assert "clearance:" not in query
         assert query in set(_GROUNDING_TERMS.values())
+
+
+# --- Change B: per-finding enrichment runs on a bounded thread pool ---------
+#
+# The same overlap `AnalyzeScript` gained, with one extra thing to protect:
+# this loop mutates `remaining` through `_pop_match` and mints ids from
+# `next_number`, so only the lookups move off the calling thread. The last
+# test here is the one that would catch a parallelised loop body.
+
+
+class _BarrierResearch:
+    """A `RightsResearch` that proves two lookups were in flight at once.
+
+    Two parties rather than three: the claim is that the pool overlaps
+    lookups, not that it is three wide, so a narrower `_MAX_WORKERS` must not
+    turn this into a deadlock. Only the first two calls wait -- a third
+    arriving at an already-tripped barrier would wait alone for a partner
+    that never comes and break it on timeout. Run serially, the first call
+    waits for a partner that cannot exist until it returns, and `wait()`
+    raises `BrokenBarrierError` when the timeout fires.
+    """
+
+    def __init__(self, barrier: threading.Barrier) -> None:
+        self._barrier = barrier
+        self._lock = threading.Lock()
+        self.calls: list[str] = []
+
+    def find(self, asset_name: str, category: Category, jurisdiction: Jurisdiction) -> RightsClaim:
+        with self._lock:
+            self.calls.append(asset_name)
+            waits = len(self.calls) <= 2
+        if waits:
+            self._barrier.wait()
+        return _claim()
+
+
+class _SlowResearch:
+    """Latency inversely proportional to the finding's position, so the last
+    asset answers first and a completion-ordered implementation would hand
+    the loop its findings reversed."""
+
+    def __init__(self, delays: dict[str, float]) -> None:
+        self._delays = delays
+
+    def find(self, asset_name: str, category: Category, jurisdiction: Jurisdiction) -> RightsClaim:
+        time.sleep(self._delays.get(asset_name, 0.0))
+        return _claim(holder=asset_name, contact=f"legal@{asset_name.lower()}.example")
+
+
+def _changed_scene(number: int) -> Scene:
+    """Same number and heading as `_scene(number)`, different text: the pair
+    `diff_scenes` joins on is `(number, heading)`, so only the text may move
+    or the scene reads as REMOVED plus ADDED rather than CHANGED."""
+    return _scene(number, text=f"rewritten scene {number}")
+
+
+def test_enrichment_runs_concurrently_across_findings() -> None:
+    previous = _script([_scene(1), _scene(2), _scene(3)])
+    new_scenes = [_changed_scene(1), _changed_scene(2), _changed_scene(3)]
+    extractor = _Extractor(
+        [
+            _finding(raw_text="Quilmes", scene_number=1),
+            _finding(raw_text="Ferrari", scene_number=2),
+            _finding(raw_text="Coca-Cola", scene_number=3),
+        ]
+    )
+    research = _BarrierResearch(threading.Barrier(2, timeout=5))
+    use_case = EvaluateDelta(
+        ingestion=_Ingestion(new_scenes),
+        extractor=extractor,
+        grounding=_Grounding(),
+        research=research,
+        lore=_LoreStore(),
+        tracker=_Tracker(previous),
+        continuity=_Continuity(),
+        notifier=_Notifier(),
+        findings=_FindingStore(),
+    )
+
+    report = use_case.execute("proj-1", "scr-2", 2, "gs://bucket/v2.pdf", _MEXICO, _AT)
+
+    assert len(report.findings) == 3
+    assert sorted(research.calls) == ["Coca-Cola", "Ferrari", "Quilmes"]
+
+
+def test_finding_ids_stay_in_first_appearance_order_under_concurrency() -> None:
+    previous = _script([_scene(1), _scene(2), _scene(3)])
+    new_scenes = [_changed_scene(1), _changed_scene(2), _changed_scene(3)]
+    extractor = _Extractor(
+        [
+            _finding(raw_text="Quilmes", scene_number=1),
+            _finding(raw_text="Ferrari", scene_number=2),
+            _finding(raw_text="Coca-Cola", scene_number=3),
+        ]
+    )
+    research = _SlowResearch({"Quilmes": 0.05, "Ferrari": 0.03, "Coca-Cola": 0.0})
+    tracker = _Tracker(previous)
+    use_case = EvaluateDelta(
+        ingestion=_Ingestion(new_scenes),
+        extractor=extractor,
+        grounding=_Grounding(),
+        research=research,
+        lore=_LoreStore(),
+        tracker=tracker,
+        continuity=_Continuity(),
+        notifier=_Notifier(),
+        findings=_FindingStore(),
+    )
+
+    report = use_case.execute("proj-1", "scr-2", 2, "gs://bucket/v2.pdf", _MEXICO, _AT)
+
+    assert [finding.finding_id for finding in report.findings] == ["EVT-001", "EVT-002", "EVT-003"]
+    contacts = {item.finding_id: item.contact for item in report.tracker_items}
+    assert contacts == {
+        "EVT-001": "legal@quilmes.example",
+        "EVT-002": "legal@ferrari.example",
+        "EVT-003": "legal@coca-cola.example",
+    }
+
+
+def test_carry_forward_matching_stays_deterministic_under_concurrency() -> None:
+    """The reason the loop body itself must stay sequential.
+
+    Two re-extracted findings both sit on scene 1, which the single existing
+    CLEARED item was cleared against. `_pop_match` hands that item to the
+    first deduped finding and to nobody else, so exactly one notification
+    fires and the adoption is decided by position -- not by which lookup
+    answered first, which is what a parallelised loop body would let decide.
+    """
+    previous = _script([_scene(1), _scene(2)])
+    new_scenes = [_changed_scene(1), _changed_scene(2)]
+    extractor = _Extractor(
+        [
+            _finding(raw_text="Quilmes", scene_number=1),
+            _finding(raw_text="Ferrari", scene_number=1),
+        ]
+    )
+    cleared = _item(
+        item_id="EVT-007",
+        finding_id="EVT-007",
+        scene_numbers=(1,),
+        state=TrackerState.CLEARED,
+    )
+    notifier = _Notifier()
+    use_case = EvaluateDelta(
+        ingestion=_Ingestion(new_scenes),
+        extractor=extractor,
+        grounding=_Grounding(),
+        research=_SlowResearch({"Quilmes": 0.05, "Ferrari": 0.0}),
+        lore=_LoreStore(),
+        tracker=_Tracker(previous, items=[cleared]),
+        continuity=_Continuity(),
+        notifier=notifier,
+        findings=_FindingStore(),
+    )
+
+    report = use_case.execute("proj-1", "scr-2", 2, "gs://bucket/v2.pdf", _MEXICO, _AT)
+
+    assert len(notifier.calls) == 1
+    assert report.findings[0].raw_text == "Quilmes"
+    assert report.findings[0].finding_id == "EVT-007"
+    assert report.findings[1].finding_id == "EVT-008"

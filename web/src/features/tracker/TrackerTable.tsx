@@ -1,3 +1,4 @@
+import { useLocale } from "../../state/LocaleContext";
 import type { ReactElement } from "react";
 
 import type { Category } from "../../api/client";
@@ -15,7 +16,7 @@ export interface TrackerTableProps {
   categoryFor: (itemId: string) => Category | null;
 }
 
-const COLUMNS = ["State", "Finding", "Required document", "Type", "Contact", "Scenes"];
+
 
 /**
  * The tracker rows, sectioned by state. `groups` already carries the
@@ -29,19 +30,20 @@ export function TrackerTable({
   onSelect,
   categoryFor,
 }: TrackerTableProps): ReactElement {
+  const { text } = useLocale();
   if (groups.length === 0) {
-    return <EmptyState title="No items match the current filter." />;
+    return <EmptyState title={text("No items match the current filter.", "Ningún elemento coincide con el filtro.")} />;
   }
   return (
     <div className="tracker-table">
       <div className="tracker-table__columns" aria-hidden="true">
-        {COLUMNS.map((column) => (
+        {[text("State", "Estado"), text("Finding", "Hallazgo"), text("Required document", "Documento requerido"), text("Type", "Tipo"), text("Contact", "Contacto"), text("Scenes", "Escenas")].map((column) => (
           <span key={column}>{column}</span>
         ))}
       </div>
       {groups.map((group) => (
         <section className="tracker-table__group" key={group.state}>
-          <h3 className="tracker-table__heading">{group.state}</h3>
+          <h3 className="tracker-table__heading">{text(group.state, { BLOCKED: "BLOQUEADOS", IN_PROGRESS: "EN CURSO", CLEARED: "AUTORIZADOS" }[group.state])}</h3>
           {group.items.map((item) => (
             <TrackerRow
               key={item.item_id}

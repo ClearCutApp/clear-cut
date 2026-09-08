@@ -157,6 +157,32 @@ GROUNDED_ANSWER = GroundedAnswer(
     ),
 )
 
+# --- The live-web answer `WebGrounding.search` returns when the licensed
+# corpus cited nothing (CP-062). Planted separately from `GROUNDED_ANSWER`
+# rather than reusing it: the two ports make different claims about the same
+# question, and a demo that returned identical text for both would hide the
+# provenance line that tells a producer which one they are reading. ---
+WEB_ANSWER = GroundedAnswer(
+    text=(
+        "From a live web search, not ClearCut's licensed legal corpus. "
+        "Check each source before relying on it.\n\n"
+        "Argentina has no freedom-of-panorama provision: Ley 11.723 grants no "
+        "exception for works permanently sited in public places, so filming a "
+        "mural still needs the artist's authorization. "
+        "(source: Ley 11.723 - Regimen Legal de la Propiedad Intelectual)"
+    ),
+    citations=(
+        Citation(
+            uri="https://www.argentina.gob.ar/normativa/nacional/ley-11723-42755/texto",
+            title="Ley 11.723 - Regimen Legal de la Propiedad Intelectual",
+            snippet=(
+                "Argentina has no freedom-of-panorama provision: Ley 11.723 "
+                "grants no exception for works permanently sited in public places."
+            ),
+        ),
+    ),
+)
+
 # --- The rights claims, keyed by `RightsResearch.find`'s own `asset_name`
 # parameter -- a direct pass-through of a finding's `raw_text`, so this
 # lookup needs no formatting rule copied from `AnalyzeScript`. ---

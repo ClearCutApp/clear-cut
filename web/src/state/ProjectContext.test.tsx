@@ -171,7 +171,7 @@ describe("ProjectProvider runAnalysis", () => {
 
     expect(outcome).toEqual({ ok: true, value: SCRIPT_FIXTURE });
     expect(result.current.analysis).toEqual(SCRIPT_FIXTURE);
-    expect(result.current.job?.state).toBe("QUEUED");
+    expect(result.current.job?.state).toBe("SUCCEEDED");
     expect(result.current.jurisdictionCode).toBe(SCRIPT_FIXTURE.jurisdiction_code);
     expect(calls.filter((call) => call.kind === "analysis")).toHaveLength(2);
     await waitFor(() => expect(result.current.tracker).toHaveLength(3));
@@ -226,7 +226,7 @@ describe("ProjectProvider mutations", () => {
     expect(result.current.tracker?.[1]).toEqual(patched);
     expect(result.current.tracker?.[0]).toEqual(TRACKER_FIXTURE[0]);
     expect(result.current.tracker?.[2]).toEqual(TRACKER_FIXTURE[2]);
-    expect(calls.find((call) => call.kind === "patch")?.body).toEqual({ state: "IN_PROGRESS" });
+    expect(calls.find((call) => call.kind === "patch")?.body).toEqual({ state: "IN_PROGRESS", expected_version: 1 });
   });
 
   it("draftEmail replaces the row with the returned draft_email", async () => {
@@ -237,7 +237,7 @@ describe("ProjectProvider mutations", () => {
     await act(() => result.current.draftEmail("EVT-001"));
 
     expect(result.current.tracker?.[0].draft_email).toBe("Dear Ferrari S.p.A., ...");
-    expect(calls.find((call) => call.kind === "email-draft")?.body).toBeUndefined();
+    expect(calls.find((call) => call.kind === "email-draft")?.body).toEqual({ expected_version: 1 });
   });
 
   it("notify sends the producer's reason and leaves the row as the server returned it", async () => {

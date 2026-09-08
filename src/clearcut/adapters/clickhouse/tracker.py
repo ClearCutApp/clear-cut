@@ -33,6 +33,7 @@ from clearcut.adapters.clickhouse import schema, scripts
 from clearcut.domain.errors import RecordNotFound
 from clearcut.domain.script import Script
 from clearcut.domain.tracker import TrackerItem, TrackerState
+from clearcut.observability import stage_span
 
 
 def _record_stage(stage: str, start: float) -> None:
@@ -99,7 +100,7 @@ class ClickHouseTrackerStore:
 
     def save(self, items: list[TrackerItem]) -> None:
         stage_start = time.perf_counter()
-        with trace.get_tracer(__name__).start_as_current_span("track"):
+        with stage_span(trace.get_tracer(__name__), "track"):
             rows = [_tracker_item_to_row(item) for item in items]
             try:
                 self._client.insert("tracker_items", rows, _TRACKER_COLUMNS)

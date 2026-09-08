@@ -14,6 +14,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+import httpx
 from google.genai import errors as genai_errors
 from google.genai import types
 
@@ -127,19 +128,21 @@ class GeminiContinuityCheck:
             response_mime_type="application/json",
             response_schema=_CHECK_RESULT_SCHEMA,
         )
+        contents: list[types.ContentUnionDict] = [_scene_text(scene)]
+        contents.extend(_fact_text(fact) for fact in facts)
         try:
             response = self.client.models.generate_content(
                 model=self.model,
-                contents=[_scene_text(scene)] + [_fact_text(fact) for fact in facts],
+                contents=contents,
                 config=config,
             )
-        except genai_errors.APIError as exc:
-            raise ContinuityUnavailable(f"continuity call failed: {exc}") from exc
+        except (genai_errors.APIError, httpx.HTTPError) as exc:
+            raise ContinuityUnavailable("continuity provider unavailable") from exc
 
         try:
             item: dict[str, Any] = json.loads(response.text or "{}")
         except json.JSONDecodeError as exc:
-            raise ContinuityUnavailable(f"continuity response was not JSON: {exc}") from exc
+            raise ContinuityUnavailable("continuity response was invalid") from exc
 
         contradicts = item.get("contradicts")
         if not contradicts:

@@ -1,3 +1,4 @@
+import { useLocale } from "../../state/LocaleContext";
 import type { ReactElement } from "react";
 
 import { FilterPill } from "../../components/atoms/FilterPill";
@@ -17,13 +18,13 @@ interface PillSpec {
   count: number;
 }
 
-function pillsFor(stats: TrackerStatsSummary): PillSpec[] {
+function pillsFor(stats: TrackerStatsSummary, text: (en: string, es: string) => string): PillSpec[] {
   return [
-    { value: "ALL", label: "All", count: stats.total },
-    { value: "BLOCKED", label: "Blocked", count: stats.blocked },
-    { value: "IN_PROGRESS", label: "In progress", count: stats.inProgress },
-    { value: "CLEARED", label: "Cleared", count: stats.cleared },
-    { value: "NEEDS_REVIEW", label: "Needs review", count: stats.needsReview },
+    { value: "ALL", label: text("All", "Todos"), count: stats.total },
+    { value: "BLOCKED", label: text("Blocked", "Bloqueados"), count: stats.blocked },
+    { value: "IN_PROGRESS", label: text("In progress", "En curso"), count: stats.inProgress },
+    { value: "CLEARED", label: text("Cleared", "Autorizados"), count: stats.cleared },
+    { value: "NEEDS_REVIEW", label: text("Needs review", "Requieren revisión"), count: stats.needsReview },
   ];
 }
 
@@ -36,10 +37,11 @@ export function TrackerFilters({
   onSearchChange,
   stats,
 }: TrackerFiltersProps): ReactElement {
+  const { text } = useLocale();
   return (
     <div className="tracker-filters">
       <div className="tracker-filters__pills">
-        {pillsFor(stats).map((pill) => (
+        {pillsFor(stats, text).map((pill) => (
           <FilterPill
             key={pill.value}
             label={pill.label}
@@ -50,7 +52,7 @@ export function TrackerFilters({
         ))}
       </div>
       <label className="tracker-filters__search" htmlFor="tracker-search">
-        Search
+        {text("Search", "Buscar")}
         <input
           id="tracker-search"
           type="search"

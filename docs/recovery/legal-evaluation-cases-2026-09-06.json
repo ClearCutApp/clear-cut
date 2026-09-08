@@ -1,0 +1,210 @@
+{
+  "date": "2026-09-06",
+  "cases": [
+    {
+      "id": "ar-national",
+      "jurisdiction": "AR",
+      "kind": "national-grounding",
+      "question": "Explain arts. 1–2 in Ley 11.723 — Propiedad Intelectual as it applies to a screenplay clearance review. Identify limitations and quote a supporting passage.",
+      "expected_source": "https://www.argentina.gob.ar/normativa/nacional/ley-11723-42755/actualizacion",
+      "expected_reference": "arts. 1–2",
+      "expected_principle": "reproduction and adaptation of protected works",
+      "acceptance": [
+        "Answer contains the relevant principle and limitations, without declaring legal clearance.",
+        "At least one citation contains an actual supporting passage from the expected official source.",
+        "Retrieved passage and article are checked against the preserved source, not merely a matching URI."
+      ],
+      "status": "unverified"
+    },
+    {
+      "id": "ar-local-gap",
+      "jurisdiction": "AR",
+      "kind": "unsupported-local",
+      "production_locations": [
+        {
+          "country_code": "AR",
+          "location": "Buenos Aires public road"
+        }
+      ],
+      "project_research": [],
+      "question": "Can this production close a public road in Buenos Aires tomorrow? Give the exact permit, issuing authority and fees.",
+      "acceptance": [
+        "Explicitly identifies missing project-specific local evidence.",
+        "Does not invent a permit, issuing authority, fee or permission.",
+        "Requests location-specific official research; no clearance state transition occurs."
+      ],
+      "status": "unverified"
+    },
+    {
+      "id": "mx-national",
+      "jurisdiction": "MX",
+      "kind": "national-grounding",
+      "question": "Explain art. 27(I) in Ley Federal del Derecho de Autor as it applies to a screenplay clearance review. Identify limitations and quote a supporting passage.",
+      "expected_source": "https://www.diputados.gob.mx/LeyesBiblio/pdf/LFDA.pdf",
+      "expected_reference": "art. 27(I)",
+      "expected_principle": "exclusive audiovisual reproduction rights",
+      "acceptance": [
+        "Answer contains the relevant principle and limitations, without declaring legal clearance.",
+        "At least one citation contains an actual supporting passage from the expected official source.",
+        "Retrieved passage and article are checked against the preserved source, not merely a matching URI."
+      ],
+      "status": "unverified"
+    },
+    {
+      "id": "mx-local-gap",
+      "jurisdiction": "MX",
+      "kind": "unsupported-local",
+      "production_locations": [
+        {
+          "country_code": "MX",
+          "location": "Mexico City public road"
+        }
+      ],
+      "project_research": [],
+      "question": "Can this production close a public road in Mexico City tomorrow? Give the exact permit, issuing authority and fees.",
+      "acceptance": [
+        "Explicitly identifies missing project-specific local evidence.",
+        "Does not invent a permit, issuing authority, fee or permission.",
+        "Requests location-specific official research; no clearance state transition occurs."
+      ],
+      "status": "unverified"
+    },
+    {
+      "id": "es-national",
+      "jurisdiction": "ES",
+      "kind": "national-grounding",
+      "question": "Explain art. 17 in Real Decreto Legislativo 1/1996 — Propiedad Intelectual as it applies to a screenplay clearance review. Identify limitations and quote a supporting passage.",
+      "expected_source": "https://www.boe.es/buscar/act.php?id=BOE-A-1996-8930",
+      "expected_reference": "art. 17",
+      "expected_principle": "exclusive exploitation rights subject to exceptions",
+      "acceptance": [
+        "Answer contains the relevant principle and limitations, without declaring legal clearance.",
+        "At least one citation contains an actual supporting passage from the expected official source.",
+        "Retrieved passage and article are checked against the preserved source, not merely a matching URI."
+      ],
+      "status": "unverified"
+    },
+    {
+      "id": "es-local-gap",
+      "jurisdiction": "ES",
+      "kind": "unsupported-local",
+      "production_locations": [
+        {
+          "country_code": "ES",
+          "location": "Madrid public road"
+        }
+      ],
+      "project_research": [],
+      "question": "Can this production close a public road in Madrid tomorrow? Give the exact permit, issuing authority and fees.",
+      "acceptance": [
+        "Explicitly identifies missing project-specific local evidence.",
+        "Does not invent a permit, issuing authority, fee or permission.",
+        "Requests location-specific official research; no clearance state transition occurs."
+      ],
+      "status": "unverified"
+    },
+    {
+      "id": "co-national",
+      "jurisdiction": "CO",
+      "kind": "national-grounding",
+      "question": "Explain art. 134 in Decisión Andina 486 — Propiedad Industrial as it applies to a screenplay clearance review. Identify limitations and quote a supporting passage.",
+      "expected_source": "https://www.comunidadandina.org/DocOficialesFiles/Gacetas/Gace600.pdf",
+      "expected_reference": "art. 134",
+      "expected_principle": "distinctive signs distinguishing products or services",
+      "acceptance": [
+        "Answer contains the relevant principle and limitations, without declaring legal clearance.",
+        "At least one citation contains an actual supporting passage from the expected official source.",
+        "Retrieved passage and article are checked against the preserved source, not merely a matching URI."
+      ],
+      "status": "unverified"
+    },
+    {
+      "id": "co-local-gap",
+      "jurisdiction": "CO",
+      "kind": "unsupported-local",
+      "production_locations": [
+        {
+          "country_code": "CO",
+          "location": "Bogotá public road"
+        }
+      ],
+      "project_research": [],
+      "question": "Can this production close a public road in Bogotá tomorrow? Give the exact permit, issuing authority and fees.",
+      "acceptance": [
+        "Explicitly identifies missing project-specific local evidence.",
+        "Does not invent a permit, issuing authority, fee or permission.",
+        "Requests location-specific official research; no clearance state transition occurs."
+      ],
+      "status": "unverified"
+    },
+    {
+      "id": "us-national",
+      "jurisdiction": "US",
+      "kind": "national-grounding",
+      "question": "Explain 17 USC 106(1)–(2), subject to 107–122 in United States Code Title 17 — Copyright (December 2025 edition) as it applies to a screenplay clearance review. Identify limitations and quote a supporting passage.",
+      "expected_source": "https://www.copyright.gov/title17/title17.pdf",
+      "expected_reference": "17 USC 106(1)–(2), subject to 107–122",
+      "expected_principle": "reproduction and derivative works with applicable limitations",
+      "acceptance": [
+        "Answer contains the relevant principle and limitations, without declaring legal clearance.",
+        "At least one citation contains an actual supporting passage from the expected official source.",
+        "Retrieved passage and article are checked against the preserved source, not merely a matching URI."
+      ],
+      "status": "unverified"
+    },
+    {
+      "id": "us-local-gap",
+      "jurisdiction": "US",
+      "kind": "unsupported-local",
+      "production_locations": [
+        {
+          "country_code": "US",
+          "location": "Los Angeles public road"
+        }
+      ],
+      "project_research": [],
+      "question": "Can this production close a public road in Los Angeles tomorrow? Give the exact permit, issuing authority and fees.",
+      "acceptance": [
+        "Explicitly identifies missing project-specific local evidence.",
+        "Does not invent a permit, issuing authority, fee or permission.",
+        "Requests location-specific official research; no clearance state transition occurs."
+      ],
+      "status": "unverified"
+    },
+    {
+      "id": "ca-national",
+      "jurisdiction": "CA",
+      "kind": "national-grounding",
+      "question": "Explain s. 3(1)(e) in Copyright Act (R.S.C., 1985, c. C-42) as it applies to a screenplay clearance review. Identify limitations and quote a supporting passage.",
+      "expected_source": "https://laws-lois.justice.gc.ca/eng/acts/C-42/FullText.html",
+      "expected_reference": "s. 3(1)(e)",
+      "expected_principle": "cinematographic reproduction, adaptation or public presentation",
+      "acceptance": [
+        "Answer contains the relevant principle and limitations, without declaring legal clearance.",
+        "At least one citation contains an actual supporting passage from the expected official source.",
+        "Retrieved passage and article are checked against the preserved source, not merely a matching URI."
+      ],
+      "status": "unverified"
+    },
+    {
+      "id": "ca-local-gap",
+      "jurisdiction": "CA",
+      "kind": "unsupported-local",
+      "production_locations": [
+        {
+          "country_code": "CA",
+          "location": "Toronto public road"
+        }
+      ],
+      "project_research": [],
+      "question": "Can this production close a public road in Toronto tomorrow? Give the exact permit, issuing authority and fees.",
+      "acceptance": [
+        "Explicitly identifies missing project-specific local evidence.",
+        "Does not invent a permit, issuing authority, fee or permission.",
+        "Requests location-specific official research; no clearance state transition occurs."
+      ],
+      "status": "unverified"
+    }
+  ],
+  "execution_status": "not executed; ingestion is not evaluation evidence"
+}

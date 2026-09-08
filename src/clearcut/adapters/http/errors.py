@@ -18,13 +18,21 @@ guard in `tests/unit/test_error_boundaries.py`, which scopes to
 from collections.abc import Callable
 from typing import Any
 
-from flask import jsonify
+from flask import Response, jsonify
 from flask.typing import ResponseReturnValue
 
+from clearcut.domain.document import InvalidDocument
+from clearcut.domain.durable_analysis import AnalysisBusy
 from clearcut.domain.errors import RecordNotFound, SourceUnavailable
+from clearcut.domain.identity import AccessDenied
+from clearcut.domain.report import ReportConflict
+from clearcut.domain.screenplay import DraftConflict, InvalidScreenplay
+from clearcut.domain.tracker import InvalidClearance, TrackerConflict
+from clearcut.domain.voice import InvalidRecording
+from clearcut.domain.workspace import InvalidWorkspace, WorkspaceConflict
 
 JsonDict = dict[str, Any]
-JsonBody = JsonDict | list[JsonDict]
+JsonBody = JsonDict | list[JsonDict] | Response
 
 _INTERNAL_ERROR_MESSAGE = "internal error"
 
@@ -50,16 +58,47 @@ def run_use_case(
     """
     try:
         body = build()
+    except ReportConflict:
+        return error_response(
+            409, "the revision or clearance snapshot changed; reload before creating a report"
+        )
+    except WorkspaceConflict:
+        return error_response(409, "workspace changed; reload before retrying")
+    except AnalysisBusy:
+        return error_response(409, "a project analysis is already active")
+    except TrackerConflict as error:
+        return jsonify({"error": str(error), "current_version": error.current_version}), 409
+    except DraftConflict as error:
+        return jsonify(
+            {
+                "error": "draft changed; recover your local copy before reloading",
+                "current_version": error.current_version,
+            }
+        ), 409
+    except (
+        InvalidScreenplay,
+        InvalidRecording,
+        InvalidDocument,
+        InvalidClearance,
+        InvalidWorkspace,
+    ) as error:
+        return error_response(400, str(error))
+    except AccessDenied:
+        return error_response(403, "workspace does not allow this action")
     except RecordNotFound as error:
         return error_response(404, str(error))
-    except SourceUnavailable as error:
-        return error_response(502, str(error))
-    except Exception:
+    except SourceUnavailable:
+        return error_response(502, "upstream service unavailable; try again")
+    except Exception as error:
+        if getattr(error, "code", None) == 413:
+            return error_response(413, "request body too large")
         # Neither of the two mapped domain errors, and not `EnrichmentMissing`
         # either -- that one is caught inside the use case and never reaches
         # here (D23). A 500 with no stack trace is the honest answer: the
         # body carries a message and never internals.
         return error_response(500, _INTERNAL_ERROR_MESSAGE)
+    if isinstance(body, Response):
+        return body, status
     if location is None:
         return jsonify(body), status
     return jsonify(body), status, {"Location": location}

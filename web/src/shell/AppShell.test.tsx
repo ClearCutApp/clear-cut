@@ -14,6 +14,7 @@ function renderShell(path = "/", mode = "live") {
         <Routes>
           <Route element={<AppShell />}>
             <Route index element={<p>home view</p>} />
+            <Route path="projects" element={<p>projects view</p>} />
             <Route path="projects/:projectId/*" element={<p>project view</p>} />
           </Route>
         </Routes>
@@ -60,7 +61,7 @@ describe("AppShell", () => {
   it("shows the project tabs only while a project route is open", () => {
     renderShell("/projects/demo%20x/ask");
 
-    expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute("href", "/projects/demo%20x");
+    expect(screen.getByRole("link", { name: "Overview" })).toHaveAttribute("href", "/projects/demo%20x");
     expect(screen.getByText("project view")).toBeInTheDocument();
   });
 
@@ -78,6 +79,7 @@ describe("AppShell", () => {
           <Routes>
             <Route element={<AppShell />}>
               <Route index element={<p>home view</p>} />
+            <Route path="projects" element={<p>projects view</p>} />
             </Route>
           </Routes>
         </ServerModeProvider>
@@ -88,14 +90,11 @@ describe("AppShell", () => {
     expect(screen.queryByTestId("mode-banner")).toBeNull();
   });
 
-  it("draws the unserved affordances greyed, never as controls", () => {
+  it("keeps unavailable destinations out of the working navigation", () => {
     renderShell();
 
-    expect(screen.getByText("Notifications").closest("li")).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
-    expect(screen.getByText("Settings")).toHaveAttribute("aria-disabled", "true");
+    expect(screen.queryByText("Notifications")).toBeNull();
+    expect(screen.queryByText("Settings")).toBeNull();
     expect(screen.queryByRole("combobox")).toBeNull();
     expect(screen.queryByRole("searchbox")).toBeNull();
     expect(screen.queryByRole("button", { name: /settings|notifications/i })).toBeNull();

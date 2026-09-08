@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 
+import { useLocale } from "../../state/LocaleContext";
 import { jurisdictionName } from "../../theme/jurisdictions";
 import type { ProjectFilterValue, ProjectTab } from "./model";
 
@@ -9,10 +10,6 @@ export interface ProjectFiltersProps {
   onFilterChange: (filter: ProjectFilterValue) => void;
   search: string;
   onSearchChange: (search: string) => void;
-}
-
-function tabLabel(tab: ProjectTab): string {
-  return tab.code === null ? "All projects" : jurisdictionName(tab.code);
 }
 
 function tabClass(active: boolean): string {
@@ -32,9 +29,10 @@ export function ProjectFilters({
   search,
   onSearchChange,
 }: ProjectFiltersProps): ReactElement {
+  const { text, locale } = useLocale();
   return (
     <div className="project-filters">
-      <div className="project-filters__tabs" role="tablist" aria-label="Filter by jurisdiction">
+      <div className="project-filters__tabs" role="tablist" aria-label={text("Filter by jurisdiction", "Filtrar por jurisdicción")}>
         {tabs.map((tab) => (
           <button
             key={tab.value}
@@ -44,17 +42,17 @@ export function ProjectFilters({
             aria-selected={filter === tab.value}
             onClick={() => onFilterChange(tab.value)}
           >
-            {tabLabel(tab)}{" "}
+            {tab.code === null ? text("All projects", "Todos los proyectos") : jurisdictionName(tab.code, locale)}{" "}
             <span className="project-tab__count">{tab.count}</span>
           </button>
         ))}
       </div>
       <label className="project-filters__search" htmlFor="project-search">
-        Search
+        {text("Search", "Buscar")}
         <input
           id="project-search"
           type="search"
-          placeholder="Title or id"
+          placeholder={text("Title or id", "Título o identificador")}
           value={search}
           onChange={(event) => onSearchChange(event.target.value)}
         />

@@ -57,6 +57,7 @@ import re
 from dataclasses import replace
 
 from clearcut.application.analyze_script import AnalysisReport
+from clearcut.application.concurrency import ContextBinder, map_bounded, run_unbound
 from clearcut.application.grounding_query import grounding_query
 from clearcut.application.ports import (
     ContinuityCheck,
@@ -165,6 +166,12 @@ class EvaluateDelta:
     every parameter is a separate I/O boundary it crosses. The ninth is the
     findings write ADR 0014 adds; the eighth is the webhook ADR 0007 fires
     when a cleared scene changes underneath a producer.
+
+    The tenth, `bind`, is keyword-only because it is not one of those: it is
+    the trace context the per-finding lookups need on their pool threads, and
+    `application/` may not import opentelemetry to fetch it for itself
+    (AGENT.md Section 2 rule 2). `AnalyzeScript`'s docstring carries the same
+    note for the same reason.
     """
 
     def __init__(
@@ -178,6 +185,8 @@ class EvaluateDelta:
         continuity: ContinuityCheck,
         notifier: Notifier,
         findings: FindingStore,
+        *,
+        bind: ContextBinder = run_unbound,
     ) -> None:
         self._ingestion = ingestion
         self._extractor = extractor
@@ -188,6 +197,7 @@ class EvaluateDelta:
         self._continuity = continuity
         self._notifier = notifier
         self._findings = findings
+        self._bind = bind
 
     def execute(
         self,
@@ -303,15 +313,26 @@ class EvaluateDelta:
         candidates: list[TrackerItem],
         existing_items: list[TrackerItem],
     ) -> tuple[list[Finding], list[TrackerItem], list[TrackerItem], list[TrackerItem]]:
+        # Only the lookups move off this thread. The loop below cannot:
+        # `_pop_match` consumes `remaining`, so a candidate item is adopted by
+        # exactly one finding and by the first one that overlaps it, and
+        # `next_number` mints the ids for everything that matched nothing.
+        # Running that body in parallel would let whichever lookup answered
+        # first decide which finding inherits a cleared item's id -- the
+        # carry-forward join D37 describes would stop being a function of the
+        # script. `_flag_and_notify` stays here too, so no webhook is ever
+        # fired from a pool thread.
+        enriched = map_bounded(
+            lambda entry: self._lookup(entry[0], jurisdiction), deduped, self._bind
+        )
+
         findings: list[Finding] = []
         saved_items: list[TrackerItem] = []
         passthrough_items: list[TrackerItem] = []
         remaining = list(candidates)
         next_number = _next_evt_number(existing_items)
 
-        for finding, scene_numbers in deduped:
-            citations = self._citations_for(finding, jurisdiction)
-            claim = self._claim_for(finding, jurisdiction)
+        for (finding, scene_numbers), (citations, claim) in zip(deduped, enriched, strict=True):
             risk_level, needs_review = _resolve(finding, claim)
             match = _pop_match(remaining, scene_numbers)
 
@@ -339,6 +360,15 @@ class EvaluateDelta:
             saved_items.append(item)
 
         return findings, saved_items, passthrough_items, remaining
+
+    def _lookup(
+        self, finding: Finding, jurisdiction: Jurisdiction
+    ) -> tuple[tuple[Citation, ...], RightsClaim | None]:
+        """One finding's two enrichment calls, as a single unit of work for
+        the pool -- `AnalyzeScript._lookup`'s counterpart. Both keep their own
+        `except EnrichmentMissing` below, so D23 is unchanged by where this
+        runs."""
+        return self._citations_for(finding, jurisdiction), self._claim_for(finding, jurisdiction)
 
     def _match_outcome(
         self,
@@ -431,6 +461,7 @@ def _new_tracker_item(
         state=TrackerState.BLOCKED,
         required_document=finding.required_document,
         contact=claim.contact if claim is not None else "",
+        rights_holder_citations=claim.citations if claim is not None else (),
         litigation_posture=claim.litigation_posture if claim is not None else "",
         note="",
         updated_at=at,

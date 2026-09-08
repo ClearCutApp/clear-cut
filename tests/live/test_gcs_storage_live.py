@@ -40,8 +40,9 @@ def test_an_uploaded_script_carries_the_generation_cloud_storage_assigned_it() -
 
     uri = GcsScriptStorage(client, bucket=bucket_name).store(project_id, filename, _PDF)
 
-    assert uri == f"gs://{bucket_name}/{project_id}/{filename}"
-    blob = client.bucket(bucket_name).get_blob(f"{project_id}/{filename}")
+    assert uri.startswith(f"gs://{bucket_name}/{project_id}/")
+    assert uri.endswith(f"/{filename}")
+    blob = client.bucket(bucket_name).get_blob(uri.removeprefix(f"gs://{bucket_name}/"))
     assert blob is not None, "the object the adapter reported writing does not exist"
     try:
         assert blob.generation > 0
@@ -75,3 +76,26 @@ def _crc32c(data: bytes) -> bytes:
     checksum.update(data)  # type: ignore[no-untyped-call]
     digest: bytes = checksum.digest()  # type: ignore[no-untyped-call]
     return digest
+
+
+@pytest.mark.live
+@requires(*_CREDENTIALS)
+def test_same_name_uploads_have_distinct_server_generations_and_original_bytes() -> None:
+    client = _client()
+    bucket_name = env("SCRIPTS_INTAKE_BUCKET")
+    adapter = GcsScriptStorage(client, bucket_name)
+    project_id = scratch_id("live-prj")
+    blobs = []
+    try:
+        for content in (_PDF, _PDF + b"% second revision\n"):
+            uri = adapter.store(project_id, "draft.pdf", content)
+            blob = client.bucket(bucket_name).get_blob(uri.removeprefix(f"gs://{bucket_name}/"))
+            assert blob is not None
+            blobs.append(blob)
+            assert blob.generation > 0
+            assert blob.download_as_bytes() == content
+        assert blobs[0].name != blobs[1].name
+        assert blobs[0].download_as_bytes() == _PDF
+    finally:
+        for blob in blobs:
+            blob.delete()

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { ItemActions } from "./ItemActions";
@@ -22,7 +22,7 @@ describe("ItemActions", () => {
     expect(onNotify).toHaveBeenCalledWith("no answer in 14 days");
   });
 
-  it("asks for a reason the contract requires, and clears it once sent", () => {
+  it("asks for a reason the contract requires, and clears it once recorded", async () => {
     const onNotify = vi.fn();
     render(<ItemActions pending={false} onDraftEmail={vi.fn()} onNotify={onNotify} />);
 
@@ -32,7 +32,7 @@ describe("ItemActions", () => {
     fireEvent.change(reason, { target: { value: "escalated to legal" } });
     fireEvent.click(screen.getByRole("button", { name: "Notify" }));
 
-    expect(reason).toHaveValue("");
+    await waitFor(() => expect(reason).toHaveValue(""));
   });
 
   it("disables both actions and the reason while a mutation is in flight", () => {
@@ -49,4 +49,13 @@ describe("ItemActions", () => {
     expect(screen.getAllByRole("button")).toHaveLength(2);
     expect(screen.queryByRole("button", { name: UNSERVED_ACTION })).toBeNull();
   });
+});
+
+it("retains notification text when the request fails", async () => {
+  render(<ItemActions pending={false} onDraftEmail={vi.fn()} onNotify={vi.fn().mockResolvedValue(false)} />);
+  const reason = screen.getByLabelText("Reason to notify the producer");
+  fireEvent.change(reason, { target: { value: "Private reason" } });
+  fireEvent.click(screen.getByRole("button", { name: "Notify" }));
+  await waitFor(() => expect(reason).toHaveValue("Private reason"));
+  expect(screen.queryByText("Notification recorded.")).not.toBeInTheDocument();
 });

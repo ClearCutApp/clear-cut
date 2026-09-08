@@ -13,6 +13,6 @@ describe("NotFoundView", () => {
     );
 
     expect(screen.getByRole("heading", { name: "Page not found" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Projects" })).toHaveAttribute("href", "/");
+    expect(screen.getByRole("link", { name: "Projects" })).toHaveAttribute("href", "/projects");
   });
 });

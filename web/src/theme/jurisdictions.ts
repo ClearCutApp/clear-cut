@@ -10,6 +10,7 @@ const NAMES = {
   ES: "Spain",
   MX: "Mexico",
   CA: "Canada",
+  CO: "Colombia",
   FR: "France",
   GB: "United Kingdom",
   IN: "India",
@@ -18,6 +19,10 @@ const NAMES = {
 } as const;
 
 export type JurisdictionCode = keyof typeof NAMES;
+/** Current product coverage; historical labels above remain readable. */
+export const LAUNCH_COUNTRIES: readonly JurisdictionCode[] = Object.keys({
+  AR: true, MX: true, ES: true, CO: true, US: true, CA: true,
+}) as JurisdictionCode[];
 
 export interface Jurisdiction {
   code: JurisdictionCode;
@@ -32,6 +37,7 @@ function isKnown(code: string): code is JurisdictionCode {
   return Object.hasOwn(NAMES, code);
 }
 
-export function jurisdictionName(code: string): string {
+export function jurisdictionName(code: string, locale: "en" | "es" = "en"): string {
+  if (locale === "es" && /^[A-Z]{2}$/.test(code)) return new Intl.DisplayNames(["es"], { type: "region" }).of(code) ?? code;
   return isKnown(code) ? NAMES[code] : code;
 }

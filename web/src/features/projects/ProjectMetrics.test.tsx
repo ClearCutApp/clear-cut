@@ -22,10 +22,10 @@ describe("ProjectMetrics", () => {
     expect(screen.getAllByText("0")).toHaveLength(3);
   });
 
-  it("keeps the design's fourth card and says why it holds no number", () => {
+  it("shows only computed metrics without an unavailable placeholder", () => {
     render(<ProjectMetrics metrics={METRICS} />);
 
-    expect(screen.getByText("Clearance totals")).toBeInTheDocument();
-    expect(screen.getByText(/No endpoint sums them across projects/)).toBeInTheDocument();
+    expect(screen.queryByText("Clearance totals")).toBeNull();
+    expect(screen.queryByText(/No endpoint sums them across projects/)).toBeNull();
   });
 });

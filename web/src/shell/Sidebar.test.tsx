@@ -19,8 +19,8 @@ describe("Sidebar", () => {
     renderSidebar(null);
 
     expect(screen.getByText("ClearCut")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Projects" })).toHaveAttribute("href", "/");
-    expect(screen.queryByRole("link", { name: "Dashboard" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Projects" })).toHaveAttribute("href", "/projects");
+    expect(screen.queryByRole("link", { name: "Overview" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Script" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Ask" })).toBeNull();
     expect(screen.getByText(/open once a project is open/)).toBeInTheDocument();
@@ -29,7 +29,7 @@ describe("Sidebar", () => {
   it("adds Dashboard, Script and Ask with the project id encoded", () => {
     renderSidebar("demo x", "/projects/demo%20x");
 
-    expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute("href", "/projects/demo%20x");
+    expect(screen.getByRole("link", { name: "Overview" })).toHaveAttribute("href", "/projects/demo%20x");
     expect(screen.getByRole("link", { name: "Script" })).toHaveAttribute("href", "/projects/demo%20x/script");
     expect(screen.getByRole("link", { name: "Ask" })).toHaveAttribute("href", "/projects/demo%20x/ask");
   });
@@ -38,7 +38,7 @@ describe("Sidebar", () => {
     renderSidebar("p", "/projects/p/script");
 
     expect(screen.getByRole("link", { name: "Script" })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("link", { name: "Dashboard" })).not.toHaveAttribute("aria-current");
+    expect(screen.getByRole("link", { name: "Overview" })).not.toHaveAttribute("aria-current");
     expect(screen.getByRole("link", { name: "Projects" })).not.toHaveAttribute("aria-current");
   });
 
@@ -56,33 +56,14 @@ describe("Sidebar", () => {
     expect(onNavigate).toHaveBeenCalledTimes(1);
   });
 
-  it("draws the design's remaining entries greyed, never as links", () => {
+  it("shows only destinations the current workspace serves", () => {
     renderSidebar("p");
-
-    for (const label of [
-      "Clearances",
-      "Documents",
-      "Reports",
-      "Company & Profile",
-      "Team & Roles",
-      "Authorized Users",
-      "Settings",
-      "Help & Support",
-      "Log Out",
-    ]) {
-      expect(screen.getByText(label)).toHaveAttribute("aria-disabled", "true");
-      expect(screen.queryByRole("link", { name: label })).toBeNull();
-    }
-    expect(screen.getAllByRole("link")).toHaveLength(5);
-  });
-
-  it("says why each greyed group cannot be opened", () => {
-    renderSidebar("p");
-
-    expect(screen.getByText("Organization")).toBeInTheDocument();
-    expect(screen.getByText(/no resource in the API/)).toBeInTheDocument();
-    expect(screen.getByText(/no accounts, no teams and no settings/)).toBeInTheDocument();
-    expect(screen.getByText(/no authentication/)).toBeInTheDocument();
+    expect(screen.queryByText("Settings")).toBeNull();
+    expect(screen.queryByText(/no resource in the API/)).toBeNull();
+    expect(screen.getAllByRole("link")).toHaveLength(12);
+    expect(screen.getByRole("link", { name: "Notifications" })).toHaveAttribute("href", "/projects/p/notifications");
+    expect(screen.getByRole("link", { name: "Reports" })).toHaveAttribute("href", "/projects/p/reports");
+    expect(screen.getByRole("link", { name: "Write" })).toHaveAttribute("href", "/projects/p/editor");
   });
 
   it("invents no company, no user and no search box", () => {

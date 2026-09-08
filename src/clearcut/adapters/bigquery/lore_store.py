@@ -119,7 +119,7 @@ class BigQueryLoreStore:
                 texts=texts, embs=embeddings, metadatas=metadatas
             )
         except Exception as exc:
-            raise LoreUnavailable(f"failed to index {len(records)} record(s): {exc}") from exc
+            raise LoreUnavailable("lore indexing is temporarily unavailable") from exc
 
     def search(self, project_id: str, query: str, limit: int) -> list[BibleFact]:
         if not project_id.strip():
@@ -127,10 +127,10 @@ class BigQueryLoreStore:
         try:
             embedding = self._embeddings.embed_query(query)
             results = self._vector_store.similarity_search_by_vector_with_score(
-                embedding, filter={"project_id": project_id}, k=limit
+                embedding, filter={"project_id": project_id, "kind": _KIND_BIBLE_FACT}, k=limit
             )
         except Exception as exc:
-            raise LoreUnavailable(f"lore search failed for project {project_id!r}: {exc}") from exc
+            raise LoreUnavailable("lore search is temporarily unavailable") from exc
         facts = [
             _bible_fact_from(document)
             for document, _score in results
@@ -152,7 +152,7 @@ class BigQueryLoreStore:
                 filter={"project_id": project_id, "kind": _KIND_BIBLE_FACT}
             )
         except Exception as exc:
-            raise LoreUnavailable(f"lore read failed for project {project_id!r}: {exc}") from exc
+            raise LoreUnavailable("lore retrieval is temporarily unavailable") from exc
         return [
             _bible_fact_from(document)
             for document in documents

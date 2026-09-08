@@ -36,13 +36,14 @@ function ask(question: string): void {
 }
 
 describe("AskView", () => {
-  it("explains that answers are grounded in the bible and the jurisdiction's corpus", () => {
+  it("foregrounds voice with project and jurisdiction context", () => {
     stubFetch({ tracker: noTracker });
 
     renderWithProject(<AskView />);
 
     expect(screen.getByRole("heading", { name: "Ask ClearCut" })).toBeInTheDocument();
-    expect(screen.getByText(/grounded in this project's bible facts/)).toHaveTextContent(
+    expect(screen.getByRole("button", { name: "Record question" })).toBeDisabled();
+    expect(screen.getByText(/Questions for/)).toHaveTextContent(
       jurisdictionName(DEMO_PROJECT.jurisdictionCode),
     );
   });

@@ -23,6 +23,8 @@ web/dist/
 .git/
 .github/
 .claude/
+.codex/
+.agents/
 .atl/
 tests/
 infra/

@@ -3,7 +3,8 @@ import type { ReactElement } from "react";
 import type { Category, TrackerItem } from "../../api/client";
 import { NeedsReviewBadge } from "../../components/atoms/NeedsReviewBadge";
 import { StateBadge } from "../../components/atoms/StateBadge";
-import { CATEGORY_LABELS } from "../../theme/labels";
+import { useLocale } from "../../state/LocaleContext";
+import { CATEGORY_LABELS, CATEGORY_LABELS_ES } from "../../theme/labels";
 import { sceneLabel } from "./model";
 
 export interface TrackerRowProps {
@@ -39,6 +40,7 @@ export function TrackerRow({
   selected,
   onSelect,
 }: TrackerRowProps): ReactElement {
+  const { text, locale } = useLocale();
   return (
     <div className={selected ? "tracker-row tracker-row--selected" : "tracker-row"}>
       <StateBadge state={item.state} />
@@ -51,20 +53,21 @@ export function TrackerRow({
             : "tracker-row__type"
         }
       >
-        {category === null ? "unknown" : CATEGORY_LABELS[category]}
+        {category === null ? text("unknown", "desconocido") : (locale === "es" ? CATEGORY_LABELS_ES : CATEGORY_LABELS)[category]}
       </span>
       <span className="tracker-row__contact">
-        {orPlaceholder(item.contact, "no contact on file")}
+        {orPlaceholder(item.contact, text("no contact on file", "sin contacto registrado"))}
       </span>
-      <span className="tracker-row__scene">{sceneLabel(item.scene_numbers)}</span>
+      <span className="tracker-row__scene">{sceneLabel(item.scene_numbers, locale)}</span>
       <NeedsReviewBadge needsReview={item.needs_review} />
       <button
         type="button"
         className="tracker-row__open"
+        data-tracker-item-id={item.finding_id}
         aria-current={selected ? "true" : undefined}
         onClick={() => onSelect(item.item_id)}
       >
-        Open {item.finding_id}
+        {text("Open", "Abrir")} {item.finding_id}
       </button>
     </div>
   );

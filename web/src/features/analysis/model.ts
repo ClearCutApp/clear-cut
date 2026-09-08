@@ -21,7 +21,7 @@ export const MAX_DELAY_MS = 8_000;
  * exists for a lost connection, not for a stalled job. */
 export const TIMEOUT_MS = 15 * 60 * 1_000;
 
-const TERMINAL_STATES: readonly AnalysisState[] = ["SUCCEEDED", "FAILED"];
+const TERMINAL_STATES: readonly AnalysisState[] = ["SUCCEEDED", "FAILED", "CANCELLED"];
 
 const UNATTRIBUTED_FAILURE =
   "The analysis failed and the server gave no reason.";
@@ -60,6 +60,7 @@ export function nextStep(
   if (job.state === "SUCCEEDED") {
     return { kind: "ready", scriptId: job.script_id };
   }
+  if (job.state === "CANCELLED") return { kind: "failed", message: "The analysis was cancelled." };
   if (job.state === "FAILED") {
     return {
       kind: "failed",

@@ -14,6 +14,7 @@ import {
 import { TrackerFilters } from "../features/tracker/TrackerFilters";
 import { TrackerStats } from "../features/tracker/TrackerStats";
 import { TrackerTable } from "../features/tracker/TrackerTable";
+import { useLocale } from "../state/LocaleContext";
 import { useProject } from "../state/ProjectContext";
 
 /**
@@ -28,6 +29,7 @@ import { useProject } from "../state/ProjectContext";
  * know there are two.
  */
 export function OverviewView(): ReactElement {
+  const { text, locale } = useLocale();
   const { projectId, tracker, trackerError, analysisError, selectedItemId, selectItem, findingFor } =
     useProject();
   const [filter, setFilter] = useState<TrackerFilterValue>("ALL");
@@ -38,8 +40,8 @@ export function OverviewView(): ReactElement {
     if (tracker === null) {
       return [];
     }
-    return groupByState(searchItems(applyFilter(tracker, filter), search));
-  }, [tracker, filter, search]);
+    return groupByState(searchItems(applyFilter(tracker, filter), search, locale));
+  }, [tracker, filter, search, locale]);
 
   const categoryFor = useCallback(
     (itemId: string): Category | null => findingFor(itemId)?.category ?? null,
@@ -48,15 +50,15 @@ export function OverviewView(): ReactElement {
 
   return (
     <section className="tracker">
-      <h2>Overview</h2>
+      <h2>{text("Overview", "Resumen")}</h2>
       <ErrorNotice message={trackerError} />
       <ErrorNotice message={analysisError} />
       {tracker === null && trackerError === null && (
-        <p>Loading the tracker for this project.</p>
+        <p role="status">{text("Loading the tracker for this project.", "Cargando las autorizaciones de este proyecto.")}</p>
       )}
       {tracker !== null && tracker.length === 0 && (
-        <EmptyState title="No analysis has run yet for this project.">
-          <Link to={analyzePath}>Run analysis</Link>
+        <EmptyState title={text("No analysis has run yet for this project.", "Aún no se ha analizado este proyecto.")}>
+          <Link to={analyzePath}>{text("Run analysis", "Analizar guion")}</Link>
         </EmptyState>
       )}
       {tracker !== null && tracker.length > 0 && (

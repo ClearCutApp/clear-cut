@@ -13,6 +13,7 @@ rather than trusted (docs/plan/agentic-workflow.md Sections 4 and 8).
 import time
 from typing import Protocol
 
+import httpx
 from google.genai import errors as genai_errors
 from google.genai import types
 from opentelemetry import metrics, trace
@@ -21,6 +22,7 @@ from clearcut.application.ports import GroundedAnswer
 from clearcut.domain.errors import EnrichmentMissing, SourceUnavailable
 from clearcut.domain.finding import Citation
 from clearcut.domain.jurisdiction import Jurisdiction
+from clearcut.observability import stage_span
 
 
 def _record_stage(stage: str, start: float) -> None:
@@ -71,13 +73,16 @@ class _VertexSearchClient(Protocol):
 class VertexSearchGrounding:
     """Implements `LegalGrounding` over one Vertex AI Search data store."""
 
-    def __init__(self, client: _VertexSearchClient, data_store_id: str) -> None:
+    def __init__(
+        self, client: _VertexSearchClient, data_store_id: str, *, model: str = _MODEL
+    ) -> None:
         self._client = client
         self._data_store_id = data_store_id
+        self._model = model
 
     def ground(self, query: str, jurisdiction: Jurisdiction) -> GroundedAnswer:
         stage_start = time.perf_counter()
-        with trace.get_tracer(__name__).start_as_current_span("ground"):
+        with stage_span(trace.get_tracer(__name__), "ground"):
             answer = self._ground(query, jurisdiction)
         _record_stage("ground", stage_start)
         return answer
@@ -89,12 +94,12 @@ class VertexSearchGrounding:
 
         try:
             response = self._client.generate_content(
-                model=_MODEL,
+                model=self._model,
                 contents=query,
                 config=self._grounded_config(prefix),
             )
-        except genai_errors.APIError as exc:
-            raise GroundingUnavailable(f"grounding call failed: {exc}") from exc
+        except (genai_errors.APIError, httpx.HTTPError) as exc:
+            raise GroundingUnavailable("grounding provider unavailable") from exc
 
         chunks = self._grounding_chunks(response)
         if not chunks:

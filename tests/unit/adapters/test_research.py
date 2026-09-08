@@ -141,7 +141,7 @@ def _adapter_with_transport_failure(error: httpx.TransportError) -> ParallelRigh
     return ParallelRightsResearch(http_client, "parallel-test-key")
 
 
-def test_read_timeout_raises_research_unavailable_with_a_distinct_message() -> None:
+def test_read_timeout_raises_sanitized_research_unavailable() -> None:
     adapter = _adapter_with_transport_failure(httpx.ReadTimeout("timed out"))
 
     with pytest.raises(ResearchUnavailable) as excinfo:
@@ -150,10 +150,7 @@ def test_read_timeout_raises_research_unavailable_with_a_distinct_message() -> N
     assert type(excinfo.value) is ResearchUnavailable
     assert "responded with status" not in str(excinfo.value)
     assert excinfo.value.status_code is None
-    # `parallel.APITimeoutError`'s own message, which `research.py:104`
-    # interpolates in -- pins the message to the underlying error's own text
-    # rather than to something the message merely happens not to say (D34).
-    assert "Request timed out." in str(excinfo.value)
+    assert str(excinfo.value) == "Parallel Task API request failed"
 
 
 def test_read_timeout_is_catchable_as_source_unavailable_alone() -> None:
@@ -203,20 +200,36 @@ def test_module_does_not_import_or_reference_risk_level() -> None:
 
 # --- CP-056: a 2xx the SDK accepts but cannot use ----------------------------
 #
-# Written to prove APIResponseValidationError became a 502, and it found
-# something nearer to hand instead. The SDK accepts a run-create body of any
-# shape, then `task_run.result(None)` raises a bare ValueError from inside the
-# SDK, which routes.py maps to 500. Schema drift on a partner API reported to
-# the producer as a ClearCut bug is exactly what a partner-track submission
-# cannot afford.
+# A 2xx carrying a body the SDK cannot turn into the model it promised reached
+# the producer two ways, neither of them a 502. A `text/html` interstitial from
+# a proxy left a bare `str` where a `TaskRunResult` belongs, and the
+# `AttributeError` on the next line became a 500. A wrong-shaped JSON body
+# constructed far enough to fail `_first_cited_claim`'s `isinstance` check, and
+# `analyze_script.py` swallows the `NoRightsHolderFound` that follows -- schema
+# drift on a partner API delivered as "no rights holder found". Both now cross
+# the port as `ResearchUnavailable`.
 
 
 def test_a_2xx_run_create_with_no_run_id_becomes_research_unavailable() -> None:
-    """The run-create call answers 200 with a body carrying no `run_id`."""
+    """The run-create call answers 200 with a schema-valid but empty `run_id`.
+
+    Strict validation catches a *missing* `run_id` inside the SDK, so the body
+    here is one the SDK accepts. The empty string is what the hand-written
+    guard in `_find` exists for: valid to the schema, unusable as a run id.
+    """
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/v1/tasks/runs":
-            return httpx.Response(200, json={"unexpected": "shape"})
+            return httpx.Response(
+                200,
+                json={
+                    "run_id": "",
+                    "status": "queued",
+                    "is_active": True,
+                    "processor": "core",
+                    "interaction_id": "int_fixture123",
+                },
+            )
         return httpx.Response(200, json=_result_body())
 
     adapter = ParallelRightsResearch(
@@ -228,3 +241,47 @@ def test_a_2xx_run_create_with_no_run_id_becomes_research_unavailable() -> None:
 
     assert isinstance(caught.value, ResearchUnavailable)
     assert not isinstance(caught.value, ValueError)
+
+
+def _adapter_answering_the_result_call_with(response: httpx.Response) -> ParallelRightsResearch:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/tasks/runs":
+            return httpx.Response(200, json=_run_body())
+        return response
+
+    return ParallelRightsResearch(
+        httpx.Client(transport=httpx.MockTransport(handler)), "parallel-test-key"
+    )
+
+
+def test_a_2xx_whose_body_the_sdk_cannot_read_becomes_research_unavailable() -> None:
+    """A proxy answers the result call 200 with an HTML interstitial."""
+    adapter = _adapter_answering_the_result_call_with(
+        httpx.Response(
+            200, text="<html>upstream gateway</html>", headers={"content-type": "text/html"}
+        )
+    )
+
+    with pytest.raises(ResearchUnavailable) as caught:
+        adapter.find(_ASSET_NAME, Category.COPYRIGHT_WORKS, _JURISDICTION)
+
+    assert isinstance(caught.value, SourceUnavailable)
+    # No status code: the response was a 200. What failed was reading its body,
+    # which is a different fault from the non-2xx case above and carries a
+    # different message (tests/unit/adapters/test_error_translation.py:90).
+    assert caught.value.status_code is None
+
+
+def test_a_result_body_of_the_wrong_shape_becomes_research_unavailable() -> None:
+    """The result call answers 200 with JSON that is not a `TaskRunResult`."""
+    adapter = _adapter_answering_the_result_call_with(
+        httpx.Response(200, json={"output": "not-an-object", "run": 12345})
+    )
+
+    with pytest.raises(ResearchUnavailable) as caught:
+        adapter.find(_ASSET_NAME, Category.COPYRIGHT_WORKS, _JURISDICTION)
+
+    # Not `NoRightsHolderFound`: that is an `EnrichmentMissing`, which
+    # `analyze_script.py:238` swallows, so upstream schema drift would reach
+    # the producer as an unresearched asset rather than as an outage.
+    assert not isinstance(caught.value, NoRightsHolderFound)

@@ -7,7 +7,7 @@ export function NotFoundView(): ReactElement {
     <section>
       <h1>Page not found</h1>
       <p>Nothing lives at this address.</p>
-      <Link to="/">Projects</Link>
+      <Link to="/projects">Projects</Link>
     </section>
   );
 }

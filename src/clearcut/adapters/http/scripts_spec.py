@@ -182,6 +182,10 @@ SCHEMAS: JsonDict = {
         "description": "One uploaded screenplay in Cloud Storage.",
         "required": ["gcs_uri", "filename", "size_bytes", "content_type"],
         "properties": {
+            "file_id": {
+                "type": "string",
+                "description": "Owned upload ID; required for live analysis.",
+            },
             "gcs_uri": {
                 "type": "string",
                 "description": "Pass this to `POST /api/projects/{project_id}/scripts`.",
@@ -194,8 +198,17 @@ SCHEMAS: JsonDict = {
     },
     "ScriptCreate": {
         "type": "object",
-        "required": ["gcs_uri", "version", "jurisdiction_code"],
+        "required": ["jurisdiction_code"],
+        "description": "Live analysis requires revision_id. Mock mode retains gcs_uri and version.",
         "properties": {
+            "revision_id": {
+                "type": "string",
+                "description": "Immutable saved revision in this project; required in live mode.",
+            },
+            "file_id": {
+                "type": "string",
+                "description": "Owned upload ID; required for live analysis.",
+            },
             "gcs_uri": {
                 "type": "string",
                 "description": ("The URI `POST /api/projects/{project_id}/script-files` returned."),
@@ -214,7 +227,7 @@ SCHEMAS: JsonDict = {
     },
     "AnalysisState": {
         "type": "string",
-        "enum": ["QUEUED", "RUNNING", "SUCCEEDED", "FAILED"],
+        "enum": ["QUEUED", "RUNNING", "SUCCEEDED", "FAILED", "CANCELLED"],
         "description": (
             "`SUCCEEDED` and `FAILED` are terminal: a job in either never moves again, "
             "and a later run of the same script is a new analysis."
@@ -233,6 +246,10 @@ SCHEMAS: JsonDict = {
             "version",
         ],
         "properties": {
+            "revision_id": {"type": "string"},
+            "stage": {"type": "string"},
+            "attempt": {"type": "integer"},
+            "cancel_requested": {"type": "boolean"},
             "analysis_id": {"type": "string"},
             "project_id": {"type": "string"},
             "script_id": {
@@ -307,6 +324,12 @@ SCHEMAS: JsonDict = {
             "findings",
         ],
         "properties": {
+            "revision_id": {"type": "string"},
+            "revision_draft_version": {"type": "integer"},
+            "settings_version": {"type": ["integer", "null"]},
+            "scene_anchors": {"type": "array", "items": {"type": "object"}},
+            "clearance_bindings": {"type": "object"},
+            "coverage_gaps": {"type": "array", "items": {"type": "object"}},
             "script_id": {"type": "string"},
             "project_id": {"type": "string"},
             "version": {"type": "integer", "minimum": 1},
@@ -332,7 +355,7 @@ PATHS: JsonDict = {
             "summary": "Upload a screenplay PDF and get back the URI to analyze",
             "description": (
                 "Writes the PDF to Cloud Storage and returns its `gs://` URI. Nothing is "
-                "parsed here: pass the returned `gcs_uri` to "
+                "parsed here: pass the returned `file_id` (live) or `gcs_uri` (mock) to "
                 "`POST /api/projects/{project_id}/scripts` to queue an analysis. The two "
                 "steps are separate so a re-analysis of the same upload costs no second "
                 "transfer."
@@ -437,15 +460,29 @@ PATHS: JsonDict = {
             "operationId": "getAnalysis",
             "summary": "The state of one queued analysis",
             "description": (
-                "`SUCCEEDED` carries the `script_id` to read. `FAILED` carries a "
-                "non-empty `error`. A run whose instance was reclaimed mid-run is "
-                "reported as `FAILED` by the read that finds it stale, so a job never "
-                "sits in `RUNNING` forever."
+                "Live jobs resume expired leases through the scheduled dispatcher. "
+                "SUCCEEDED, FAILED and CANCELLED are terminal. Cancellation blocks "
+                "publication; an already submitted provider task may continue remotely."
             ),
             "responses": {
                 "200": schemas.ok(
                     "The analysis job at its newest version.",
                     schemas.json_of(schemas.ref("AnalysisJob")),
+                ),
+                "404": schemas.NOT_FOUND,
+                "500": schemas.INTERNAL_ERROR,
+            },
+        },
+    },
+    "/api/projects/{project_id}/analyses/{analysis_id}/cancellation": {
+        "parameters": [schemas.PROJECT_ID, schemas.ANALYSIS_ID],
+        "post": {
+            "tags": [TAG],
+            "operationId": "cancelAnalysis",
+            "summary": "Cancel a durable analysis before publication",
+            "responses": {
+                "200": schemas.ok(
+                    "Cancellation state.", schemas.json_of(schemas.ref("AnalysisJob"))
                 ),
                 "404": schemas.NOT_FOUND,
                 "500": schemas.INTERNAL_ERROR,

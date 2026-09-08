@@ -115,6 +115,13 @@ def tracker_item_json(item: TrackerItem) -> JsonDict:
         "contact": item.contact,
         "litigation_posture": item.litigation_posture,
         "draft_email": item.draft_email,
+        "clearance_conditions": item.clearance_conditions,
+        "due_date": item.due_date,
+        "assignee_id": item.assignee_id,
+        "evidence_file_ids": list(item.evidence_file_ids),
+        "rights_holder_citations": [
+            citation_json(citation) for citation in item.rights_holder_citations
+        ],
         "note": item.note,
         "updated_at": item.updated_at,
         "version": item.version,

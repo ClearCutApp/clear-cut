@@ -272,7 +272,7 @@ def test_a_raising_pipeline_leaves_the_job_failed_without_raising_to_the_caller(
 
     final = jobs.get("proj-1", "ana-1")
     assert final.state is AnalysisState.FAILED
-    assert final.error == "Document AI returned no pages"
+    assert final.error == "analysis failed; retry or contact project support"
     assert final.version == 3
 
 
@@ -288,7 +288,7 @@ def test_a_pipeline_raising_with_a_blank_message_still_produces_a_non_empty_erro
 
     final = jobs.get("proj-1", "ana-1")
     assert final.state is AnalysisState.FAILED
-    assert final.error == "RuntimeError"
+    assert final.error == "analysis failed; retry or contact project support"
 
 
 def test_a_keyboard_interrupt_is_not_recorded_as_an_analysis_failure() -> None:

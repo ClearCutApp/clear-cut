@@ -58,6 +58,7 @@ export interface Project {
 }
 
 export interface ProjectCreate {
+  organization_id?: string;
   title: string;
   jurisdiction_code: string;
 }
@@ -108,6 +109,11 @@ export interface TrackerItem {
   contact: string;
   litigation_posture: string;
   draft_email: string | null;
+  clearance_conditions?: string;
+  due_date?: string;
+  assignee_id?: string;
+  evidence_file_ids?: string[];
+  rights_holder_citations?: Citation[];
   note: string;
   updated_at: string;
   version: number;
@@ -125,6 +131,12 @@ export interface ScriptSummary {
 }
 
 export interface Script {
+  revision_id?: string;
+  revision_draft_version?: number;
+  scene_anchors?: Array<{scene_number: number; scene_id: string; blocks: Array<{block_id: string; start: number; end: number; page_start: number; page_end: number}>}>;
+  clearance_bindings?: Record<string, {revision_id?: string; present: boolean; scene_ids?: string[]}>;
+  settings_version?: number | null;
+  coverage_gaps?: Array<{stage: string; code: string}>;
   script_id: string;
   project_id: string;
   version: number;
@@ -142,22 +154,29 @@ export interface Script {
  * costs no second transfer, so `gcs_uri` is handed straight to `createScript`.
  */
 export interface ScriptFile {
+  file_id?: string;
   gcs_uri: string;
   filename: string;
   size_bytes: number;
   content_type: string;
 }
 
-export interface ScriptCreate {
+export interface LegacyScriptCreate {
+  file_id?: string;
   gcs_uri: string;
   version: number;
   jurisdiction_code: string;
 }
+export type ScriptCreate = LegacyScriptCreate | { revision_id: string; jurisdiction_code: string };
 
 /** `SUCCEEDED` and `FAILED` are terminal; a later run is a new analysis. */
-export type AnalysisState = "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED";
+export type AnalysisState = "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELLED";
 
 export interface AnalysisJob {
+  revision_id?: string;
+  stage?: string;
+  attempt?: number;
+  cancel_requested?: boolean;
   analysis_id: string;
   project_id: string;
   script_id: string;
@@ -238,11 +257,29 @@ function errorMessage(status: number, body: string): string {
   return trimmed;
 }
 
-async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, init);
+let identityToken: () => Promise<string | null> = async () => null;
+export function setIdentityTokenProvider(provider: () => Promise<string | null>): void {
+  identityToken = provider;
+}
+
+async function requestResponse(path: string, init?: RequestInit): Promise<Response> {
+  const publicRead = path === "/api/health" || path === "/api/jurisdictions" || path === "/api/client-config";
+  const token = publicRead ? null : await identityToken();
+  let authenticated = init;
+  if (token) {
+    const headers = new Headers(init?.headers);
+    headers.set("Authorization", `Bearer ${token}`);
+    authenticated = { ...init, headers };
+  }
+  const response = await fetch(path, authenticated);
   if (!response.ok) {
     throw new ApiError(response.status, errorMessage(response.status, await response.text()));
   }
+  return response;
+}
+
+async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await requestResponse(path, init);
   try {
     return (await response.json()) as T;
   } catch {
@@ -266,10 +303,147 @@ function trackerItemPath(projectId: string, itemId: string): string {
   return `${projectPath(projectId)}/tracker-items/${encodeURIComponent(itemId)}`;
 }
 
+export function reconfirmClearance(projectId: string, itemId: string, expectedVersion: number, revisionId: string): Promise<TrackerItem> {
+  return requestJson(`${trackerItemPath(projectId, itemId)}/reconfirmation`, jsonRequest("POST", {
+    expected_version: expectedVersion, revision_id: revisionId, acknowledged: true,
+  }));
+}
+
+export interface ClearanceCounts {
+  total_retained: number;
+  confirmed_cleared: number;
+  needs_review: number;
+  blocked: number;
+  in_progress: number;
+  present: number;
+  not_detected: number;
+  unknown_binding: number;
+  confirmed_cleared_percent: number;
+}
+export interface ReportSnapshotContext {
+  analysis_id: string;
+  revision_id: string;
+  expected_generation: string;
+  expected_epoch: number;
+  counts: ClearanceCounts;
+}
+export interface ClearanceReport {
+  report_id: string;
+  project_id: string;
+  analysis_id: string;
+  revision_id: string;
+  generation_id: string;
+  clearance_epoch: number;
+  created_at: string;
+  created_by: string;
+  language: "en" | "es";
+  counts: ClearanceCounts;
+  formula_version: string;
+  template_version: string;
+}
+export interface ReportPage { reports: ClearanceReport[]; next_before: string | null; }
+export interface ActivityEvent {
+  event_id: string; kind: string; occurred_at: string; source_version: number;
+  payload: {
+    item_id?: string; revision_id?: string; state?: TrackerState; needs_review?: boolean;
+    item_count?: number; counts?: Partial<ClearanceCounts>; file_id?: string;
+  };
+}
+export interface ActivityPage {
+  configured: boolean; events: ActivityEvent[]; trends: ActivityEvent[]; next_before: string | null;
+}
+export function getProjectActivity(projectId: string, before?: string): Promise<ActivityPage> {
+  return requestJson(`${projectPath(projectId)}/activity${before ? `?before=${encodeURIComponent(before)}` : ""}`);
+}
+export function getReportContext(projectId: string): Promise<{ configured: boolean; snapshot: ReportSnapshotContext | null }> {
+  return requestJson(`${projectPath(projectId)}/reports/context`);
+}
+export function listReports(projectId: string, before?: string): Promise<ReportPage> {
+  return requestJson(`${projectPath(projectId)}/reports${before ? `?before=${encodeURIComponent(before)}` : ""}`);
+}
+export function createReport(projectId: string, snapshot: ReportSnapshotContext, language: "en" | "es"): Promise<ClearanceReport> {
+  const { counts: _counts, ...identity } = snapshot;
+  return requestJson(`${projectPath(projectId)}/reports`, jsonRequest("POST", { ...identity, language }));
+}
+export async function downloadReport(projectId: string, reportId: string, format: "pdf" | "csv"): Promise<Blob> {
+  return (await requestResponse(`${projectPath(projectId)}/reports/${encodeURIComponent(reportId)}/download?format=${format}`)).blob();
+}
+
 // -------------------------------------------------------------- system --
 
 export function getHealth(): Promise<Health> {
   return requestJson<Health>("/api/health");
+}
+
+export interface ClientConfig { apiKey: string; authDomain: string; projectId: string; appId: string; }
+export function getClientConfig(): Promise<ClientConfig> {
+  return requestJson<ClientConfig>("/api/client-config");
+}
+export interface IdentityContext { user_id: string; email: string; }
+export interface Organization { organization_id: string; name: string; role: string; }
+export type WorkspaceRole = "owner" | "admin" | "producer" | "writer" | "viewer";
+export interface WorkspaceMember { user_id: string; email?: string; role: WorkspaceRole; active: boolean; version?: number; }
+export interface WorkspaceInvitation { invitation_id: string; email: string; role: WorkspaceRole; state: string; version: number; expires_at: string; }
+export interface ProjectMembers { organization_id: string; version: number; can_manage: boolean; can_edit?: boolean; members: { user_id: string; email: string; role: WorkspaceRole }[]; }
+export interface ProductionLocation { country: string; location: string; }
+export interface ProjectSettings { project_id: string; title: string; jurisdiction_code: string; version: number; locations: ProductionLocation[]; }
+export function getWorkspaceMembers(organizationId: string): Promise<{ members: WorkspaceMember[] }> {
+  return requestJson(`/api/organizations/${encodeURIComponent(organizationId)}/members`);
+}
+export function getWorkspaceInvitations(organizationId: string): Promise<{ invitations: WorkspaceInvitation[] }> {
+  return requestJson(`/api/organizations/${encodeURIComponent(organizationId)}/invitations`);
+}
+export function inviteWorkspaceMember(organizationId: string, email: string, role: WorkspaceRole): Promise<{ invitation: WorkspaceInvitation; token: string }> {
+  return requestJson(`/api/organizations/${encodeURIComponent(organizationId)}/invitations`, jsonRequest("POST", { email, role }));
+}
+export function revokeWorkspaceInvitation(organizationId: string, invitation: WorkspaceInvitation): Promise<unknown> {
+  return requestJson(`/api/organizations/${encodeURIComponent(organizationId)}/invitations/${encodeURIComponent(invitation.invitation_id)}/revocation`,
+    jsonRequest("POST", { expected_version: invitation.version }));
+}
+export function changeWorkspaceMember(organizationId: string, member: WorkspaceMember, role: WorkspaceRole, active: boolean): Promise<unknown> {
+  return requestJson(`/api/organizations/${encodeURIComponent(organizationId)}/members/${encodeURIComponent(member.user_id)}`,
+    jsonRequest("PATCH", { expected_version: member.version ?? 1, role, active }));
+}
+export function acceptWorkspaceInvitation(token: string): Promise<{ organization_id: string }> {
+  return requestJson("/api/invitations/accept", jsonRequest("POST", { token }));
+}
+export function getProjectMembers(projectId: string): Promise<ProjectMembers> {
+  return requestJson(`${projectPath(projectId)}/members`);
+}
+export function assignProjectMember(projectId: string, userId: string, role: WorkspaceRole | null, expectedVersion: number): Promise<unknown> {
+  return requestJson(`${projectPath(projectId)}/members/${encodeURIComponent(userId)}`,
+    jsonRequest("PATCH", { role, expected_version: expectedVersion }));
+}
+export function getProjectSettings(projectId: string): Promise<ProjectSettings> {
+  return requestJson(`${projectPath(projectId)}/settings`);
+}
+export function saveProjectSettings(projectId: string, settings: ProjectSettings): Promise<ProjectSettings> {
+  return requestJson(`${projectPath(projectId)}/settings`, jsonRequest("PUT", {
+    expected_version: settings.version, title: settings.title,
+    jurisdiction_code: settings.jurisdiction_code, locations: settings.locations,
+  }));
+}
+export interface LocalResearchRecord {
+  research_id: string; project_id: string; created_at: string; settings_version: number;
+  location: ProductionLocation; question: string; text: string; citations: Citation[];
+  status: "evidence_found" | "coverage_gap"; human_clearance: false; provider: string;
+}
+export function listLocalResearch(projectId: string): Promise<{ configured: boolean; research: LocalResearchRecord[] }> {
+  return requestJson(`${projectPath(projectId)}/local-research`);
+}
+export function researchProductionLocation(projectId: string, settingsVersion: number, locationIndex: number, question: string): Promise<LocalResearchRecord> {
+  return requestJson(`${projectPath(projectId)}/local-research`, jsonRequest("POST", {
+    expected_settings_version: settingsVersion, location_index: locationIndex, question,
+  }));
+}
+export function getIdentity(): Promise<IdentityContext> {
+  return requestJson<IdentityContext>("/api/me");
+}
+export function listOrganizations(): Promise<Organization[]> {
+  return requestJson<Organization[]>("/api/organizations");
+}
+export function createOrganization(name: string): Promise<Organization> {
+  return requestJson<Organization>("/api/organizations", jsonRequest("POST", { name }));
 }
 
 // ------------------------------------------------------------ projects --
@@ -345,6 +519,15 @@ export function getAnalysis(
   );
 }
 
+export function cancelAnalysis(projectId: string, analysisId: string): Promise<AnalysisJob> {
+  return requestJson<AnalysisJob>(`${projectPath(projectId)}/analyses/${encodeURIComponent(analysisId)}/cancellation`, jsonRequest("POST", {}));
+}
+
+export async function getCurrentAnalysis(projectId: string): Promise<AnalysisJob | null> {
+  const value = await requestJson<AnalysisJob | {analysis: null}>(`${projectPath(projectId)}/analyses/current`);
+  return "analysis_id" in value ? value : null;
+}
+
 // ------------------------------------------------------------- tracker --
 
 export function listTrackerItems(projectId: string): Promise<TrackerItem[]> {
@@ -362,10 +545,11 @@ export function updateTrackerItemState(
   projectId: string,
   itemId: string,
   state: TrackerState,
+  expectedVersion: number,
 ): Promise<TrackerItem> {
   return requestJson<TrackerItem>(
     trackerItemPath(projectId, itemId),
-    jsonRequest("PATCH", { state }),
+    jsonRequest("PATCH", { state, expected_version: expectedVersion }),
   );
 }
 
@@ -374,10 +558,11 @@ export function updateTrackerItemState(
 export function createTrackerItemEmailDraft(
   projectId: string,
   itemId: string,
+  expectedVersion: number,
 ): Promise<TrackerItem> {
   return requestJson<TrackerItem>(
     `${trackerItemPath(projectId, itemId)}/email-drafts`,
-    { method: "POST" },
+    jsonRequest("POST", { expected_version: expectedVersion }),
   );
 }
 
@@ -403,4 +588,121 @@ export function askProjectQuestion(
     `${projectPath(projectId)}/questions`,
     jsonRequest("POST", { jurisdiction_code: jurisdictionCode, question }),
   );
+}
+
+
+export interface ScreenplayDocument { type: "doc"; content: ScreenplayBlock[]; }
+export interface ScreenplayBlock {
+  type: "paragraph";
+  attrs: { blockId: string; sceneId: string; kind: string };
+  content?: { type: "text" | "hardBreak"; text?: string; marks?: { type: string }[] }[];
+}
+export interface ScreenplayDraft { project_id: string; version: number; document: ScreenplayDocument | null; updated_at: string; updated_by: string; }
+export interface ScreenplayRevision { revision_id: string; project_id: string; draft_version: number; sha256: string; created_at: string; created_by: string; document?: ScreenplayDocument; }
+export interface RevisionPage { revisions: ScreenplayRevision[]; next_before_version: number | null; }
+export function getDraft(projectId: string): Promise<ScreenplayDraft> {
+  return requestJson(`${projectPath(projectId)}/draft`);
+}
+export function saveDraft(projectId: string, expectedVersion: number, document: ScreenplayDocument): Promise<ScreenplayDraft> {
+  return requestJson(`${projectPath(projectId)}/draft`, jsonRequest("PUT", { expected_version: expectedVersion, document }));
+}
+export function freezeRevision(projectId: string, expectedVersion: number): Promise<ScreenplayRevision> {
+  return requestJson(`${projectPath(projectId)}/revisions`, jsonRequest("POST", { expected_version: expectedVersion }));
+}
+export function listRevisions(projectId: string, beforeVersion?: number): Promise<RevisionPage> {
+  return requestJson(`${projectPath(projectId)}/revisions${beforeVersion ? `?before_version=${String(beforeVersion)}` : ""}`);
+}
+export function getRevision(projectId: string, revisionId: string): Promise<ScreenplayRevision> {
+  return requestJson(`${projectPath(projectId)}/revisions/${encodeURIComponent(revisionId)}`);
+}
+
+
+export type SpeechLanguage = "en-US" | "es-419" | "es-ES";
+export interface Transcription { text: string; language: SpeechLanguage; }
+export function transcribeQuestion(projectId: string, audio: Blob, language: SpeechLanguage, signal?: AbortSignal): Promise<Transcription> {
+  const body = new FormData();
+  body.append("audio", audio, "question");
+  body.append("language", language);
+  return requestJson(`${projectPath(projectId)}/transcriptions`, { method: "POST", body, signal });
+}
+
+
+export interface ProjectDocument { file_id: string; organization_id: string; project_id: string; filename: string; content_type: string; size_bytes: number; sha256: string; kind: string; created_by: string; created_at: string; revision_id: string; }
+export interface DocumentPage { documents: ProjectDocument[]; next_before: string | null; }
+export function listDocuments(projectId: string, before?: string): Promise<DocumentPage> {
+  return requestJson(`${projectPath(projectId)}/documents${before ? `?before=${encodeURIComponent(before)}` : ""}`);
+}
+export function uploadDocument(projectId: string, file: File): Promise<ProjectDocument> {
+  const body = new FormData(); body.append("file", file);
+  return requestJson(`${projectPath(projectId)}/documents`, { method: "POST", body });
+}
+export async function downloadDocument(projectId: string, fileId: string): Promise<Blob> {
+  const response = await requestResponse(`${projectPath(projectId)}/documents/${encodeURIComponent(fileId)}`);
+  return response.blob();
+}
+export interface ScreenplayImportResult { draft: ScreenplayDraft; original: ProjectDocument; warnings: string[]; }
+export function importScreenplay(projectId: string, file: File, expectedVersion: number): Promise<ScreenplayImportResult> {
+  const body = new FormData(); body.append("file", file); body.append("expected_version", String(expectedVersion));
+  return requestJson(`${projectPath(projectId)}/imports`, { method: "POST", body });
+}
+export async function exportScreenplay(projectId: string, revisionId: string, format: "pdf" | "fdx"): Promise<Blob> {
+  const response = await requestResponse(`${projectPath(projectId)}/revisions/${encodeURIComponent(revisionId)}/exports/${format}`);
+  return response.blob();
+}
+
+export interface TrackerAuditEvent {
+  event_id: string;
+  actor: string;
+  version: number;
+  previous_version: number;
+  at: string;
+  item: TrackerItem;
+}
+
+export function listTrackerItemHistory(projectId: string, itemId: string, beforeVersion?: number): Promise<TrackerAuditEvent[]> {
+  const query = beforeVersion === undefined ? "" : `?before_version=${beforeVersion}`;
+  return requestJson<TrackerAuditEvent[]>(`${trackerItemPath(projectId, itemId)}/history${query}`);
+}
+
+export interface ClearanceDetails {
+  note: string;
+  clearance_conditions: string;
+  due_date: string;
+  assignee_id: string;
+  evidence_file_ids: string[];
+  draft_email: string | null;
+}
+
+export function updateClearanceDetails(projectId: string, itemId: string, expectedVersion: number, details: ClearanceDetails): Promise<TrackerItem> {
+  return requestJson<TrackerItem>(`${trackerItemPath(projectId, itemId)}/details`, jsonRequest("PUT", { ...details, expected_version: expectedVersion }));
+}
+
+export async function downloadPermissionRequest(projectId: string, itemId: string, version: number, format: "pdf" | "txt"): Promise<Blob> {
+  return (await requestResponse(`${trackerItemPath(projectId, itemId)}/permission-request?version=${version}&format=${format}`)).blob();
+}
+
+export interface ProjectNotification {
+  notification_id: string; item_id: string; item_version: number;
+  actor: string; reason: string; created_at: string; read: boolean;
+  delivery: "in_app_only" | "queued" | "pending" | "delivering" | "delivered" | "blocked" | "failed";
+}
+export interface NotificationPage {
+  configured: boolean; notifications: ProjectNotification[]; next_cursor: string | null;
+}
+export function getProjectNotifications(projectId: string, before?: string): Promise<NotificationPage> {
+  return requestJson(`${projectPath(projectId)}/notifications${before ? `?before=${encodeURIComponent(before)}` : ""}`);
+}
+export function readProjectNotification(projectId: string, notificationId: string): Promise<{ read: boolean }> {
+  return requestJson(`${projectPath(projectId)}/notifications/${encodeURIComponent(notificationId)}/read`, { method: "POST" });
+}
+
+export interface ProjectSearchResult {
+  kind: "script" | "clearance" | "document" | "research"; id: string; title: string; excerpt: string;
+  revision_id?: string; scene_id?: string; version?: number; settings_version?: number;
+}
+export interface ProjectSearchPage {
+  results: ProjectSearchResult[]; total: number; next_cursor: string | null; revision_id: string | null; coverage: string[];
+}
+export function searchProject(projectId: string, query: string, cursor?: string): Promise<ProjectSearchPage> {
+  return requestJson(`${projectPath(projectId)}/search`, jsonRequest("POST", { query, ...(cursor ? { cursor } : {}) }));
 }

@@ -23,7 +23,7 @@ describe("TrackerFilters", () => {
     );
 
     expect(screen.getByRole("button", { name: /all/i })).toHaveTextContent("3");
-    expect(screen.getByRole("button", { name: /blocked/i })).toHaveTextContent("1");
+    expect(screen.getByRole("button", { name: /blocked/i })).toHaveTextContent("0");
     expect(screen.getByRole("button", { name: /in progress/i })).toHaveTextContent("1");
     expect(screen.getByRole("button", { name: /cleared/i })).toHaveTextContent("1");
     expect(screen.getByRole("button", { name: /needs review/i })).toHaveTextContent("1");

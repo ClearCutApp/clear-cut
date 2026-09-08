@@ -1,3 +1,6 @@
+> Historical reference. Recovery specification and workflow in `AGENTS.md` and
+> `docs/recovery/` supersede conflicting instructions and completion claims.
+
 # CHECKPOINTS.md — Loop State
 
 The only shared state between `leader`, `implementer`, and `reviewer`.

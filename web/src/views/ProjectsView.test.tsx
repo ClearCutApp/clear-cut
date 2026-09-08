@@ -57,6 +57,14 @@ function loaded(extra: Record<string, StubRoute> = {}) {
 }
 
 describe("ProjectsView", () => {
+  it("moves keyboard focus to creation from the primary project action", async () => {
+    loaded();
+    await screen.findByRole("heading", { name: "El Ultimo Verano" });
+    fireEvent.click(screen.getByRole("button", { name: "New project" }));
+    expect(screen.getByRole("region", { name: "Create a project" })).toHaveFocus();
+    expect(screen.getByLabelText("Title")).toBeVisible();
+  });
+
   it("lists the projects the server holds, newest first", async () => {
     loaded();
 
@@ -70,7 +78,7 @@ describe("ProjectsView", () => {
 
     await screen.findByText("Jurisdictions");
     expect(screen.getByText("Jurisdictions").previousSibling).toHaveTextContent("2");
-    expect(screen.getByText("On this server").previousSibling?.previousSibling).toHaveTextContent(
+    expect(screen.getByText("Assigned to you").previousSibling?.previousSibling).toHaveTextContent(
       "2",
     );
   });
@@ -101,7 +109,7 @@ describe("ProjectsView", () => {
   it("tells an empty server apart from a failed read", async () => {
     renderView({ projects: ok([]), jurisdictions: ok(JURISDICTIONS) });
 
-    expect(await screen.findByText("This server holds no projects yet.")).toBeInTheDocument();
+    expect(await screen.findByText("No projects assigned yet.")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
@@ -153,7 +161,7 @@ describe("ProjectsView", () => {
     await screen.findByRole("heading", { name: "El Ultimo Verano" });
 
     expect(document.querySelector("img")).toBeNull();
-    expect(screen.getByText("Clearance totals")).toBeInTheDocument();
-    expect(screen.getByText(/No endpoint sums them across projects/)).toBeInTheDocument();
+    expect(screen.queryByText("Clearance totals")).toBeNull();
+    expect(screen.queryByText(/No endpoint sums them across projects/)).toBeNull();
   });
 });

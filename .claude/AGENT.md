@@ -1,3 +1,6 @@
+> Historical reference. Recovery specification and workflow in `AGENTS.md` and
+> `docs/recovery/` supersede conflicting instructions and completion claims.
+
 # AGENT.md — Engineering Contract for ClearCut
 
 The single source of truth for **how** work is done in this repo. Every agent

@@ -1,8 +1,8 @@
 """Questions: grounded questions about one project's clearance state.
 
-The answer comes from the project's own bible facts and the jurisdiction's
-legal corpus, and carries the citations it rests on. An answer with no
-citation is an answer this API does not give.
+Answers combine project bible facts, legal citations or completed revision scene
+projections. Local questions require matching recorded production research.
+Missing evidence or indexing is an explicit gap; no answer changes clearance.
 
 `question` is required and checked here, before any adapter is reached: a
 blank question would otherwise spend a Vertex AI Search call and a model
@@ -30,7 +30,7 @@ SCHEMAS: JsonDict = {
         "type": "object",
         "required": ["question", "jurisdiction_code"],
         "properties": {
-            "question": {"type": "string", "minLength": 1},
+            "question": {"type": "string", "minLength": 1, "maxLength": 4000},
             "jurisdiction_code": {
                 "type": "string",
                 "description": "The corpus the answer is grounded in.",
@@ -52,7 +52,7 @@ SCHEMAS: JsonDict = {
             },
             "citations": {
                 "type": "array",
-                "description": "The legal sources the answer rests on.",
+                "description": "Supporting legal sources or exact saved-revision scene references.",
                 "items": schemas.ref("Citation"),
             },
         },
@@ -68,9 +68,10 @@ PATHS: JsonDict = {
             "operationId": "askProjectQuestion",
             "summary": "Ask about this project's clearance state",
             "description": (
-                "Answers from the project's own bible facts and the jurisdiction's legal "
-                "corpus, and returns the citations the answer rests on. An answer with "
-                "no citation is an answer this API does not give."
+                "Answers from authorized project facts, cited legal sources or the completed "
+                "scene projection for the committed revision. Local questions require recorded "
+                "production-location evidence. Missing evidence and incomplete indexing are "
+                "reported explicitly; research never grants clearance."
             ),
             "requestBody": schemas.body(schemas.ref("QuestionCreate")),
             "responses": {
@@ -83,7 +84,7 @@ PATHS: JsonDict = {
                     "`jurisdiction_code` names no supported jurisdiction."
                 ),
                 "404": schemas.NOT_FOUND,
-                "502": schemas.failure("The grounding service could not answer."),
+                "502": schemas.failure("The grounding service or the web search could not answer."),
                 "500": schemas.INTERNAL_ERROR,
             },
         },
@@ -100,6 +101,8 @@ def create_questions_blueprint(answer_project_question: AnswerProjectQuestion) -
         question = validators.require_field(payload, "question")
         if not isinstance(question, str):
             return question
+        if len(question) > 4000:
+            return errors.error_response(400, "question exceeds 4000 characters")
         jurisdiction = validators.resolve_jurisdiction(str(payload.get("jurisdiction_code", "")))
         if not isinstance(jurisdiction, Jurisdiction):
             return jurisdiction

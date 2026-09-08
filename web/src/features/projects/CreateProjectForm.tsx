@@ -1,5 +1,7 @@
 import { useId, useState, type FormEvent, type ReactElement } from "react";
 
+import { useLocale } from "../../state/LocaleContext";
+import { jurisdictionName, LAUNCH_COUNTRIES } from "../../theme/jurisdictions";
 import type { Jurisdiction, ProjectCreate } from "../../api/client";
 import { ErrorNotice } from "../../components/atoms/ErrorNotice";
 
@@ -31,12 +33,13 @@ export function CreateProjectForm({
   error,
   onSubmit,
 }: CreateProjectFormProps): ReactElement {
+  const { text, locale } = useLocale();
   const titleId = useId();
   const jurisdictionId = useId();
   const [title, setTitle] = useState("");
   const [jurisdictionCode, setJurisdictionCode] = useState("");
 
-  const options = jurisdictions ?? [];
+  const options = (jurisdictions ?? []).filter(jurisdiction => (LAUNCH_COUNTRIES as readonly string[]).includes(jurisdiction.code));
   const ready = options.length > 0;
 
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
@@ -46,9 +49,10 @@ export function CreateProjectForm({
 
   return (
     <form className="create-project" onSubmit={handleSubmit}>
-      <h2>New project</h2>
+      <h2>{text("New project", "Nuevo proyecto")}</h2>
+      <p className="create-project__note">{text("Set the title and primary production jurisdiction. Add your screenplay next.", "Define el título y la jurisdicción principal de producción. Luego agrega tu guion.")}</p>
       <div className="field">
-        <label htmlFor={titleId}>Title</label>
+        <label htmlFor={titleId}>{text("Title", "Título")}</label>
         <input
           id={titleId}
           type="text"
@@ -59,7 +63,7 @@ export function CreateProjectForm({
         />
       </div>
       <div className="field">
-        <label htmlFor={jurisdictionId}>Jurisdiction</label>
+        <label htmlFor={jurisdictionId}>{text("Jurisdiction", "Jurisdicción")}</label>
         <select
           id={jurisdictionId}
           required
@@ -67,26 +71,25 @@ export function CreateProjectForm({
           disabled={submitting || !ready}
           onChange={(event) => setJurisdictionCode(event.target.value)}
         >
-          <option value="">Choose a jurisdiction</option>
+          <option value="">{text("Choose a jurisdiction", "Elige una jurisdicción")}</option>
           {options.map((jurisdiction) => (
             <option key={jurisdiction.code} value={jurisdiction.code}>
-              {jurisdiction.display_name}
+              {locale === "es" ? jurisdictionName(jurisdiction.code, locale) : jurisdiction.display_name}
             </option>
           ))}
         </select>
       </div>
       {!ready && jurisdictionsError === null && (
-        <p className="create-project__note">Reading the jurisdictions this server accepts.</p>
+        <p className="create-project__note">{text("Loading jurisdictions…", "Cargando jurisdicciones…")}</p>
       )}
       {jurisdictionsError !== null && (
         <p className="create-project__note">
-          The jurisdictions could not be read, and a project cannot be created
-          without one. No code is guessed here.
+          {text("Jurisdictions could not be loaded. Reload to try again.", "No se pudieron cargar las jurisdicciones. Recarga para intentarlo de nuevo.")}
         </p>
       )}
       <ErrorNotice message={jurisdictionsError} />
       <button type="submit" className="button button--primary" disabled={submitting || !ready}>
-        {submitting ? "Creating…" : "Create project"}
+        {submitting ? text("Creating…", "Creando…") : text("Create project", "Crear proyecto")}
       </button>
       <ErrorNotice message={error} />
     </form>

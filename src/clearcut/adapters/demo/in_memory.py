@@ -1,7 +1,7 @@
 """In-memory adapters over the CP-043 seed, wired in for `CLEARCUT_MODE=mock`
 (D36).
 
-Each class below implements one of the thirteen application ports directly
+Each class below implements one of the fourteen application ports directly
 over `scenario.py`'s planted data -- no service behind them, no I/O, no clock,
 no environment read. The stores carry mutable state (an in-process dict or
 list), because a producer's PATCH request, `EvaluateDelta`'s carry-forward
@@ -31,6 +31,9 @@ to take.
 
 import time
 from collections import Counter
+from dataclasses import asdict
+from threading import RLock
+from typing import Any
 
 from opentelemetry import metrics, trace
 
@@ -43,7 +46,8 @@ from clearcut.domain.finding import Category, Finding
 from clearcut.domain.jurisdiction import Jurisdiction
 from clearcut.domain.project import Project
 from clearcut.domain.script import Scene, Script
-from clearcut.domain.tracker import TrackerItem
+from clearcut.domain.tracker import TrackerConflict, TrackerItem
+from clearcut.observability import stage_span
 
 # The bucket `scenario.GCS_URI` already names. Mock mode writes nowhere,
 # so this is the shape of a URI rather than a real location.
@@ -87,7 +91,7 @@ class InMemoryScriptIngestion:
 
     def parse(self, gcs_uri: str, script_id: str) -> list[Scene]:
         start = time.perf_counter()
-        with _tracer().start_as_current_span("ingest"):
+        with stage_span(_tracer(), "ingest"):
             scenes = list(scenario.SCENES)
         _record_stage("ingest", start)
         return scenes
@@ -98,7 +102,7 @@ class InMemorySceneExtractor:
 
     def extract(self, scenes: list[Scene], jurisdiction: Jurisdiction) -> list[Finding]:
         start = time.perf_counter()
-        with _tracer().start_as_current_span("extract"):
+        with stage_span(_tracer(), "extract"):
             findings = list(scenario.EXTRACTED_FINDINGS)
         _record_stage("extract", start)
         return findings
@@ -109,9 +113,25 @@ class InMemoryLegalGrounding:
 
     def ground(self, query: str, jurisdiction: Jurisdiction) -> GroundedAnswer:
         start = time.perf_counter()
-        with _tracer().start_as_current_span("ground"):
+        with stage_span(_tracer(), "ground"):
             answer = scenario.GROUNDED_ANSWER
         _record_stage("ground", start)
+        return answer
+
+
+class InMemoryWebGrounding:
+    """Implements `WebGrounding`: always returns the one planted web answer.
+
+    Its own `web_search` span and stage metric, for the same reason every
+    other class here carries one: a Grafana trace of a mocked demo run (D36)
+    has to look like a live run, and the live `ParallelWebSearch` records both.
+    """
+
+    def search(self, question: str, jurisdiction: Jurisdiction) -> GroundedAnswer:
+        start = time.perf_counter()
+        with stage_span(_tracer(), "web_search"):
+            answer = scenario.WEB_ANSWER
+        _record_stage("web_search", start)
         return answer
 
 
@@ -120,7 +140,7 @@ class InMemoryRightsResearch:
 
     def find(self, asset_name: str, category: Category, jurisdiction: Jurisdiction) -> RightsClaim:
         start = time.perf_counter()
-        with _tracer().start_as_current_span("research"):
+        with stage_span(_tracer(), "research"):
             claim = scenario.RIGHTS_CLAIMS_BY_ASSET[asset_name]
         _record_stage("research", start)
         return claim
@@ -280,15 +300,46 @@ class InMemoryTrackerStore:
 
     def __init__(self, scripts: InMemoryScriptStore | None = None) -> None:
         self._items: dict[tuple[str, str], TrackerItem] = {}
+        self._lock = RLock()
+        self._events: dict[tuple[str, str], list[dict[str, Any]]] = {}
         self._scripts = scripts if scripts is not None else InMemoryScriptStore()
 
     def save(self, items: list[TrackerItem]) -> None:
         start = time.perf_counter()
-        with _tracer().start_as_current_span("track"):
+        with stage_span(_tracer(), "track"):
             for item in items:
                 self._items[(item.project_id, item.item_id)] = item
         _record_stage("track", start)
         _refresh_tracker_items_gauge(items)
+
+    def compare_save(self, item: TrackerItem, expected_version: int, actor: str) -> None:
+        with self._lock:
+            current = self.latest(item.project_id, item.item_id)
+            if current.version != expected_version or item.version != expected_version + 1:
+                raise TrackerConflict(current.version)
+            self.save([item])
+            self._events.setdefault((item.project_id, item.item_id), []).append(
+                {
+                    "event_id": f"clearance-{item.project_id}-{item.item_id}-{item.version}",
+                    "actor": actor,
+                    "version": item.version,
+                    "previous_version": expected_version,
+                    "at": item.updated_at,
+                    "item": asdict(item),
+                }
+            )
+
+    def history(
+        self, project_id: str, item_id: str, before_version: int | None = None
+    ) -> list[dict[str, Any]]:
+        self.latest(project_id, item_id)
+        with self._lock:
+            events = self._events.get((project_id, item_id), [])
+            return [
+                event
+                for event in reversed(events)
+                if before_version is None or event["version"] < before_version
+            ][:50]
 
     def latest(self, project_id: str, item_id: str) -> TrackerItem:
         item = self._items.get((project_id, item_id))

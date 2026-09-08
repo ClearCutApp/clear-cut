@@ -1,5 +1,7 @@
 import { useId, type ReactElement } from "react";
 
+import { CitationList } from "./FindingFacts";
+import { useLocale } from "../../state/LocaleContext";
 import type { TrackerItem, TrackerState } from "../../api/client";
 
 export interface TrackerFactsProps {
@@ -40,6 +42,7 @@ function formatUpdatedAt(iso: string): string {
  * when the server's row comes back.
  */
 export function TrackerFacts({ item, pending, onStateChange }: TrackerFactsProps): ReactElement {
+  const { text } = useLocale();
   const titleId = useId();
   const selectId = useId();
   return (
@@ -76,6 +79,8 @@ export function TrackerFacts({ item, pending, onStateChange }: TrackerFactsProps
           <dd>{orPlaceholder(item.note, "no notes")}</dd>
         </div>
       </dl>
+      <h3 className="item-facts__title">{text("Rights-holder research", "Investigación del titular de derechos")}</h3>
+      <CitationList citations={item.rights_holder_citations ?? []} emptyText={text("No cited rights-holder evidence recorded.", "No hay evidencia citada del titular de derechos.")} />
       {item.draft_email !== null && (
         <>
           <h3 className="item-facts__title">Draft email</h3>

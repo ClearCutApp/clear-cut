@@ -9,9 +9,9 @@ export interface FindingFactsProps {
   jurisdictionName: string;
 }
 
-function CitationList({ citations }: { citations: Citation[] }): ReactElement {
+export function CitationList({ citations, emptyText = "No legal references were returned." }: { citations: Citation[]; emptyText?: string }): ReactElement {
   if (citations.length === 0) {
-    return <p className="item-facts__meta">No legal references were returned.</p>;
+    return <p className="item-facts__meta">{emptyText}</p>;
   }
   return (
     <ul className="item-citations">
@@ -19,7 +19,7 @@ function CitationList({ citations }: { citations: Citation[] }): ReactElement {
         <li key={citation.uri} className="item-citations__item">
           <a
             className="item-citations__link"
-            href={citation.uri}
+            href={/^https?:\/\//i.test(citation.uri) ? citation.uri : undefined}
             target="_blank"
             rel="noreferrer"
           >
