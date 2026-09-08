@@ -184,10 +184,7 @@
   border-bottom-color: var(--color-blue);
 }
 
-.stat-card--unavailable {
-  background: transparent;
-  border: 1px dashed var(--color-border);
-}
+
 
 .stat-card__value {
   margin: 0;

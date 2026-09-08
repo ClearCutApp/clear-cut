@@ -20,13 +20,15 @@ const STATE_ORDER: TrackerState[] = ["BLOCKED", "IN_PROGRESS", "CLEARED"];
 
 /** "Scene 1" for one scene, "Scenes 1, 3" for several -- the searchable
  * label a row shows next to its finding and document. */
-export function sceneLabel(sceneNumbers: number[]): string {
-  const noun = sceneNumbers.length === 1 ? "Scene" : "Scenes";
+export function sceneLabel(sceneNumbers: number[], locale: "en" | "es" = "en"): string {
+  const noun = locale === "es"
+    ? (sceneNumbers.length === 1 ? "Escena" : "Escenas")
+    : (sceneNumbers.length === 1 ? "Scene" : "Scenes");
   return `${noun} ${sceneNumbers.join(", ")}`;
 }
 
 function countByState(items: TrackerItem[], state: TrackerState): number {
-  return items.filter((item) => item.state === state).length;
+  return items.filter((item) => item.state === state && !item.needs_review).length;
 }
 
 /** The five headline numbers `TrackerStats` renders, computed from the
@@ -63,19 +65,19 @@ export function applyFilter(items: TrackerItem[], filter: TrackerFilterValue): T
   if (filter === "NEEDS_REVIEW") {
     return items.filter((item) => item.needs_review);
   }
-  return items.filter((item) => item.state === filter);
+  return items.filter((item) => item.state === filter && !item.needs_review);
 }
 
 /** Case-insensitive substring search over the fields a reader would
  * recognise a row by: the required document, the contact, the finding id,
  * and the scene label. A blank query returns every item unchanged. */
-export function searchItems(items: TrackerItem[], query: string): TrackerItem[] {
+export function searchItems(items: TrackerItem[], query: string, locale: "en" | "es" = "en"): TrackerItem[] {
   const needle = query.trim().toLowerCase();
   if (needle.length === 0) {
     return items;
   }
   return items.filter((item) =>
-    [item.required_document, item.contact, item.finding_id, sceneLabel(item.scene_numbers)].some(
+    [item.required_document, item.contact, item.finding_id, sceneLabel(item.scene_numbers, locale)].some(
       (field) => field.toLowerCase().includes(needle),
     ),
   );

@@ -27,6 +27,13 @@ describe("sceneLabel", () => {
 });
 
 describe("trackerStats", () => {
+  it("excludes cleared items requiring review from confirmed counts and filters", () => {
+    const flagged = withState(items[0], { state: "CLEARED", needs_review: true });
+    const confirmed = withState(items[1], { state: "CLEARED", needs_review: false });
+    expect(trackerStats([flagged, confirmed])).toMatchObject({ total: 2, cleared: 1, clearedPercent: 50, needsReview: 1 });
+    expect(applyFilter([flagged, confirmed], "CLEARED")).toEqual([confirmed]);
+    expect(applyFilter([flagged, confirmed], "NEEDS_REVIEW")).toEqual([flagged]);
+  });
   it("counts every state and needs_review across all three fixture rows", () => {
     const stats = trackerStats(items);
 

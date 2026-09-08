@@ -1,3 +1,4 @@
+import { useLocale } from "../../state/LocaleContext";
 import type { ReactElement } from "react";
 
 /**
@@ -25,12 +26,13 @@ function modifier(state: TrackerState): string {
  * `index.css` owns it, never a `[data-testid]` selector (D61).
  */
 export function StateBadge({ state }: StateBadgeProps): ReactElement {
+  const { text } = useLocale();
   return (
     <span
       className={`state-badge state-badge--${modifier(state)}`}
       data-testid="state-badge"
     >
-      {state}
+      {text(state, { BLOCKED: "BLOQUEADO", IN_PROGRESS: "EN CURSO", CLEARED: "AUTORIZADO" }[state])}
     </span>
   );
 }

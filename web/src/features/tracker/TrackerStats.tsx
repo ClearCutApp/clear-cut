@@ -1,3 +1,4 @@
+import { useLocale } from "../../state/LocaleContext";
 import type { CSSProperties, ReactElement } from "react";
 
 import type { TrackerStatsSummary } from "./model";
@@ -13,24 +14,24 @@ interface StatSpec {
   tone: string;
 }
 
-function statsFor(stats: TrackerStatsSummary): StatSpec[] {
+function statsFor(stats: TrackerStatsSummary, text: (en: string, es: string) => string): StatSpec[] {
   return [
     {
-      label: "Blocked",
+      label: text("Blocked", "Bloqueados"),
       value: stats.blocked,
-      detail: "Waiting on a document",
+      detail: text("Waiting on a document", "Esperando documentación"),
       tone: "tracker-summary__value--blocked",
     },
     {
-      label: "In progress",
+      label: text("In progress", "En curso"),
       value: stats.inProgress,
-      detail: "Someone is on it",
+      detail: text("Someone is on it", "Trabajo en curso"),
       tone: "tracker-summary__value--in-progress",
     },
     {
-      label: "Needs review",
+      label: text("Needs review", "Requieren revisión"),
       value: stats.needsReview,
-      detail: "Cleared, then the scene changed",
+      detail: text("Cleared, then the scene changed", "La escena cambió tras la autorización"),
       tone: "tracker-summary__value--needs-review",
     },
   ];
@@ -46,6 +47,7 @@ function statsFor(stats: TrackerStatsSummary): StatSpec[] {
  * below never moves them.
  */
 export function TrackerStats({ stats }: TrackerStatsProps): ReactElement {
+  const { text } = useLocale();
   const ring = { "--cleared-percent": stats.clearedPercent } as CSSProperties;
   return (
     <div className="tracker-summary">
@@ -54,13 +56,13 @@ export function TrackerStats({ stats }: TrackerStatsProps): ReactElement {
           <span className="tracker-donut__inner">{stats.clearedPercent}%</span>
         </div>
         <div className="tracker-summary__stat">
-          <p className="tracker-summary__value tracker-summary__value--cleared">Cleared</p>
+          <p className="tracker-summary__value tracker-summary__value--cleared">{text("Cleared", "Autorizados")}</p>
           <p className="tracker-summary__detail">
-            {stats.cleared} of {stats.total} items
+            {text(`${stats.cleared} of ${stats.total} items`, `${stats.cleared} de ${stats.total} elementos`)}
           </p>
         </div>
       </div>
-      {statsFor(stats).map((stat) => (
+      {statsFor(stats, text).map((stat) => (
         <div className="tracker-summary__stat" key={stat.label}>
           <p className={`tracker-summary__value ${stat.tone}`}>{stat.value}</p>
           <p className="tracker-summary__label">{stat.label}</p>

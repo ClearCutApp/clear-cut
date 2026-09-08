@@ -63,7 +63,7 @@ describe("CreateProjectForm", () => {
   it("waits, saying so, while the jurisdictions are still on their way", () => {
     renderForm({ jurisdictions: null });
 
-    expect(screen.getByText(/Reading the jurisdictions/)).toBeInTheDocument();
+    expect(screen.getByText(/Loading jurisdictions/)).toBeInTheDocument();
     expect(screen.getByLabelText("Jurisdiction")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Create project" })).toBeDisabled();
   });
@@ -71,7 +71,7 @@ describe("CreateProjectForm", () => {
   it("guesses no code when the jurisdictions could not be read", () => {
     renderForm({ jurisdictions: null, jurisdictionsError: "corpus unavailable" });
 
-    expect(screen.getByText(/No code is guessed here/)).toBeInTheDocument();
+    expect(screen.getByText(/Reload to try again/)).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent("corpus unavailable");
     expect(screen.getByRole("button", { name: "Create project" })).toBeDisabled();
   });
