@@ -68,6 +68,7 @@ from clearcut.adapters.clickhouse.findings import ClickHouseFindingStore
 from clearcut.adapters.clickhouse.projects import ClickHouseProjectStore
 from clearcut.adapters.clickhouse.scripts import ClickHouseScriptStore
 from clearcut.adapters.clickhouse.tracker import ClickHouseTrackerStore
+from clearcut.adapters.demo.drafts import MemoryDraftStore, MemoryScreenplayContent
 from clearcut.adapters.demo.in_memory import (
     InMemoryAnalysisJobStore,
     InMemoryContinuityCheck,
@@ -84,9 +85,11 @@ from clearcut.adapters.demo.in_memory import (
     InMemoryTrackerStore,
 )
 from clearcut.adapters.gcp.document_ai import DocumentAIIngestion
+from clearcut.adapters.gcp.drafts import FirestoreDraftStore
 from clearcut.adapters.gcp.firebase_identity import FirebaseIdentityVerifier
 from clearcut.adapters.gcp.firestore_access import FirestoreProjectAccess
 from clearcut.adapters.gcp.project_settings import FirestoreProjectSettings
+from clearcut.adapters.gcp.screenplay_content import GcsScreenplayContent
 from clearcut.adapters.gcp.speech import GoogleSpeechTranscription
 from clearcut.adapters.gcp.storage import GcsScriptStorage, _StorageClient
 from clearcut.adapters.gcp.teams import FirestoreTeams
@@ -94,6 +97,7 @@ from clearcut.adapters.gcp.vertex_search import VertexSearchGrounding
 from clearcut.adapters.gemini.continuity import GeminiContinuityCheck
 from clearcut.adapters.gemini.extractor import GeminiSceneExtractor
 from clearcut.adapters.http.bible import create_bible_blueprint
+from clearcut.adapters.http.drafts import create_drafts_blueprint
 from clearcut.adapters.http.identity import install_identity_boundary
 from clearcut.adapters.http.openapi import build_spec
 from clearcut.adapters.http.projects import create_projects_blueprint
@@ -111,6 +115,7 @@ from clearcut.application.add_bible_facts import AddBibleFacts
 from clearcut.application.analyze_script import AnalyzeScript
 from clearcut.application.answer_project_question import AnswerProjectQuestion
 from clearcut.application.create_project import CreateProject
+from clearcut.application.draft_ports import DraftStore, ScreenplayContent
 from clearcut.application.evaluate_delta import EvaluateDelta
 from clearcut.application.get_analysis import GetAnalysis
 from clearcut.application.get_bible import GetBible
@@ -627,6 +632,7 @@ def _register_api(
     access: ProjectAccess | None = None,
     owned_files: OwnedFiles | None = None,
     client_config: dict[str, str] | None = None,
+    drafts: DraftStore | None = None,
 ) -> None:
     """Mounts the six domain blueprints, then the SPA.
 
@@ -699,6 +705,17 @@ def create_app(build_dir: Path | None = None, *, analysis_runner: Runner | None 
             firestore.Client(project=_required_env("GOOGLE_CLOUD_PROJECT"))
         )
         install_identity_boundary(app, FirebaseIdentityVerifier(firebase_app), access)
+    draft_store: DraftStore = MemoryDraftStore()
+    screenplay_content: ScreenplayContent = MemoryScreenplayContent()
+    if mode == _LIVE_MODE:
+        draft_store = FirestoreDraftStore(
+            firestore.Client(project=_required_env("GOOGLE_CLOUD_PROJECT"))
+        )
+        screenplay_content = GcsScreenplayContent(
+            storage.Client(project=_required_env("GOOGLE_CLOUD_PROJECT")),
+            _required_env("SCRIPTS_INTAKE_BUCKET"),
+        )
+    app.register_blueprint(create_drafts_blueprint(draft_store, screenplay_content))
     voice_options = json.loads(use_cases.provider_config_json)
     speech = (
         GoogleSpeechTranscription(
@@ -736,5 +753,6 @@ def create_app(build_dir: Path | None = None, *, analysis_runner: Runner | None 
             "projectId": os.environ.get("GOOGLE_CLOUD_PROJECT", ""),
             "appId": os.environ.get("FIREBASE_WEB_APP_ID", ""),
         },
+        draft_store,
     )
     return app

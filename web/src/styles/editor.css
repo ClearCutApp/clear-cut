@@ -1,0 +1,132 @@
+.screenplay-editor__header, .screenplay-editor__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+ 
+}
+
+.screenplay-editor__header > div:first-child {
+  margin-right: auto;
+ 
+}
+
+.screenplay-editor__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 16rem;
+  gap: 1.5rem;
+ 
+}
+
+.screenplay-editor__paper, .screenplay-editor__preview {
+  background: #f5f2e9;
+  color: #1d2526;
+  border-radius: 0.25rem;
+  padding: clamp(1.25rem, 5vw, 4rem);
+  font: 1rem/1.5 "Courier New", monospace;
+ 
+}
+
+.screenplay-editor__paper .tiptap {
+  min-height: 35rem;
+  outline-offset: 1rem;
+ 
+}
+
+.screenplay-editor__paper p, .screenplay-editor__preview p {
+  min-height: 1.5em;
+  white-space: pre-wrap;
+  margin: 0 0 1rem;
+ 
+}
+
+.screenplay-editor__paper [data-kind="scene-heading"], .screenplay-editor__preview [data-kind="scene-heading"] {
+  text-transform: uppercase;
+  font-weight: 700;
+ 
+}
+
+.screenplay-editor__paper [data-kind="character"] {
+  margin-left: 35%;
+  text-transform: uppercase;
+  margin-bottom: 0;
+ 
+}
+
+.screenplay-editor__paper [data-kind="dialogue"] {
+  margin-inline: 20%;
+ 
+}
+
+.screenplay-editor__paper [data-kind="parenthetical"] {
+  margin-inline: 25%;
+ 
+}
+
+.screenplay-editor__paper [data-kind="transition"] {
+  text-align: right;
+  text-transform: uppercase;
+ 
+}
+
+.screenplay-editor__history {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1rem;
+ 
+}
+
+.screenplay-editor__recovery {
+  border: 1px solid #ccaf6f;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+ 
+}
+
+.screenplay-editor__recovery .button {
+  margin-right: 1rem;
+ 
+}
+
+.screenplay-editor__preview {
+  margin-top: 2rem;
+ 
+}
+
+@media (width <= 800px) {
+  .screenplay-editor__layout {
+  grid-template-columns: minmax(0, 1fr);
+ 
+}
+
+ .screenplay-editor__toolbar {
+  gap: 0.5rem;
+ 
+}
+
+}
+
+
+.screenplay-editor__import {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  border: 1px solid #29413f;
+}
+
+.documents-view__list {
+  list-style: none;
+  padding: 0;
+}
+
+.documents-view__list li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: space-between;
+  border-bottom: 1px solid #29413f;
+  padding-block: 1rem;
+  overflow-wrap: anywhere;
+}

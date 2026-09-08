@@ -606,6 +606,7 @@ paths:
       operationId: createTrackerItemNotification
       summary: Notify the producer about one item
       description: Posts the item and the reason to the configured outbound webhook.
+        explicit project binding; private reason text remains in-app.
       requestBody:
         required: true
         content:
@@ -683,23 +684,202 @@ paths:
       responses:
         '201':
           description: The fact as stored, carrying the id the server assigned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BibleFact'
+        '400':
+          description: |
+            `text` or `source` is missing, blank, or whitespace only. A fact
+            with no source cannot be cited, and a citation is what makes an
+            audit finding answerable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/projects/{project_id}/questions:
             no supported jurisdiction.'
   /api/projects/{project_id}/draft:
+    get:
+      tags:
+      - Screenplay editor
+      operationId: getDraft
+      summary: getDraft
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Saved document or immutable revision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreenplayDraft'
+        '400':
+          description: Invalid document or expected version
+        '401':
           description: Verified identity required
+        '404':
+          description: Project or revision inaccessible
+        '409':
           description: Draft changed; response includes current_version. Preserve local
+            edits before reloading.
+    put:
+      tags:
+      - Screenplay editor
+      operationId: saveDraft
+      summary: saveDraft
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Saved document or immutable revision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreenplayDraft'
+        '400':
+          description: Invalid document or expected version
+        '401':
           description: Verified identity required
+        '404':
+          description: Project or revision inaccessible
+        '409':
           description: Draft changed; response includes current_version. Preserve local
+            edits before reloading.
+      requestBody:
+        required: true
         description: Canonical screenplay JSON is limited to 8 MiB; block IDs unique
+          and scene IDs stable.
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - document
+              properties:
+                  type: integer
+                  minimum: 0
+                document:
   /api/projects/{project_id}/revisions:
+    get:
+      tags:
+      - Screenplay editor
+      operationId: listRevisions
+      summary: listRevisions
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: before_version
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+        description: Exclusive cursor; at most 50 revisions per page.
+      responses:
+        '200':
+          description: Saved document or immutable revision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RevisionPage'
+        '400':
+          description: Invalid document or expected version
+        '401':
           description: Verified identity required
+        '404':
+          description: Project or revision inaccessible
+        '409':
           description: Draft changed; response includes current_version. Preserve local
+            edits before reloading.
+    post:
+      tags:
+      - Screenplay editor
+      operationId: freezeRevision
+      summary: freezeRevision
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '201':
+          description: Saved document or immutable revision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreenplayRevision'
+        '400':
+          description: Invalid document or expected version
+        '401':
           description: Verified identity required
+        '404':
+          description: Project or revision inaccessible
+        '409':
           description: Draft changed; response includes current_version. Preserve local
+            edits before reloading.
+      requestBody:
+        required: true
         description: Canonical screenplay JSON is limited to 8 MiB; block IDs unique
+          and scene IDs stable.
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              properties:
+                  type: integer
+                  minimum: 0
   /api/projects/{project_id}/revisions/{revision_id}:
+    get:
+      tags:
+      - Screenplay editor
+      operationId: getRevision
+      summary: getRevision
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: revision_id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Saved document or immutable revision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreenplayRevision'
+        '400':
+          description: Invalid document or expected version
+        '401':
           description: Verified identity required
+        '404':
+          description: Project or revision inaccessible
+        '409':
           description: Draft changed; response includes current_version. Preserve local
+            edits before reloading.
+
   /api/projects/{project_id}/transcriptions:
     post:
       tags:
@@ -756,16 +936,56 @@ paths:
           description: Owned immutable file or saved screenplay
           description: Draft changed; original retained in project documents
   /api/projects/{project_id}/revisions/{revision_id}/exports/{format}:
+    get:
+      tags:
+      - Documents
+      operationId: exportScreenplay
+      summary: exportScreenplay
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: revision_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: format
+        in: path
+        required: true
+        schema:
+          enum:
+          - pdf
+          - fdx
+      responses:
+        '200':
           description: Owned immutable file or saved screenplay
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid document or unsupported format
+        '404':
+          description: Project, document or revision inaccessible
+        '409':
           description: Draft changed; original retained in project documents
+        '413':
+          description: File exceeds 25 MiB
+
   /api/projects/{project_id}/tracker-items/{item_id}/history:
   /api/projects/{project_id}/tracker-items/{item_id}/details:
                 $ref: '#/components/schemas/TrackerItem'
   /api/projects/{project_id}/tracker-items/{item_id}/permission-request:
+            text/plain:
   /api/projects/{project_id}/analyses/{analysis_id}/cancellation:
   /api/projects/{project_id}/reports:
   /api/projects/{project_id}/reports/context:
   /api/projects/{project_id}/reports/{report_id}/download:
+            text/csv:
   /api/projects/{project_id}/tracker-items/{item_id}/reconfirmation:
                 $ref: '#/components/schemas/TrackerItem'
   /api/projects/{project_id}/activity:
@@ -1220,12 +1440,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BibleFact'
-        '400':
-          description: |
-            `text` or `source` is missing, blank, or whitespace only. A fact
-            with no source cannot be cited, and a citation is what makes an
-            audit finding answerable.
+                type: object
+        '404':
+          description: No record at this path.
           content:
             application/json:
               schema:
@@ -1861,8 +2078,7 @@ components:
           type: string
           description: What the holder is known to have done about unlicensed use.
         draft_email:
-          description: |
-            The outreach draft, once `email-drafts` has been posted. Null before
+          description: The outreach draft, once `email-drafts` has been posted. Null before that. The
             system never sends it.
           type:
           - string
@@ -1976,7 +2192,10 @@ components:
 
     QuestionAnswer:
       type: object
-      required: [text, facts, citations]
+      required:
+      - text
+      - facts
+      - citations
       properties:
         text:
           type: string
@@ -1992,6 +2211,75 @@ components:
           items:
             $ref: '#/components/schemas/Citation'
       additionalProperties: false
+                      - text
+                      - hardBreak
+                    text:
+                      type: string
+                    marks:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          type:
+                            enum:
+                            - bold
+                            - italic
+    ScreenplayDraft:
+      type: object
+      required:
+      - project_id
+      - version
+      - document
+      - updated_at
+      - updated_by
+      properties:
+        project_id:
+          type: string
+        version:
+          type: integer
+          minimum: 0
+        document:
+          anyOf:
+    ScreenplayRevision:
+      type: object
+      required:
+      - revision_id
+      - project_id
+      - draft_version
+      - sha256
+      - created_at
+      - created_by
+      properties:
+        revision_id:
+          type: string
+        project_id:
+          type: string
+        draft_version:
+          type: integer
+        sha256:
+          type: string
+        created_at:
+          type: string
+        created_by:
+          type: string
+        document:
+            $ref: '#/components/schemas/ScreenplayRevision'
+        next_before_version:
+          type:
+          - integer
+          - 'null'
     Transcription:
       type: object
       required:
+      - text
+      - language
+      properties:
+        text:
+          type: string
+        language:
+          enum:
+          - en-US
+          - es-419
+          - es-ES
+          $ref: '#/components/schemas/ScreenplayDraft'
+        original:

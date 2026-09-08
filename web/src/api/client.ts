@@ -126,6 +126,12 @@ export interface ScriptSummary {
 }
 
 export interface Script {
+  revision_id?: string;
+  revision_draft_version?: number;
+  scene_anchors?: Array<{scene_number: number; scene_id: string; blocks: Array<{block_id: string; start: number; end: number; page_start: number; page_end: number}>}>;
+  clearance_bindings?: Record<string, {revision_id?: string; present: boolean; scene_ids?: string[]}>;
+  settings_version?: number | null;
+  coverage_gaps?: Array<{stage: string; code: string}>;
   script_id: string;
   project_id: string;
   version: number;
@@ -159,6 +165,7 @@ export interface ScriptCreate {
 export type AnalysisState = "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED";
 
 export interface AnalysisJob {
+  revision_id?: string;
   analysis_id: string;
   project_id: string;
   script_id: string;
@@ -494,6 +501,34 @@ export function askProjectQuestion(
     jsonRequest("POST", { jurisdiction_code: jurisdictionCode, question }),
   );
 }
+
+
+export interface ScreenplayDocument { type: "doc"; content: ScreenplayBlock[]; }
+export interface ScreenplayBlock {
+  type: "paragraph";
+  attrs: { blockId: string; sceneId: string; kind: string };
+  content?: { type: "text" | "hardBreak"; text?: string; marks?: { type: string }[] }[];
+}
+export interface ScreenplayDraft { project_id: string; version: number; document: ScreenplayDocument | null; updated_at: string; updated_by: string; }
+export interface ScreenplayRevision { revision_id: string; project_id: string; draft_version: number; sha256: string; created_at: string; created_by: string; document?: ScreenplayDocument; }
+export interface RevisionPage { revisions: ScreenplayRevision[]; next_before_version: number | null; }
+export function getDraft(projectId: string): Promise<ScreenplayDraft> {
+  return requestJson(`${projectPath(projectId)}/draft`);
+}
+export function saveDraft(projectId: string, expectedVersion: number, document: ScreenplayDocument): Promise<ScreenplayDraft> {
+  return requestJson(`${projectPath(projectId)}/draft`, jsonRequest("PUT", { expected_version: expectedVersion, document }));
+}
+export function freezeRevision(projectId: string, expectedVersion: number): Promise<ScreenplayRevision> {
+  return requestJson(`${projectPath(projectId)}/revisions`, jsonRequest("POST", { expected_version: expectedVersion }));
+}
+export function listRevisions(projectId: string, beforeVersion?: number): Promise<RevisionPage> {
+  return requestJson(`${projectPath(projectId)}/revisions${beforeVersion ? `?before_version=${String(beforeVersion)}` : ""}`);
+}
+export function getRevision(projectId: string, revisionId: string): Promise<ScreenplayRevision> {
+  return requestJson(`${projectPath(projectId)}/revisions/${encodeURIComponent(revisionId)}`);
+}
+
+
 export type SpeechLanguage = "en-US" | "es-419" | "es-ES";
 export interface Transcription { text: string; language: SpeechLanguage; }
 export function transcribeQuestion(projectId: string, audio: Blob, language: SpeechLanguage, signal?: AbortSignal): Promise<Transcription> {
@@ -503,4 +538,15 @@ export function transcribeQuestion(projectId: string, audio: Blob, language: Spe
   return requestJson(`${projectPath(projectId)}/transcriptions`, { method: "POST", body, signal });
 }
 
+
+export interface ProjectDocument { file_id: string; organization_id: string; project_id: string; filename: string; content_type: string; size_bytes: number; sha256: string; kind: string; created_by: string; created_at: string; revision_id: string; }
+export interface ScreenplayImportResult { draft: ScreenplayDraft; original: ProjectDocument; warnings: string[]; }
+export function importScreenplay(projectId: string, file: File, expectedVersion: number): Promise<ScreenplayImportResult> {
+  const body = new FormData(); body.append("file", file); body.append("expected_version", String(expectedVersion));
+  return requestJson(`${projectPath(projectId)}/imports`, { method: "POST", body });
+}
+export async function exportScreenplay(projectId: string, revisionId: string, format: "pdf" | "fdx"): Promise<Blob> {
+  const response = await requestResponse(`${projectPath(projectId)}/revisions/${encodeURIComponent(revisionId)}/exports/${format}`);
+  return response.blob();
+}
 

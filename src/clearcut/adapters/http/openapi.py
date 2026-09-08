@@ -22,6 +22,7 @@ from typing import Any, Protocol
 
 from clearcut.adapters.http import (
     bible,
+    drafts,
     projects,
     questions,
     schemas,
@@ -59,6 +60,7 @@ DOMAINS: tuple[Domain, ...] = (
     tracker,
     bible,
     questions,
+    drafts,
     voice,
 )
 
