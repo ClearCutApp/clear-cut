@@ -97,11 +97,36 @@
   --app-panel-width: 22.5rem;
   --app-content-max: 80rem;
 
+  /* ------------------------------- product: states, risk levels, errors
+
+     The semantic layer, and a permanent one. Tracker states, risk levels
+     and errors resolve to the four tones here, which is what keeps a state
+     or risk word mapped to a tone in exactly one place. These names are not
+     debt and nothing deletes them: when the compatibility block below is
+     finally gone, this block is what the partials are reading. */
+  --app-state-blocked: var(--app-red);
+  --app-state-blocked-glow: var(--app-red-glow);
+  --app-state-in-progress: var(--app-amber);
+  --app-state-in-progress-glow: var(--app-amber-glow);
+  --app-state-cleared: var(--app-green);
+  --app-state-cleared-glow: var(--app-green-glow);
+  --app-risk-low: var(--app-green);
+  --app-risk-low-glow: var(--app-green-glow);
+  --app-risk-medium: var(--app-amber);
+  --app-risk-medium-glow: var(--app-amber-glow);
+  --app-risk-high: var(--app-red);
+  --app-risk-high-glow: var(--app-red-glow);
+  --app-risk-critical: var(--app-red);
+  --app-risk-critical-glow: var(--app-red-glow);
+  --app-error: var(--app-red);
+  --app-error-glow: var(--app-red-glow);
+
   /* ---------------------------------------- compatibility aliases
 
-     The names the unmigrated partials still read. Each one is deleted with
-     the partial that reads it; when the last partial is gone, so is this
-     block. Nothing new may be added here. */
+     The names the unmigrated partials still read, each pointing at its
+     `--app-` equivalent above. Each one is deleted with the partial that
+     reads it; when the last partial is gone, so is this block. Nothing new
+     may be added here. */
   --font-sans: var(--app-font-sans);
   --font-mono: var(--app-font-mono);
   --color-ground: var(--app-ground);
@@ -123,22 +148,22 @@
   --color-blue-glow: var(--app-blue-glow);
   --color-accent: var(--app-accent);
   --color-accent-contrast: var(--app-accent-contrast);
-  --color-state-blocked: var(--app-red);
-  --color-state-blocked-glow: var(--app-red-glow);
-  --color-state-in-progress: var(--app-amber);
-  --color-state-in-progress-glow: var(--app-amber-glow);
-  --color-state-cleared: var(--app-green);
-  --color-state-cleared-glow: var(--app-green-glow);
-  --color-risk-low: var(--app-green);
-  --color-risk-low-glow: var(--app-green-glow);
-  --color-risk-medium: var(--app-amber);
-  --color-risk-medium-glow: var(--app-amber-glow);
-  --color-risk-high: var(--app-red);
-  --color-risk-high-glow: var(--app-red-glow);
-  --color-risk-critical: var(--app-red);
-  --color-risk-critical-glow: var(--app-red-glow);
-  --color-error: var(--app-red);
-  --color-error-glow: var(--app-red-glow);
+  --color-state-blocked: var(--app-state-blocked);
+  --color-state-blocked-glow: var(--app-state-blocked-glow);
+  --color-state-in-progress: var(--app-state-in-progress);
+  --color-state-in-progress-glow: var(--app-state-in-progress-glow);
+  --color-state-cleared: var(--app-state-cleared);
+  --color-state-cleared-glow: var(--app-state-cleared-glow);
+  --color-risk-low: var(--app-risk-low);
+  --color-risk-low-glow: var(--app-risk-low-glow);
+  --color-risk-medium: var(--app-risk-medium);
+  --color-risk-medium-glow: var(--app-risk-medium-glow);
+  --color-risk-high: var(--app-risk-high);
+  --color-risk-high-glow: var(--app-risk-high-glow);
+  --color-risk-critical: var(--app-risk-critical);
+  --color-risk-critical-glow: var(--app-risk-critical-glow);
+  --color-error: var(--app-error);
+  --color-error-glow: var(--app-error-glow);
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -229,24 +254,24 @@
   --color-accent: var(--app-accent);
   --color-accent-contrast: var(--app-accent-contrast);
 
-  /* Tracker states, risk levels and errors alias the four tones, so a state
-     or risk word maps to a tone in exactly one place. */
-  --color-state-blocked: var(--app-red);
-  --color-state-blocked-glow: var(--app-red-glow);
-  --color-state-in-progress: var(--app-amber);
-  --color-state-in-progress-glow: var(--app-amber-glow);
-  --color-state-cleared: var(--app-green);
-  --color-state-cleared-glow: var(--app-green-glow);
-  --color-risk-low: var(--app-green);
-  --color-risk-low-glow: var(--app-green-glow);
-  --color-risk-medium: var(--app-amber);
-  --color-risk-medium-glow: var(--app-amber-glow);
-  --color-risk-high: var(--app-red);
-  --color-risk-high-glow: var(--app-red-glow);
-  --color-risk-critical: var(--app-red);
-  --color-risk-critical-glow: var(--app-red-glow);
-  --color-error: var(--app-red);
-  --color-error-glow: var(--app-red-glow);
+  /* Tracker states, risk levels and errors read the semantic layer, which is
+     where the mapping onto the four tones lives. */
+  --color-state-blocked: var(--app-state-blocked);
+  --color-state-blocked-glow: var(--app-state-blocked-glow);
+  --color-state-in-progress: var(--app-state-in-progress);
+  --color-state-in-progress-glow: var(--app-state-in-progress-glow);
+  --color-state-cleared: var(--app-state-cleared);
+  --color-state-cleared-glow: var(--app-state-cleared-glow);
+  --color-risk-low: var(--app-risk-low);
+  --color-risk-low-glow: var(--app-risk-low-glow);
+  --color-risk-medium: var(--app-risk-medium);
+  --color-risk-medium-glow: var(--app-risk-medium-glow);
+  --color-risk-high: var(--app-risk-high);
+  --color-risk-high-glow: var(--app-risk-high-glow);
+  --color-risk-critical: var(--app-risk-critical);
+  --color-risk-critical-glow: var(--app-risk-critical-glow);
+  --color-error: var(--app-error);
+  --color-error-glow: var(--app-error-glow);
 
   /* Brand */
   --color-brand: var(--brand-green);
