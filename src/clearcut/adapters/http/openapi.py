@@ -22,6 +22,7 @@ from typing import Any, Protocol
 
 from clearcut.adapters.http import (
     bible,
+    documents,
     drafts,
     projects,
     questions,
@@ -62,6 +63,7 @@ DOMAINS: tuple[Domain, ...] = (
     questions,
     drafts,
     voice,
+    documents,
 )
 
 INFO: JsonDict = {

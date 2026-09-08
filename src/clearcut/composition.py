@@ -68,6 +68,7 @@ from clearcut.adapters.clickhouse.findings import ClickHouseFindingStore
 from clearcut.adapters.clickhouse.projects import ClickHouseProjectStore
 from clearcut.adapters.clickhouse.scripts import ClickHouseScriptStore
 from clearcut.adapters.clickhouse.tracker import ClickHouseTrackerStore
+from clearcut.adapters.demo.documents import MemoryProjectDocuments
 from clearcut.adapters.demo.drafts import MemoryDraftStore, MemoryScreenplayContent
 from clearcut.adapters.demo.in_memory import (
     InMemoryAnalysisJobStore,
@@ -84,7 +85,10 @@ from clearcut.adapters.demo.in_memory import (
     InMemoryScriptStore,
     InMemoryTrackerStore,
 )
+from clearcut.adapters.documents.screenplay_export import screenplay_fdx, screenplay_pdf
+from clearcut.adapters.documents.screenplay_import import ScreenplayImporter
 from clearcut.adapters.gcp.document_ai import DocumentAIIngestion
+from clearcut.adapters.gcp.documents import GcpProjectDocuments
 from clearcut.adapters.gcp.drafts import FirestoreDraftStore
 from clearcut.adapters.gcp.firebase_identity import FirebaseIdentityVerifier
 from clearcut.adapters.gcp.firestore_access import FirestoreProjectAccess
@@ -97,6 +101,7 @@ from clearcut.adapters.gcp.vertex_search import VertexSearchGrounding
 from clearcut.adapters.gemini.continuity import GeminiContinuityCheck
 from clearcut.adapters.gemini.extractor import GeminiSceneExtractor
 from clearcut.adapters.http.bible import create_bible_blueprint
+from clearcut.adapters.http.documents import create_documents_blueprint
 from clearcut.adapters.http.drafts import create_drafts_blueprint
 from clearcut.adapters.http.identity import install_identity_boundary
 from clearcut.adapters.http.openapi import build_spec
@@ -115,6 +120,7 @@ from clearcut.application.add_bible_facts import AddBibleFacts
 from clearcut.application.analyze_script import AnalyzeScript
 from clearcut.application.answer_project_question import AnswerProjectQuestion
 from clearcut.application.create_project import CreateProject
+from clearcut.application.document_ports import ProjectDocuments
 from clearcut.application.draft_ports import DraftStore, ScreenplayContent
 from clearcut.application.evaluate_delta import EvaluateDelta
 from clearcut.application.get_analysis import GetAnalysis
@@ -728,6 +734,26 @@ def create_app(build_dir: Path | None = None, *, analysis_runner: Runner | None 
         else None
     )
     app.register_blueprint(create_voice_blueprint(speech))
+    documents: ProjectDocuments = MemoryProjectDocuments()
+    importer = ScreenplayImporter()
+    if mode == _LIVE_MODE:
+        documents = GcpProjectDocuments(
+            firestore.Client(project=_required_env("GOOGLE_CLOUD_PROJECT")),
+            storage.Client(project=_required_env("GOOGLE_CLOUD_PROJECT")),
+            _required_env("SCRIPTS_INTAKE_BUCKET"),
+        )
+        importer = ScreenplayImporter(
+            DocumentAIIngestion(
+                documentai.DocumentProcessorServiceClient(),
+                _required_env("DOCAI_PROCESSOR_ID"),
+                timeout=float(voice_options.get("document_timeout", 120)),
+            )
+        )
+    app.register_blueprint(
+        create_documents_blueprint(
+            documents, draft_store, screenplay_content, importer, screenplay_pdf, screenplay_fdx
+        )
+    )
     app.register_blueprint(
         create_workspaces_blueprint(
             FirestoreTeams(firestore.Client(project=_required_env("GOOGLE_CLOUD_PROJECT")))

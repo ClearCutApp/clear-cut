@@ -12,6 +12,7 @@ import { AskView } from "./views/AskView";
 import { NotFoundView } from "./views/NotFoundView";
 import { OverviewView } from "./views/OverviewView";
 import { ProjectsView } from "./views/ProjectsView";
+import { DocumentsView } from "./views/DocumentsView";
 import { TeamView } from "./views/TeamView";
 import { JoinWorkspaceView } from "./views/JoinWorkspaceView";
 import { EditorView } from "./views/EditorView";
@@ -37,6 +38,7 @@ export function App(): ReactElement {
         <Route path="projects/:projectId" element={<ProjectLayout />}>
           <Route index element={<OverviewView />} />
           <Route path="analyze" element={<AnalyzeView />} />
+          <Route path="documents" element={<DocumentsView />} />
           <Route path="editor" element={<EditorView />} />
           <Route path="script" element={<ScriptView />} />
           <Route path="ask" element={<AskView />} />

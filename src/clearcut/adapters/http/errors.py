@@ -18,14 +18,19 @@ guard in `tests/unit/test_error_boundaries.py`, which scopes to
 from collections.abc import Callable
 from typing import Any
 
-from flask import jsonify
+from flask import Response, jsonify
 from flask.typing import ResponseReturnValue
 
+from clearcut.domain.document import InvalidDocument
 from clearcut.domain.errors import RecordNotFound, SourceUnavailable
 from clearcut.domain.identity import AccessDenied
+from clearcut.domain.screenplay import DraftConflict, InvalidScreenplay
+from clearcut.domain.tracker import InvalidClearance, TrackerConflict
+from clearcut.domain.voice import InvalidRecording
+from clearcut.domain.workspace import InvalidWorkspace, WorkspaceConflict
 
 JsonDict = dict[str, Any]
-JsonBody = JsonDict | list[JsonDict]
+JsonBody = JsonDict | list[JsonDict] | Response
 
 _INTERNAL_ERROR_MESSAGE = "internal error"
 
@@ -51,6 +56,25 @@ def run_use_case(
     """
     try:
         body = build()
+    except WorkspaceConflict:
+        return error_response(409, "workspace changed; reload before retrying")
+    except TrackerConflict as error:
+        return jsonify({"error": str(error), "current_version": error.current_version}), 409
+    except DraftConflict as error:
+        return jsonify(
+            {
+                "error": "draft changed; recover your local copy before reloading",
+                "current_version": error.current_version,
+            }
+        ), 409
+    except (
+        InvalidScreenplay,
+        InvalidRecording,
+        InvalidDocument,
+        InvalidClearance,
+        InvalidWorkspace,
+    ) as error:
+        return error_response(400, str(error))
     except AccessDenied:
         return error_response(403, "workspace does not allow this action")
     except RecordNotFound as error:
@@ -65,6 +89,8 @@ def run_use_case(
         # here (D23). A 500 with no stack trace is the honest answer: the
         # body carries a message and never internals.
         return error_response(500, _INTERNAL_ERROR_MESSAGE)
+    if isinstance(body, Response):
+        return body, status
     if location is None:
         return jsonify(body), status
     return jsonify(body), status, {"Location": location}

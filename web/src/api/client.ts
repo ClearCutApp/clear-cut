@@ -149,6 +149,7 @@ export interface Script {
  * costs no second transfer, so `gcs_uri` is handed straight to `createScript`.
  */
 export interface ScriptFile {
+  file_id?: string;
   gcs_uri: string;
   filename: string;
   size_bytes: number;
@@ -540,6 +541,18 @@ export function transcribeQuestion(projectId: string, audio: Blob, language: Spe
 
 
 export interface ProjectDocument { file_id: string; organization_id: string; project_id: string; filename: string; content_type: string; size_bytes: number; sha256: string; kind: string; created_by: string; created_at: string; revision_id: string; }
+export interface DocumentPage { documents: ProjectDocument[]; next_before: string | null; }
+export function listDocuments(projectId: string, before?: string): Promise<DocumentPage> {
+  return requestJson(`${projectPath(projectId)}/documents${before ? `?before=${encodeURIComponent(before)}` : ""}`);
+}
+export function uploadDocument(projectId: string, file: File): Promise<ProjectDocument> {
+  const body = new FormData(); body.append("file", file);
+  return requestJson(`${projectPath(projectId)}/documents`, { method: "POST", body });
+}
+export async function downloadDocument(projectId: string, fileId: string): Promise<Blob> {
+  const response = await requestResponse(`${projectPath(projectId)}/documents/${encodeURIComponent(fileId)}`);
+  return response.blob();
+}
 export interface ScreenplayImportResult { draft: ScreenplayDraft; original: ProjectDocument; warnings: string[]; }
 export function importScreenplay(projectId: string, file: File, expectedVersion: number): Promise<ScreenplayImportResult> {
   const body = new FormData(); body.append("file", file); body.append("expected_version", String(expectedVersion));
