@@ -163,7 +163,8 @@ the `x-api-key` header. The Python SDK is `parallel-web` on PyPI, imported as
 environment. The API overview is at
 https://docs.parallel.ai/getting-started/overview.
 
-Three surfaces carry ClearCut's traffic.
+Two surfaces carry ClearCut's traffic. A third, MCP, is documented below and
+deliberately unused.
 
 **Task API** at `POST https://api.parallel.ai/v1/tasks/runs` runs the
 rights-holder research that `docs/plan/sdd.md` section 3 assigns to the
@@ -175,10 +176,13 @@ producer can check the source before sending a legal request. See
 https://docs.parallel.ai/task-api/task-quickstart and
 https://docs.parallel.ai/task-api/guides/access-research-basis.
 
-**Search API** at `POST https://api.parallel.ai/v1/search` takes an `objective`
-in plain language plus two or three `search_queries`, and returns ranked
-excerpts with URLs and publish dates. Its `mode` field sets the latency floor:
-`turbo` near 250ms, `fast` near 700ms, `advanced` near 3s. See
+**Search API** at `POST https://api.parallel.ai/v1/search` runs the live legal
+grounding that `docs/plan/sdd.md` section 3 assigns to the `WebGrounding` port.
+It takes an `objective` in plain language plus two or three keyword
+`search_queries` of three to six words each, and returns ranked excerpts with
+URLs and publish dates. The adapter is `adapters/parallel/search.py`, and its
+one call site is `AnswerProjectQuestion`, which reaches for it when the
+licensed corpus produced no citation for a legal question. See
 https://docs.parallel.ai/search/search-quickstart.
 
 Its `mode` field sets the latency floor and the price band, and there are four
@@ -236,8 +240,8 @@ sites, which is what `core` is sized for.
 
 That tier does not fit inside the three-minute demo in `docs/plan/proposal.md`; a
 `core` run at 1.5 minutes median eats half the recording. The demo therefore
-splits the two call paths. The live lookup on camera goes through Search MCP
-in `fast` mode, which answers inside a second. The Task API run for the same
+splits the two call paths. The live lookup on camera goes through the Search
+API in `fast` mode, which answers inside a second. The Task API run for the same
 finding starts at script upload, so its cited result is already stored by the
 time we open the Hotel California finding. Both are real runtime traffic,
 which is what the partner requirement asks for (section 11).

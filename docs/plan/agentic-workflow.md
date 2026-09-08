@@ -1,3 +1,6 @@
+> Historical reference. Recovery specification and workflow in `AGENTS.md` and
+> `docs/recovery/` supersede conflicting instructions and completion claims.
+
 # Agentic Workflow
 
 This document defines ClearCut's agent topology and orchestration: what each

@@ -11,14 +11,18 @@ a record.
 
 ## Read these first
 
-Two records supersede documents a reader is likely to land on before finding
-this directory.
+The [approved specification](../../recovery/specification.md) and
+[ADR 0016](architecture/0016-production-recovery.md) govern current recovery.
+The [dated situation](../../recovery/situation-2026-09-07.md) records implementation
+and live-evidence gaps; an accepted ADR does not prove deployment.
 
 - **0001** — the product is ClearCut. `IP Guardian` survives only as a
   historical name inside `docs/resources/`.
-- **0006** — `.claude/AGENT.md` Section 2 owns the codebase layout.
-  `docs/resources/Codebase-Structure.md` describes a flat `app.py` that was
-  never built and is superseded entirely.
+- **0006 / 0016** — root [AGENTS.md](../../../AGENTS.md) and the approved
+  specification govern the current hexagonal layout under `src/clearcut/`.
+  Historical `.claude/AGENT.md` and flat `app.py` diagrams do not override them.
+- **0016** — Firestore owns transactional identity/workspace state; Cloud Run
+  Jobs own durable execution; ClickHouse serves outbox-fed analytics/history.
 
 Everything under `docs/resources/` predates the current build. Where it
 disagrees with an ADR, the ADR is right.
@@ -46,6 +50,7 @@ disagrees with an ADR, the ADR is right.
 | [0013](architecture/0013-analysis-is-a-job-resource.md) | Analysis is a job resource, not a blocking request | Accepted |
 | [0014](architecture/0014-findings-are-durable-and-the-tracker-key-is-wrong.md) | Findings are durable, and the tracker key is wrong | Accepted |
 | [0015](architecture/0015-highlight-spans-are-computed-in-the-domain.md) | Highlight spans are computed in the domain | Accepted |
+| [0016](architecture/0016-production-recovery.md) | Production identity and durable workspace state | Accepted; implementation substantial, deployed acceptance pending |
 
 ## Observability
 
@@ -62,6 +67,6 @@ decided and when.
   styles with vanilla CSS over design tokens in `web/src/styles/`. It also
   describes three surfaces, which became six routed views. The framework and
   build tool it picks are still what ships.
-- **0008** is a launch requirement that has not been met. Grafana Cloud needs a
-  service account credential no one has created, and CP-058 has been blocked on
-  it since 2026-09-03.
+- **0008** remains a launch requirement. Historical CP-058 credential claims are
+  not current environment evidence. Verify dated receiver-side Grafana evidence
+  against the present deployment; see the current situation report.

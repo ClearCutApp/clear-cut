@@ -1,3 +1,6 @@
+> Historical reference. Recovery specification and workflow in `AGENTS.md` and
+> `docs/recovery/` supersede conflicting instructions and completion claims.
+
 # ClearCut Software Design Document
 
 ## Status of this document
@@ -181,6 +184,7 @@ code, per `AGENT.md` §4. `composition.py` is the single wiring point.
 | `SceneExtractor` | `adapters/gemini/extractor.py`, gemini-3.7-flash | One Gemini API call per batch of up to eight scenes; `response_schema` pinned to the six-category finding shape; `thinking_level` set explicitly per call; temperature left at the default 1.0 because lowering it degrades Gemini 3 output |
 | `RightsResearch` | `adapters/parallel/research.py`, Parallel Task API | HTTPS call that searches the live web for the rights holder, a contact address, litigation posture, and per-claim confidence (ASCAP/BMI Songview, SADAIC, WIPO Global Brand Database and peers) |
 | `LegalGrounding` | `adapters/gcp/vertex_search.py`, Vertex AI Search | Query against the one data store built over `gs://clearcut-legal-corpus/`, filtered on the `jurisdiction` metadata field; returns grounded text plus `groundingMetadata` (groundingChunks and groundingSupports) as citations |
+| `WebGrounding` | `adapters/parallel/search.py`, Parallel Search API | One HTTPS POST to `/v1/search` in `fast` mode, searching the live web for a legal question the licensed corpus could not cite; ranks government and intergovernmental hosts above the rest, caps at three, and quotes their excerpts as citations. Separate from `LegalGrounding` because it makes a weaker claim from a different boundary, and named `search` rather than `ground` so neither can be substituted for the other by accident |
 | `ContinuityCheck` | `adapters/gemini/continuity.py`, gemini-3.1-flash-lite | One call per scene comparing the scene against retrieved bible facts; emits a CONTINUITY or POLICY finding on contradiction, or nothing. Called from step 5 of section 4.1 |
 | `LoreStore` | `adapters/bigquery/lore_store.py`, BigQueryVectorStore from langchain-google-community | BigQuery reads and writes; the store auto-creates its dataset and table and brute-force scans under 5,000 rows |
 | `TrackerStore` | `adapters/clickhouse/tracker.py`, ClickHouse Cloud | Inserts and reads over the ClickHouse HTTPS interface; versioned rows in a ReplacingMergeTree keyed by `item_id`; also owns the `script_versions` table, the per-version scene hash sets EvaluateDelta reads |
@@ -202,6 +206,7 @@ because the project holding those providers does not exist.
 | `TrackerStore` | WIP | 23 tests, hand-written client fake raising a real `DatabaseError` | all five methods wrapped, unknown item, empty project, absent script version | 3 tests, skipped | Provisioning. Only `save` is instrumented; the four read siblings are silent |
 | `RightsResearch` | WIP | 14 tests over `httpx.MockTransport` | non-2xx, read timeout, connect error, unreadable 2xx body, uncited claims dropped, unknown confidence | 1 test, skipped | Provisioning. A 2xx the SDK could not build a `TaskRunResult` from used to cross the port as an `AttributeError` (500) or, worse, as a `NoRightsHolderFound` the use case swallows; the client now validates strictly and both arrive as `ResearchUnavailable` (502) |
 | `LegalGrounding` | WIP | 6 tests, hand-written client fake | blank prefix, response without grounding chunks | 2 tests, skipped | The SDK call has no `try/except`. A Vertex 503 returns 500, not 502 |
+| `WebGrounding` | WIP | 17 tests over `httpx.MockTransport` | non-2xx, connect error, unreadable 2xx body, empty excerpts dropped, non-http URL dropped, nothing usable at all | 1 test, skipped | Provisioning only. The call shape (`fast` mode, the jurisdiction in the objective, keyword-length queries) is asserted from the request body, which is the only place it is provable |
 | `SceneExtractor` | WIP | 9 tests, hand-written client fake | unrecognized `ner_label`, empty scene list | 1 test, skipped | The SDK call has no `try/except`. Malformed JSON or a hallucinated scene number returns 500 |
 | `Notifier` | WIP | 7 tests over `httpx.MockTransport` | blank URL, non-2xx, connect error, read timeout | none | No live test exists, although `NOTIFY_WEBHOOK_URL` is a required live variable |
 | `ContinuityCheck` | WIP | 9 tests, hand-written client fake | category outside CONTINUITY/POLICY, empty facts short-circuit | none | Fails every axis: no live test, no span, no metric, no `try/except`. Called once per scene |
@@ -389,7 +394,14 @@ Status for each appears in the table at the head of section 4.
 - `POST /api/projects/{id}/questions`: body `{project_id, question}`; AnswerProjectQuestion
   retrieves bible facts and scene history from the LoreStore, adds
   LegalGrounding context when the question names a legal topic, and answers
-  with citations. **WIP**, built.
+  with citations. When that corpus lookup cites nothing -- whether it raised
+  `EnrichmentMissing` or returned prose with no citations behind it -- the
+  question goes on to WebGrounding, and the live web answer is appended to
+  whatever the corpus managed to say rather than replacing it. A cited corpus
+  answer never spends that second call. A `SourceUnavailable` from the web
+  search propagates to a 502 like every other adapter under D23, so a Parallel
+  outage now fails a question that used to degrade to bible facts; that is
+  deliberate and the reasoning is in `_web_answer`. **WIP**, built.
 - `GET /api/health`: returns the wired `CLEARCUT_MODE`. **WIP**, built. Not
   part of the original design; added so the SPA can state when its data is a
   fixed sample rather than an analysis.
@@ -796,7 +808,6 @@ decision starts from the source.
 | Promise | Stated in | Why it has no home here |
 |---|---|---|
 | Policy and ratings agent: age-rating, brand and sponsor rules, tone rules | `agentic-workflow.md` §2.3 | Mapped onto `SceneExtractor`, whose `response_schema` §3 pins to the six IP categories, with no retrieval input. It cannot emit POLICY findings as specified |
-| Parallel Search MCP for the on-camera lookup | ADR 0003, `infrastructure.md` §7 | The partner track's demo path. §3 defines only `RightsResearch` over the Task API. No port, no adapter, no endpoint |
 | Declared territories, plural | `proposal.md`, `agentic-workflow.md` §4 | `Script` carries one `jurisdiction_code` (§2). An Argentina-Mexico co-production cannot be expressed |
 | Confidence gate below 0.7, escalation to counsel | `agentic-workflow.md` §8 | `Finding` has no confidence field and the tracker has no escalated state |
 | Single project clearance percentage | `proposal.md` | §2 makes percentages presentation-only, and no endpoint or component returns a rollup |
