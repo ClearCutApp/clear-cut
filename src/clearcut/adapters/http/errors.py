@@ -25,6 +25,7 @@ from clearcut.domain.document import InvalidDocument
 from clearcut.domain.durable_analysis import AnalysisBusy
 from clearcut.domain.errors import RecordNotFound, SourceUnavailable
 from clearcut.domain.identity import AccessDenied
+from clearcut.domain.report import ReportConflict
 from clearcut.domain.screenplay import DraftConflict, InvalidScreenplay
 from clearcut.domain.tracker import InvalidClearance, TrackerConflict
 from clearcut.domain.voice import InvalidRecording
@@ -57,6 +58,10 @@ def run_use_case(
     """
     try:
         body = build()
+    except ReportConflict:
+        return error_response(
+            409, "the revision or clearance snapshot changed; reload before creating a report"
+        )
     except WorkspaceConflict:
         return error_response(409, "workspace changed; reload before retrying")
     except AnalysisBusy:

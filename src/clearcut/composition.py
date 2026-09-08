@@ -944,6 +944,43 @@ def create_app(build_dir: Path | None = None, *, analysis_runner: Runner | None 
             else None,
         )
     )
+    from clearcut.adapters.documents.report_export import ClearanceReportRenderer
+    from clearcut.adapters.gcp.reports import FirestoreReports
+    from clearcut.adapters.http.reports import create_reports_blueprint
+    from clearcut.application.create_report import CreateReport
+
+    reports = None
+    create_report = None
+    if mode == _LIVE_MODE:
+        reports = FirestoreReports(firestore.Client(project=_required_env("GOOGLE_CLOUD_PROJECT")))
+        assert (
+            use_cases.durable_jobs is not None
+            and use_cases.analysis_artifacts is not None
+            and use_cases.clearance_snapshots is not None
+        )
+        create_report = CreateReport(
+            use_cases.durable_jobs,
+            use_cases.clearance_snapshots,
+            use_cases.analysis_artifacts,
+            reports,
+            ClearanceReportRenderer(),
+            draft_store,
+            documents,
+            use_cases.local_research,
+        )
+    app.register_blueprint(
+        create_reports_blueprint(
+            reports,
+            create_report,
+            use_cases.clearance_snapshots,
+            use_cases.analysis_artifacts,
+            lambda project_id: (
+                access.get_project(project_id).title
+                if access
+                else use_cases.get_project.execute(project_id).title
+            ),
+        )
+    )
     _register_api(
         app,
         use_cases,

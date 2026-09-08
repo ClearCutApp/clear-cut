@@ -29,6 +29,7 @@ from clearcut.adapters.http import (
     notifications,
     projects,
     questions,
+    reports,
     schemas,
     scripts,
     system,
@@ -70,6 +71,7 @@ DOMAINS: tuple[Domain, ...] = (
     notifications,
     voice,
     documents,
+    reports,
 )
 
 INFO: JsonDict = {

@@ -1,0 +1,16 @@
+"""Published private report metadata and rendering boundaries."""
+
+from typing import Any, Protocol
+
+from clearcut.domain.report import ClearanceReport
+
+
+class ReportStore(Protocol):
+    def publish(self, report: ClearanceReport) -> None: ...
+    def get(self, project_id: str, report_id: str) -> ClearanceReport: ...
+    def list(self, project_id: str, before: str | None = None) -> list[ClearanceReport]: ...
+
+
+class ReportRenderer(Protocol):
+    def pdf(self, snapshot: dict[str, Any]) -> bytes: ...
+    def csv(self, snapshot: dict[str, Any]) -> bytes: ...

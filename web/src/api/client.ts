@@ -309,6 +309,28 @@ export interface ClearanceCounts {
   unknown_binding: number;
   confirmed_cleared_percent: number;
 }
+export interface ReportSnapshotContext {
+  analysis_id: string;
+  revision_id: string;
+  expected_generation: string;
+  expected_epoch: number;
+  counts: ClearanceCounts;
+}
+export interface ClearanceReport {
+  report_id: string;
+  project_id: string;
+  analysis_id: string;
+  revision_id: string;
+  generation_id: string;
+  clearance_epoch: number;
+  created_at: string;
+  created_by: string;
+  language: "en" | "es";
+  counts: ClearanceCounts;
+  formula_version: string;
+  template_version: string;
+}
+export interface ReportPage { reports: ClearanceReport[]; next_before: string | null; }
 export interface ActivityEvent {
   event_id: string; kind: string; occurred_at: string; source_version: number;
   payload: {
@@ -322,6 +344,20 @@ export interface ActivityPage {
 export function getProjectActivity(projectId: string, before?: string): Promise<ActivityPage> {
   return requestJson(`${projectPath(projectId)}/activity${before ? `?before=${encodeURIComponent(before)}` : ""}`);
 }
+export function getReportContext(projectId: string): Promise<{ configured: boolean; snapshot: ReportSnapshotContext | null }> {
+  return requestJson(`${projectPath(projectId)}/reports/context`);
+}
+export function listReports(projectId: string, before?: string): Promise<ReportPage> {
+  return requestJson(`${projectPath(projectId)}/reports${before ? `?before=${encodeURIComponent(before)}` : ""}`);
+}
+export function createReport(projectId: string, snapshot: ReportSnapshotContext, language: "en" | "es"): Promise<ClearanceReport> {
+  const { counts: _counts, ...identity } = snapshot;
+  return requestJson(`${projectPath(projectId)}/reports`, jsonRequest("POST", { ...identity, language }));
+}
+export async function downloadReport(projectId: string, reportId: string, format: "pdf" | "csv"): Promise<Blob> {
+  return (await requestResponse(`${projectPath(projectId)}/reports/${encodeURIComponent(reportId)}/download?format=${format}`)).blob();
+}
+
 // -------------------------------------------------------------- system --
 
 export function getHealth(): Promise<Health> {

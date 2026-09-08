@@ -1210,11 +1210,135 @@ paths:
                 $ref: '#/components/schemas/Error'
 
   /api/projects/{project_id}/reports:
+    parameters:
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    get:
+      tags:
+      - Reports
+      operationId: listReports
+      responses:
+        '200':
+          description: Saved reports, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+    post:
+      tags:
+      - Reports
+      operationId: createReport
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - analysis_id
+              - revision_id
+              - expected_generation
+              - expected_epoch
+              - language
+              properties:
+                analysis_id:
+                  type: string
+                revision_id:
+                  type: string
+                expected_generation:
+                  type: string
+                expected_epoch:
+                  type: integer
+                  minimum: 0
+                language:
+                  type: string
+                  enum:
+                  - en
+                  - es
+      responses:
+        '201':
           description: Fixed report published.
+          content:
+            application/json:
+              schema:
                 $ref: '#/components/schemas/ClearanceReport'
+        '409':
+          content:
+            application/json:
+              schema:
+                type: object
+
   /api/projects/{project_id}/reports/context:
+    parameters:
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    get:
+      tags:
+      - Reports
+      operationId: getReportContext
+      responses:
+        '200':
+          description: Current committed snapshot selection.
+          content:
+            application/json:
+              schema:
+                type: object
+
   /api/projects/{project_id}/reports/{report_id}/download:
+    parameters:
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    - name: report_id
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      tags:
+      - Reports
+      operationId: downloadReport
+      parameters:
+      - name: format
+        in: query
+        schema:
+          type: string
+          enum:
+          - pdf
+          - csv
+      responses:
+        '200':
+          description: The immutable saved PDF or CSV bytes.
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
             text/csv:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/projects/{project_id}/tracker-items/{item_id}/reconfirmation:
       summary: Explicitly confirm evidence and conditions apply to the current revision
                 $ref: '#/components/schemas/TrackerItem'
@@ -2285,6 +2409,30 @@ components:
     ClearanceReport:
       type: object
       required:
+      - report_id
+      - analysis_id
+      - revision_id
+      - generation_id
+        report_id:
+          type: string
+        project_id:
+          type: string
+        analysis_id:
+          type: string
+        revision_id:
+          type: string
+        generation_id:
+          type: string
+        created_at:
+          type: string
+        created_by:
+          type: string
+        language:
+          type: string
+        formula_version:
+          type: string
+        template_version:
+          type: string
     ActivityEvent:
       type: object
       required:
