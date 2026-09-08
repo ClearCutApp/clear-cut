@@ -1178,8 +1178,65 @@ paths:
   /api/projects/{project_id}/tracker-items/{item_id}/reconfirmation:
                 $ref: '#/components/schemas/TrackerItem'
   /api/projects/{project_id}/activity:
+    parameters:
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    get:
+      tags:
+      - Activity
+      operationId: getProjectActivity
+      summary: Read deduplicated project history and committed analysis trends
+      parameters:
+      - name: before
+        in: query
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Private eventual projection.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  configured:
+                    type: boolean
+                  events:
+                    type: array
+                    items:
                       $ref: '#/components/schemas/ActivityEvent'
+                  trends:
+                    type: array
+                    items:
                       $ref: '#/components/schemas/ActivityEvent'
+                  next_before:
+                    type:
+                    - string
+                    - 'null'
+        '400':
+          description: Invalid page cursor.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '502':
+          description: Activity projection unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/organizations/{organization_id}/members:
     parameters:
     - name: organization_id

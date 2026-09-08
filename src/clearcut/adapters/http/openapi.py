@@ -21,6 +21,7 @@ from collections.abc import Iterable
 from typing import Any, Protocol
 
 from clearcut.adapters.http import (
+    activity,
     bible,
     documents,
     drafts,
@@ -54,6 +55,7 @@ class Domain(Protocol):
 
 
 DOMAINS: tuple[Domain, ...] = (
+    activity,
     workspaces,
     system,
     projects,

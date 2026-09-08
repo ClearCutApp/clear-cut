@@ -298,6 +298,30 @@ function trackerItemPath(projectId: string, itemId: string): string {
   return `${projectPath(projectId)}/tracker-items/${encodeURIComponent(itemId)}`;
 }
 
+export interface ClearanceCounts {
+  total_retained: number;
+  confirmed_cleared: number;
+  needs_review: number;
+  blocked: number;
+  in_progress: number;
+  present: number;
+  not_detected: number;
+  unknown_binding: number;
+  confirmed_cleared_percent: number;
+}
+export interface ActivityEvent {
+  event_id: string; kind: string; occurred_at: string; source_version: number;
+  payload: {
+    item_id?: string; revision_id?: string; state?: TrackerState; needs_review?: boolean;
+    item_count?: number; counts?: Partial<ClearanceCounts>; file_id?: string;
+  };
+}
+export interface ActivityPage {
+  configured: boolean; events: ActivityEvent[]; trends: ActivityEvent[]; next_before: string | null;
+}
+export function getProjectActivity(projectId: string, before?: string): Promise<ActivityPage> {
+  return requestJson(`${projectPath(projectId)}/activity${before ? `?before=${encodeURIComponent(before)}` : ""}`);
+}
 // -------------------------------------------------------------- system --
 
 export function getHealth(): Promise<Health> {

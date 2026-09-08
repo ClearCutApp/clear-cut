@@ -37,6 +37,7 @@ import os
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypeVar, cast
 
@@ -84,6 +85,7 @@ from clearcut.adapters.demo.in_memory import (
 )
 from clearcut.adapters.documents.screenplay_export import screenplay_fdx, screenplay_pdf
 from clearcut.adapters.documents.screenplay_import import ScreenplayImporter
+from clearcut.adapters.gcp.activity_outbox import FirestoreActivityOutbox
 from clearcut.adapters.gcp.analysis_artifacts import GcsAnalysisArtifacts
 from clearcut.adapters.gcp.analysis_jobs import FirestoreAnalysisJobs
 from clearcut.adapters.gcp.document_ai import DocumentAIIngestion
@@ -102,6 +104,7 @@ from clearcut.adapters.gcp.tracker import FirestoreTrackerStore
 from clearcut.adapters.gcp.vertex_search import VertexSearchGrounding
 from clearcut.adapters.gemini.continuity import GeminiContinuityCheck
 from clearcut.adapters.gemini.extractor import GeminiSceneExtractor
+from clearcut.adapters.http.activity import create_activity_blueprint
 from clearcut.adapters.http.bible import create_bible_blueprint
 from clearcut.adapters.http.documents import create_documents_blueprint
 from clearcut.adapters.http.drafts import create_drafts_blueprint
@@ -139,6 +142,7 @@ from clearcut.application.list_projects import ListProjects
 from clearcut.application.list_scripts import ListScripts
 from clearcut.application.list_tracker_items import ListTrackerItems
 from clearcut.application.notification_ports import ProjectNotifications
+from clearcut.application.project_activity import ProjectActivity
 from clearcut.application.resolve_finding import ResolveFinding
 from clearcut.application.run_durable_analysis import RunDurableAnalysis
 from clearcut.application.start_analysis import Runner, StartAnalysis, Work
@@ -430,6 +434,27 @@ def build_analysis_dispatcher() -> tuple[FirestoreAnalysisJobs, CloudRunAnalysis
         CloudRunAnalysisLauncher(
             run_v2.JobsClient(), f"projects/{project}/locations/{region}/jobs/{name}"
         ),
+    )
+
+
+def build_activity_dispatcher() -> ProjectActivity:
+    project = _required_env("GOOGLE_CLOUD_PROJECT")
+    client = cast(
+        _ChClient,
+        clickhouse_connect.get_client(
+            host=bare_host(_required_env("CLICKHOUSE_HOST")),
+            username=_required_env("CLICKHOUSE_USER"),
+            password=_required_env("CLICKHOUSE_PASSWORD"),
+            secure=True,
+            connect_timeout=10,
+            send_receive_timeout=30,
+            query_retries=0,
+        ),
+    )
+    return ProjectActivity(
+        FirestoreActivityOutbox(firestore.Client(project=project)),
+        ClickHouseActivity(client),
+        lambda: datetime.now(UTC),
     )
 
 
@@ -850,6 +875,7 @@ def create_app(build_dir: Path | None = None, *, analysis_runner: Runner | None 
             documents, draft_store, screenplay_content, importer, screenplay_pdf, screenplay_fdx
         )
     )
+    app.register_blueprint(create_activity_blueprint(use_cases.activity))
     app.register_blueprint(
         create_workspaces_blueprint(
             FirestoreTeams(firestore.Client(project=_required_env("GOOGLE_CLOUD_PROJECT")))
