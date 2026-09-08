@@ -38,5 +38,32 @@ def test_ensure_schema_issues_the_creates_and_never_a_drop() -> None:
 
     schema.ensure_schema(client)
 
-    assert client.commands == list(schema.DDL)
+    assert client.commands == [*schema.DDL, *schema.ALTERATIONS]
     assert not any("DROP" in statement for statement in client.commands)
+
+
+def test_every_column_addition_widens_a_table_the_creates_name() -> None:
+    """`CREATE TABLE IF NOT EXISTS` is silent about a table that already
+    exists, so a column added to a create statement reaches only deployments
+    provisioned after it. `ALTERATIONS` carries it to the rest -- and, like
+    the creates, may only name a table this schema owns."""
+    for statement in schema.ALTERATIONS:
+        assert statement.startswith("ALTER TABLE ")
+        assert "ADD COLUMN IF NOT EXISTS" in statement, statement
+        table = statement.removeprefix("ALTER TABLE ").split(" ", 1)[0]
+        assert table in schema.TABLES, statement
+
+
+def test_no_column_addition_repeats_a_column_the_create_already_carries() -> None:
+    """Not a duplicate of the create: a fresh table gets the column from the
+    create statement and the addition is a no-op, which is the point. This
+    asserts the two agree on the column's name and type, so a table widened by
+    `ALTERATIONS` and one made by `DDL` are the same table."""
+    projects_ddl = next(
+        statement
+        for statement in schema.DDL
+        if statement.startswith("CREATE TABLE IF NOT EXISTS projects")
+    )
+    for statement in schema.ALTERATIONS:
+        column = statement.split("ADD COLUMN IF NOT EXISTS ", 1)[1]
+        assert f"    {column},\n" in projects_ddl or f"    {column}\n" in projects_ddl, statement

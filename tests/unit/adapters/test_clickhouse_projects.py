@@ -25,12 +25,18 @@ def _project(
     title: str = "El Ultimo Verano",
     jurisdiction_code: str = "AR",
     created_at: str = "2026-09-05T12:00:00Z",
+    poster_uri: str | None = None,
+    format: str | None = None,
+    status: str | None = None,
 ) -> Project:
     return Project(
         project_id=project_id,
         title=title,
         jurisdiction_code=jurisdiction_code,
         created_at=created_at,
+        poster_uri=poster_uri,
+        format=format,
+        status=status,
     )
 
 
@@ -128,3 +134,81 @@ def test_get_wraps_a_client_error_as_clickhouse_unavailable() -> None:
 def test_all_wraps_a_client_error_as_clickhouse_unavailable() -> None:
     with pytest.raises(ClickHouseUnavailable):
         ClickHouseProjectStore(ExplodingChClient()).all()
+
+
+# --- The three optional presentation fields ---------------------------------
+#
+# They are `Nullable(String)` columns added after rows already existed, so both
+# directions matter: a project that carries them must survive the round trip,
+# and a row written before they existed must still read.
+
+
+def test_a_project_with_every_optional_field_survives_the_round_trip() -> None:
+    client = FakeChClient()
+    adapter = ClickHouseProjectStore(client)
+    stored = _project(
+        poster_uri="gs://clearcut-posters/prj-4f2a.jpg",
+        format="feature_film",
+        status="in_development",
+    )
+
+    adapter.save(stored)
+    table, rows, columns = client.inserts[0]
+    client.set_result([tuple(rows[0])])
+
+    assert adapter.get("prj-4f2a") == stored
+    assert rows[0][columns.index("poster_uri")] == "gs://clearcut-posters/prj-4f2a.jpg"
+    assert rows[0][columns.index("format")] == "feature_film"
+    assert rows[0][columns.index("status")] == "in_development"
+
+
+def test_a_project_with_none_of_them_writes_three_nulls() -> None:
+    """Not empty strings. The column is `Nullable(String)`, and a row that
+    stored `''` would come back as a format the domain then refuses."""
+    client = FakeChClient()
+
+    ClickHouseProjectStore(client).save(_project())
+
+    _, rows, columns = client.inserts[0]
+    for column in ("poster_uri", "format", "status"):
+        assert rows[0][columns.index(column)] is None, column
+
+
+def test_a_row_written_before_the_columns_existed_still_reads() -> None:
+    """`SELECT *` against a table nobody has widened yet answers with the
+    original four values. Reading those as an unset poster is the truth about
+    that row; refusing to read it would take the whole list down."""
+    client = FakeChClient()
+    adapter = ClickHouseProjectStore(client)
+    client.set_result([("prj-4f2a", "El Ultimo Verano", "AR", "2026-09-05T12:00:00Z")])
+
+    project = adapter.get("prj-4f2a")
+
+    assert (project.poster_uri, project.format, project.status) == (None, None, None)
+    assert project.title == "El Ultimo Verano"
+
+
+def test_an_empty_string_read_back_folds_into_unset() -> None:
+    """A driver that prefers `''` to `None` for a nullable column must not
+    hand the domain a format it is bound to refuse."""
+    client = FakeChClient()
+    adapter = ClickHouseProjectStore(client)
+    client.set_result([("prj-4f2a", "El Ultimo Verano", "AR", "2026-09-05T12:00:00Z", "", "", "")])
+
+    project = adapter.get("prj-4f2a")
+
+    assert (project.poster_uri, project.format, project.status) == (None, None, None)
+
+
+def test_the_insert_names_every_column_the_create_statement_declares() -> None:
+    """The insert passes column names explicitly, so a column added to the DDL
+    and forgotten here would write `NULL` into it forever without failing."""
+    from clearcut.adapters.clickhouse import schema
+
+    client = FakeChClient()
+    ClickHouseProjectStore(client).save(_project())
+
+    _, _, columns = client.inserts[0]
+    ddl = next(cmd for cmd in schema.DDL if cmd.startswith("CREATE TABLE IF NOT EXISTS projects"))
+    for column in columns:
+        assert f"{column} " in ddl or f"`{column}` " in ddl, column

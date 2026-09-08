@@ -91,6 +91,42 @@ def require_fact_kind(body: JsonDict) -> FactKind | ResponseReturnValue:
     return FactKind(value)
 
 
+def optional_text(body: JsonDict, field: str) -> str | None:
+    """The string at `body[field]`, or `None` when it is absent or not one.
+
+    Pair it with `reject_bad_optional`, which is what turns "present and not a
+    string" into a 400: this function only reads, so a handler never has to
+    tell a value apart from an error response.
+    """
+    value = body.get(field)
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def reject_bad_optional(
+    body: JsonDict, field: str, allowed: frozenset[str] | None = None
+) -> ResponseReturnValue | None:
+    """`None` when `body[field]` is absent, null, or acceptable; a 400 otherwise.
+
+    Returns the error rather than the value, because these fields are optional
+    and `None` is a legitimate answer: a function returning `str | None |
+    ResponseReturnValue` would leave every handler guessing which of the three
+    it holds.
+
+    `allowed` is the domain's own set when the field is a closed one. The
+    check is repeated here rather than left to `Project.__post_init__` only
+    because the domain's `ValueError` reaches `run_use_case` as a 500, and a
+    misspelled format is a request the client can fix.
+    """
+    value = body.get(field)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        return errors.error_response(400, f"{field} must be a non-empty string or null")
+    if allowed is not None and value not in allowed:
+        return errors.error_response(400, f"{field} must be one of: {', '.join(sorted(allowed))}")
+    return None
+
+
 def resolve_jurisdiction(code: str) -> Jurisdiction | ResponseReturnValue:
     """A `Jurisdiction`, or a 400 naming the code that matched none."""
     try:

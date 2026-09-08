@@ -199,6 +199,33 @@ class InMemoryProjectStore:
         return list(self._projects.values())
 
 
+class InMemoryProjectFavourites:
+    """Implements `ProjectFavourites` over an in-process dict.
+
+    Mock mode has no workspace and no grants, so "a project this user can
+    read" is "a project this store knows about": `add_favourite` asks
+    `InMemoryProjectStore` for it and lets the `RecordNotFound` it raises
+    through, which is the same 404 the live path answers a project outside
+    the caller's workspace with. Sharing the one store rather than keeping a
+    second list of ids is what makes a project created in this process
+    favouritable in the same request cycle.
+    """
+
+    def __init__(self, projects: InMemoryProjectStore) -> None:
+        self._projects = projects
+        self._marked: dict[str, set[str]] = {}
+
+    def favourites(self, user_id: str) -> set[str]:
+        return set(self._marked.get(user_id, set()))
+
+    def add_favourite(self, user_id: str, project_id: str) -> None:
+        self._projects.get(project_id)
+        self._marked.setdefault(user_id, set()).add(project_id)
+
+    def remove_favourite(self, user_id: str, project_id: str) -> None:
+        self._marked.get(user_id, set()).discard(project_id)
+
+
 class InMemoryScriptStore:
     """Implements `ScriptStore` over one in-process list, pre-seeded with the
     demo project's planted version 1 (D36's fourth criterion).

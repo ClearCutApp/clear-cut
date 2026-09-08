@@ -21,12 +21,27 @@ class CreateProject:
     def __init__(self, projects: ProjectStore) -> None:
         self._projects = projects
 
-    def execute(self, project_id: str, title: str, jurisdiction: Jurisdiction, at: str) -> Project:
+    def execute(
+        self,
+        project_id: str,
+        title: str,
+        jurisdiction: Jurisdiction,
+        at: str,
+        poster_uri: str | None = None,
+        format: str | None = None,
+        status: str | None = None,
+    ) -> Project:
+        """The three optional fields default to `None` -- an unset poster, no
+        declared format, no declared status -- so a caller that knows none of
+        them creates the same project it always did."""
         project = Project(
             project_id=project_id,
             title=title,
             jurisdiction_code=jurisdiction.code,
             created_at=at,
+            poster_uri=poster_uri,
+            format=format,
+            status=status,
         )
         self._projects.save(project)
         return project

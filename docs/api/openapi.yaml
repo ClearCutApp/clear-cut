@@ -259,6 +259,58 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /api/projects/{project_id}/favourite:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    put:
+      tags: [Projects]
+      operationId: addProjectFavourite
+      summary: Mark this project as one of the caller's favourites
+      description: >
+        Idempotent: marking an already-marked project is the same request again,
+        not an error. A project the caller cannot read answers 404, the same as
+        reading it would -- the marker never confirms that a project exists
+        somewhere the caller has no access to.
+      responses:
+        '200':
+          description: The project is marked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectFavourite'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: This instance serves no favourites store.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Projects]
+      operationId: removeProjectFavourite
+      summary: Clear the caller's mark on this project
+      description: 'Idempotent: clearing a project that was never marked succeeds.'
+      responses:
+        '200':
+          description: The project is not marked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectFavourite'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: This instance serves no favourites store.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/projects/{project_id}/script-files:
     parameters:
       - $ref: '#/components/parameters/ProjectId'
@@ -2591,11 +2643,48 @@ components:
           type: string
           description: One of the codes `GET /api/jurisdictions` returns.
           examples: ['AR']
+        poster_uri:
+          $ref: '#/components/schemas/ProjectPosterUri'
+        format:
+          $ref: '#/components/schemas/ProjectFormat'
+        status:
+          $ref: '#/components/schemas/ProjectStatus'
       additionalProperties: false
+
+    ProjectFormat:
+      type: [string, 'null']
+      enum: [documentary, feature_film, series, short, null]
+      description: >
+        What kind of production this is. `null` means nobody has said; a client
+        shows nothing rather than guessing one.
+      examples: ['feature_film']
+
+    ProjectStatus:
+      type: [string, 'null']
+      enum: [completed, in_development, in_production, null]
+      description: Where the production has reached. `null` means nobody has said.
+      examples: ['in_development']
+
+    ProjectPosterUri:
+      type: [string, 'null']
+      description: >
+        Where this project's poster art lives. `null` when none has been set,
+        which is the default: the server never invents one, and a client draws
+        whatever placeholder it likes rather than a poster this project does not
+        have. Nothing in this API uploads or fetches the image.
+      examples: ['gs://clearcut-posters/prj-4f2a.jpg']
 
     Project:
       type: object
-      required: [project_id, title, jurisdiction_code, created_at]
+      required:
+        - project_id
+        - title
+        - jurisdiction_code
+        - created_at
+        - poster_uri
+        - format
+        - status
+        - favourite
       properties:
         project_id:
           type: string
@@ -2611,6 +2700,27 @@ components:
           format: date-time
           description: UTC, seconds precision.
           examples: ['2026-09-05T12:00:00Z']
+        poster_uri:
+          $ref: '#/components/schemas/ProjectPosterUri'
+        format:
+          $ref: '#/components/schemas/ProjectFormat'
+        status:
+          $ref: '#/components/schemas/ProjectStatus'
+        favourite:
+          type: boolean
+          description: >
+            Whether the caller has marked this project. Per user, never per
+            project: two producers reading the same project see two answers.
+      additionalProperties: false
+
+    ProjectFavourite:
+      type: object
+      required: [project_id, favourite]
+      properties:
+        project_id:
+          type: string
+        favourite:
+          type: boolean
       additionalProperties: false
 
     ScriptFile:

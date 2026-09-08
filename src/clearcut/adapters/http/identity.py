@@ -32,9 +32,13 @@ def install_identity_boundary(
             if project_id:
                 action = "read"
                 if request.method not in {"GET", "HEAD", "OPTIONS"}:
-                    if request.path.endswith(("/questions", "/transcriptions", "/search")) or (
-                        "/notifications/" in request.path and request.path.endswith("/read")
-                    ):
+                    # `/favourite` is a read action although it writes: what it
+                    # writes belongs to the caller, not to the project, so
+                    # anyone who may open the project may bookmark it. A viewer
+                    # who could not would be a viewer with no list of their own.
+                    if request.path.endswith(
+                        ("/questions", "/transcriptions", "/search", "/favourite")
+                    ) or ("/notifications/" in request.path and request.path.endswith("/read")):
                         action = "read"
                     elif request.path.endswith(
                         (

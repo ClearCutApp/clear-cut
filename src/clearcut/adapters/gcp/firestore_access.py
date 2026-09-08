@@ -3,6 +3,10 @@
 A project_access document contains organization_id and grants {uid: role}.
 An organization member document contains role and active. Neither an absent
 legacy mapping nor organization membership alone grants project access.
+
+Favourites hang off the user rather than the project, under
+`users/{uid}/favourites/{project_id}`. A favourite is one person's opinion, so
+storing it on the project would make it everybody's.
 """
 
 from dataclasses import asdict
@@ -159,6 +163,12 @@ class FirestoreProjectAccess:
             title=data["title"],
             jurisdiction_code=data["jurisdiction_code"],
             created_at=data["created_at"],
+            # `.get`, not `[...]`: a document written before these three
+            # existed carries none of them, and an unset poster is a real
+            # answer rather than a corrupt record.
+            poster_uri=data.get("poster_uri"),
+            format=data.get("format"),
+            status=data.get("status"),
         )
 
     def create_project(self, user_id: str, organization_id: str, project: Project) -> None:
@@ -210,3 +220,35 @@ class FirestoreProjectAccess:
             raise
         except Exception as exc:
             raise SourceUnavailable("project creation unavailable") from exc
+
+    # `ProjectFavourites` (`application/workspace_ports.py`). The marker is
+    # one document per favourited project under the user, not an array on the
+    # user: two tabs marking two projects at once then write two documents
+    # instead of racing over one field, and the read below is the same
+    # per-user `stream()` `visible_project_ids` already does.
+    def _favourites(self, user_id: str) -> Any:
+        return self._client.collection("users").document(user_id).collection("favourites")
+
+    def favourites(self, user_id: str) -> set[str]:
+        try:
+            return {marked.id for marked in self._favourites(user_id).stream()}
+        except Exception as exc:
+            raise SourceUnavailable("favourites unavailable") from exc
+
+    def add_favourite(self, user_id: str, project_id: str) -> None:
+        """Authorized before it is written, so a project id typed into the URL
+        cannot be bookmarked -- and, because the bookmark comes back on the
+        list read, cannot be used to confirm that the project exists."""
+        self.authorize(user_id, project_id, "read")
+        try:
+            self._favourites(user_id).document(project_id).set({"project_id": project_id})
+        except Exception as exc:
+            raise SourceUnavailable("favourites unavailable") from exc
+
+    def remove_favourite(self, user_id: str, project_id: str) -> None:
+        """Not authorized: deleting your own bookmark is always allowed, and a
+        user who has lost access to a project must still be able to clear it."""
+        try:
+            self._favourites(user_id).document(project_id).delete()
+        except Exception as exc:
+            raise SourceUnavailable("favourites unavailable") from exc

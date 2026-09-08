@@ -53,12 +53,27 @@ def jurisdiction_json(jurisdiction: Jurisdiction) -> JsonDict:
     return {"code": jurisdiction.code, "display_name": jurisdiction.display_name}
 
 
-def project_json(project: Project) -> JsonDict:
+def project_json(project: Project, *, favourite: bool = False) -> JsonDict:
+    """The project, plus whether the caller has marked it.
+
+    The three optional fields are always present and `null` when unset, rather
+    than omitted: a client that has to tell "absent" from "not set" apart is a
+    client writing the rule this API was supposed to state.
+
+    `favourite` is an argument rather than a field of `Project` because it is
+    the caller's own answer, not the project's -- the same project serialized
+    for two producers carries two different values. It defaults to `False` so
+    a caller with no favourites store still serves a complete shape.
+    """
     return {
         "project_id": project.project_id,
         "title": project.title,
         "jurisdiction_code": project.jurisdiction_code,
         "created_at": project.created_at,
+        "poster_uri": project.poster_uri,
+        "format": project.format,
+        "status": project.status,
+        "favourite": favourite,
     }
 
 

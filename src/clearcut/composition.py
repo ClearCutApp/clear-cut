@@ -75,6 +75,7 @@ from clearcut.adapters.demo.in_memory import (
     InMemoryLegalGrounding,
     InMemoryLoreStore,
     InMemoryNotifier,
+    InMemoryProjectFavourites,
     InMemoryProjectStore,
     InMemoryRightsResearch,
     InMemorySceneExtractor,
@@ -165,7 +166,7 @@ from clearcut.application.search_project import SearchProject
 from clearcut.application.start_analysis import Runner, StartAnalysis, Work
 from clearcut.application.tracker_mutations import ClearanceConfirmation
 from clearcut.application.upload_script_file import UploadScriptFile
-from clearcut.application.workspace_ports import OwnedFiles, ProjectAccess
+from clearcut.application.workspace_ports import OwnedFiles, ProjectAccess, ProjectFavourites
 from clearcut.domain.errors import SourceUnavailable
 from clearcut.domain.finding import Finding
 from clearcut.observability import stage_span
@@ -356,6 +357,7 @@ class _UseCaseGraph:
     notifications: ProjectNotifications | None = None
     local_research: LocalResearchStore | None = None
     research_location: ResearchProductionLocation | None = None
+    favourites: ProjectFavourites | None = None
 
 
 def _build_mock_use_cases(runner: Runner) -> _UseCaseGraph:
@@ -423,6 +425,7 @@ def _build_mock_use_cases(runner: Runner) -> _UseCaseGraph:
         get_bible=GetBible(lore),
         add_bible_facts=AddBibleFacts(lore),
         answer_project_question=AnswerProjectQuestion(lore, grounding, tracker, web_search),
+        favourites=InMemoryProjectFavourites(projects),
     )
 
 
@@ -812,6 +815,7 @@ def _register_api(
     owned_files: OwnedFiles | None = None,
     client_config: dict[str, str] | None = None,
     drafts: DraftStore | None = None,
+    favourites: ProjectFavourites | None = None,
 ) -> None:
     """Mounts the six domain blueprints, then the SPA.
 
@@ -823,7 +827,11 @@ def _register_api(
     app.register_blueprint(create_system_blueprint(mode, build_spec, client_config))
     app.register_blueprint(
         create_projects_blueprint(
-            graph.create_project, graph.list_projects, graph.get_project, access
+            graph.create_project,
+            graph.list_projects,
+            graph.get_project,
+            access,
+            favourites if favourites is not None else graph.favourites,
         )
     )
     app.register_blueprint(
@@ -1032,6 +1040,12 @@ def create_app(build_dir: Path | None = None, *, analysis_runner: Runner | None 
             "appId": os.environ.get("FIREBASE_WEB_APP_ID", ""),
         },
         draft_store,
+        # Live mode's favourites are Firestore's, and `FirestoreProjectAccess`
+        # already holds the authorization the write needs -- a second client
+        # would authorize against a second read of the same documents. Mock
+        # mode's come off the graph instead, over the same in-memory project
+        # store the list route reads (D36).
+        access,
     )
     return app
 
