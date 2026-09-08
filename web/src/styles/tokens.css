@@ -52,6 +52,52 @@
   --app-accent: var(--app-green);
   --app-accent-contrast: #041a10;
 
+  /* ------------------------------------------------ product: voice screen
+
+     The ask screen paints in mint, a palette of its own that is close to
+     `--brand-green` without being it. The two are not interchangeable: the
+     values below are the ones the screen has always painted. */
+  --app-voice-surface-from: #102b2a;
+  --app-voice-surface-to: #101c25;
+  --app-voice-border: #2b4d49;
+  --app-voice-context: #9ce3c4;
+  --app-voice-accent: #89e7b8;
+  --app-voice-accent-border: #7fdfb0;
+  --app-voice-accent-ink: #0b2920;
+  --app-voice-record-active: #f0b3a8;
+  --app-voice-record-active-ink: #371a17;
+
+  /* ------------------------------------------ product: mobile project nav */
+  --app-mobile-nav-surface: #0c1721;
+  --app-mobile-nav-border: #29413f;
+  --app-mobile-nav-text: #dcebe6;
+
+  /* ------------------------------------------ product: screenplay editor
+
+     The editor's page is warm stock with near-black ink -- a different paper
+     from the landing's `--brand-paper-*`, and from the print sheet below. */
+  --app-paper: #f5f2e9;
+  --app-paper-ink: #1d2526;
+  --app-paper-recovery-border: #ccaf6f;
+  --app-paper-rule: #29413f;
+
+  /* ------------------------------------------------- product: print sheet
+
+     The printed script page: white stock, near-black ink, a lighter grey for
+     the sluglines' weight and the palest for the line numbers, which are
+     furniture rather than text. Each highlight is a pair -- a translucent
+     wash to sit behind the words and a dark enough ink to stay readable. */
+  --app-print-stock: #fff;
+  --app-print-ink: #1f2937;
+  --app-print-ink-strong: #111827;
+  --app-print-line-number: #9ca3af;
+  --app-print-mark-high: rgb(239 68 68 / 20%);
+  --app-print-mark-high-ink: #991b1b;
+  --app-print-mark-medium: rgb(245 158 11 / 20%);
+  --app-print-mark-medium-ink: #92400e;
+  --app-print-mark-low: rgb(16 185 129 / 20%);
+  --app-print-mark-low-ink: #065f46;
+
   /* ------------------------------------------------ brand: marketing */
   --brand-green: #42dba5;
   --brand-green-hover: #6aebbb;
@@ -65,6 +111,15 @@
   --brand-rule-soft: #202c32;
   --brand-rule-switch: #41514f;
 
+  /* The landing's one-off greys, each named for the band it belongs to. They
+     sit a shade apart from the `--brand-muted-*` family on purpose; naming
+     them separately is what keeps that difference deliberate. */
+  --brand-hero-scrim: #080e15b8;
+  --brand-watch-text: #b1bdbe;
+  --brand-workflow-em: #8b999e;
+  --brand-workflow-copy: #91a0a6;
+  --brand-footer-text: #88999f;
+
   /* ------------------------------------------------ brand: script paper */
   --brand-paper: #eae8dd;
   --brand-paper-ink: #30332d;
@@ -73,9 +128,11 @@
   --brand-paper-aside: #dfe3d7;
   --brand-paper-accent: #319b74;
   --brand-paper-dim: #616b5e;
+  --brand-script-shadow: #0005;
 
   /* ------------------------------------------------ brand: auth surfaces */
   --brand-auth-ground: #0a1118;
+  --brand-auth-page-text: #e8efef;
   --brand-auth-field: #101e26;
   --brand-auth-field-border: #31434c;
   --brand-auth-button-border: #4c6069;
@@ -254,6 +311,40 @@
   --color-accent: var(--app-accent);
   --color-accent-contrast: var(--app-accent-contrast);
 
+  /* Product voice screen */
+  --color-voice-surface-from: var(--app-voice-surface-from);
+  --color-voice-surface-to: var(--app-voice-surface-to);
+  --color-voice-border: var(--app-voice-border);
+  --color-voice-context: var(--app-voice-context);
+  --color-voice-accent: var(--app-voice-accent);
+  --color-voice-accent-border: var(--app-voice-accent-border);
+  --color-voice-accent-ink: var(--app-voice-accent-ink);
+  --color-voice-record-active: var(--app-voice-record-active);
+  --color-voice-record-active-ink: var(--app-voice-record-active-ink);
+
+  /* Product mobile project nav */
+  --color-mobile-nav-surface: var(--app-mobile-nav-surface);
+  --color-mobile-nav-border: var(--app-mobile-nav-border);
+  --color-mobile-nav-text: var(--app-mobile-nav-text);
+
+  /* Product screenplay editor */
+  --color-paper: var(--app-paper);
+  --color-paper-ink: var(--app-paper-ink);
+  --color-paper-recovery-border: var(--app-paper-recovery-border);
+  --color-paper-rule: var(--app-paper-rule);
+
+  /* Product print sheet */
+  --color-print-stock: var(--app-print-stock);
+  --color-print-ink: var(--app-print-ink);
+  --color-print-ink-strong: var(--app-print-ink-strong);
+  --color-print-line-number: var(--app-print-line-number);
+  --color-print-mark-high: var(--app-print-mark-high);
+  --color-print-mark-high-ink: var(--app-print-mark-high-ink);
+  --color-print-mark-medium: var(--app-print-mark-medium);
+  --color-print-mark-medium-ink: var(--app-print-mark-medium-ink);
+  --color-print-mark-low: var(--app-print-mark-low);
+  --color-print-mark-low-ink: var(--app-print-mark-low-ink);
+
   /* Tracker states, risk levels and errors read the semantic layer, which is
      where the mapping onto the four tones lives. */
   --color-state-blocked: var(--app-state-blocked);
@@ -285,6 +376,11 @@
   --color-brand-rule: var(--brand-rule);
   --color-brand-rule-soft: var(--brand-rule-soft);
   --color-brand-rule-switch: var(--brand-rule-switch);
+  --color-brand-hero-scrim: var(--brand-hero-scrim);
+  --color-brand-watch-text: var(--brand-watch-text);
+  --color-brand-workflow-em: var(--brand-workflow-em);
+  --color-brand-workflow-copy: var(--brand-workflow-copy);
+  --color-brand-footer-text: var(--brand-footer-text);
   --color-brand-paper: var(--brand-paper);
   --color-brand-paper-ink: var(--brand-paper-ink);
   --color-brand-paper-rule: var(--brand-paper-rule);
@@ -292,7 +388,9 @@
   --color-brand-paper-aside: var(--brand-paper-aside);
   --color-brand-paper-accent: var(--brand-paper-accent);
   --color-brand-paper-dim: var(--brand-paper-dim);
+  --color-brand-script-shadow: var(--brand-script-shadow);
   --color-brand-auth-ground: var(--brand-auth-ground);
+  --color-brand-auth-page-text: var(--brand-auth-page-text);
   --color-brand-auth-field: var(--brand-auth-field);
   --color-brand-auth-field-border: var(--brand-auth-field-border);
   --color-brand-auth-button-border: var(--brand-auth-button-border);

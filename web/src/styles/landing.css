@@ -1,13 +1,13 @@
 .auth-content p {
-  color: #a3b2b9;
+  color: var(--brand-auth-copy);
   font-size: 13px;
   line-height: 1.7;
 }
 
 /* Quiet film-set photography gives the public entry its visual anchor. */
 .landing {
-  background: #090e13;
-  color: #f3f3ed;
+  background: var(--brand-ground);
+  color: var(--brand-text);
   font-family: var(--font-sans);
 }
 
@@ -40,7 +40,9 @@
   position: absolute;
   inset: 0;
   z-index: -1;
-  background: linear-gradient(90deg, #080e15b8, transparent 85%), linear-gradient(0deg, #090e13, transparent 28%);
+  background:
+    linear-gradient(90deg, var(--brand-hero-scrim), transparent 85%),
+    linear-gradient(0deg, var(--brand-ground), transparent 28%);
 }
 
 .landing-nav {
@@ -74,11 +76,11 @@
   align-items: center;
   justify-content: center;
   gap: 22px;
-  background: #42dba5;
-  color: #071a14;
+  background: var(--brand-green);
+  color: var(--brand-ink);
   border: 0;
   padding: 13px 20px;
-  border-radius: 3px;
+  border-radius: var(--brand-radius);
   font-size: 13px;
   font-weight: 650;
   cursor: pointer;
@@ -86,7 +88,7 @@
 }
 
 .landing-button:hover {
-  background: #6aebbb;
+  background: var(--brand-green-hover);
   transform: translateY(-2px);
 }
 
@@ -112,7 +114,7 @@
   font-size: 10px;
   font-weight: 550;
   letter-spacing: 2.4px;
-  color: #95a8a9;
+  color: var(--brand-muted);
 }
 
 .landing-hero h1 {
@@ -124,7 +126,7 @@
 }
 
 .landing-hero h1 span {
-  color: #42dba5;
+  color: var(--brand-green);
 }
 
 .landing-hero h2 {
@@ -136,7 +138,7 @@
 }
 
 .landing-intro {
-  color: #aab5b9;
+  color: var(--brand-muted-soft);
   font-size: 15px;
   line-height: 1.7;
   max-width: 350px;
@@ -149,7 +151,7 @@
   align-items: center;
   font-size: 11px;
   margin-top: 22px;
-  color: #b1bdbe;
+  color: var(--brand-watch-text);
 }
 
 .landing-hero__caption {
@@ -158,7 +160,7 @@
   left: 5.5vw;
   font-size: 9px;
   letter-spacing: 2px;
-  color: #8a999e;
+  color: var(--brand-muted-dim);
 }
 
 .landing-workflow {
@@ -179,12 +181,12 @@
 
 .landing-workflow h2 em {
   font-style: normal;
-  color: #8b999e;
+  color: var(--brand-workflow-em);
 }
 
 .landing-workflow > div > p:not(.landing-eyebrow) {
   font-size: 14px;
-  color: #91a0a6;
+  color: var(--brand-workflow-copy);
   line-height: 1.85;
   max-width: 400px;
 }
@@ -197,7 +199,7 @@
 
 .landing-workflow li {
   padding: 20px 0;
-  border-bottom: 1px solid #263238;
+  border-bottom: 1px solid var(--brand-rule);
   font-size: 14px;
   transition: padding 180ms;
 }
@@ -207,17 +209,17 @@
 }
 
 .landing-workflow li span {
-  color: #42dba5;
+  color: var(--brand-green);
   font-size: 10px;
   margin-right: 26px;
 }
 
 .landing-script {
-  background: #eae8dd;
-  color: #30332d;
+  background: var(--brand-paper);
+  color: var(--brand-paper-ink);
   padding: 32px;
   font: 13px/1.9 "Courier New", monospace;
-  box-shadow: 0 24px 70px #0005;
+  box-shadow: 0 24px 70px var(--brand-script-shadow);
   transform: rotate(1deg);
   transition: transform 350ms;
 }
@@ -227,7 +229,7 @@
 }
 
 .landing-script header {
-  border-bottom: 1px solid #b7bbaf;
+  border-bottom: 1px solid var(--brand-paper-rule);
   padding-bottom: 15px;
   font-size: 10px;
   margin-bottom: 36px;
@@ -249,14 +251,14 @@
 }
 
 .landing-script mark {
-  background: #a9dfc3;
+  background: var(--brand-paper-mark);
   padding: 3px 0;
 }
 
 .landing-script aside {
-  border-left: 2px solid #319b74;
+  border-left: 2px solid var(--brand-paper-accent);
   padding: 15px;
-  background: #dfe3d7;
+  background: var(--brand-paper-aside);
   margin-top: 30px;
   font-family: var(--font-sans);
   font-size: 11px;
@@ -264,13 +266,13 @@
 }
 
 .landing-script aside small {
-  color: #616b5e;
+  color: var(--brand-paper-dim);
   font-size: 10px;
 }
 
 .landing-close {
   text-align: center;
-  border-top: 1px solid #202c32;
+  border-top: 1px solid var(--brand-rule-soft);
   padding: 95px 24px;
 }
 
@@ -283,40 +285,40 @@
 
 .landing-footer {
   padding: 30px 5.5vw;
-  border-top: 1px solid #202c32;
+  border-top: 1px solid var(--brand-rule-soft);
   display: flex;
   justify-content: space-between;
   align-items: center;
   font-size: 11px;
-  color: #88999f;
+  color: var(--brand-footer-text);
 }
 
 .landing-footer > a {
-  color: #f3f3ed;
+  color: var(--brand-text);
   font-size: 22px;
   letter-spacing: -1px;
 }
 
 .language-switch {
-  border: 1px solid #41514f;
+  border: 1px solid var(--brand-rule-switch);
   color: inherit;
   background: transparent;
-  border-radius: 3px;
+  border-radius: var(--brand-radius);
   padding: 7px 9px;
   cursor: pointer;
   font-size: 10px;
 }
 
 .landing :focus-visible, .auth-page :focus-visible {
-  outline: 2px solid #42dba5;
+  outline: 2px solid var(--brand-green);
   outline-offset: 5px;
 }
 
 .auth-page {
   /* stylelint-disable-next-line declaration-property-value-disallowed-list -- Minimum size keeps document scrolling. */
   min-height: 100svh;
-  background: #0a1118;
-  color: #e8efef;
+  background: var(--brand-auth-ground);
+  color: var(--brand-auth-page-text);
   position: relative;
   padding: 35px 6vw;
   isolation: isolate;
@@ -364,20 +366,20 @@
 
 .auth-content input {
   padding: 13px;
-  color: #eaf1ef;
-  background: #101e26;
-  border: 1px solid #31434c;
-  border-radius: 3px;
+  color: var(--brand-auth-text);
+  background: var(--brand-auth-field);
+  border: 1px solid var(--brand-auth-field-border);
+  border-radius: var(--brand-radius);
 }
 
 .auth-google {
   width: 100%;
   padding: 13px;
   background: transparent;
-  border: 1px solid #4c6069;
+  border: 1px solid var(--brand-auth-button-border);
   color: inherit;
   cursor: pointer;
-  border-radius: 3px;
+  border-radius: var(--brand-radius);
   margin-top: 25px;
 }
 
@@ -389,14 +391,14 @@
 .auth-divider {
   text-align: center;
   font-size: 10px;
-  color: #85969e;
+  color: var(--brand-auth-divider);
   margin: 25px 0;
 }
 
 .auth-link {
   border: 0;
   background: transparent;
-  color: #42dba5;
+  color: var(--brand-green);
   padding: 15px 0;
   margin-right: 20px;
   font-size: 12px;
@@ -406,7 +408,7 @@
 .auth-image {
   position: absolute;
   inset: 0 0 0 55%;
-  background: linear-gradient(90deg, #0a1118, transparent), url('/clearcut-film-set.png') 70% center / cover;
+  background: linear-gradient(90deg, var(--brand-auth-ground), transparent), url('/clearcut-film-set.png') 70% center / cover;
   z-index: -1;
   opacity: 0.7;
 }

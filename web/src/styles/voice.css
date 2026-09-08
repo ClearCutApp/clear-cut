@@ -1,12 +1,12 @@
 .voice-question {
   padding: clamp(1.25rem, 4vw, 2rem);
-  border: 1px solid #2b4d49;
+  border: 1px solid var(--app-voice-border);
   border-radius: 1rem;
-  background: linear-gradient(135deg, #102b2a, #101c25);
+  background: linear-gradient(135deg, var(--app-voice-surface-from), var(--app-voice-surface-to));
   margin-bottom: 1.5rem;
 }
 .voice-question h3 { font-size: clamp(1.5rem, 3vw, 2rem); }
-.voice-question__context { color: #9ce3c4; }
+.voice-question__context { color: var(--app-voice-context); }
 
 .voice-question__language, .ask__scene {
   display: flex;
@@ -32,9 +32,9 @@
   min-height: 4.5rem;
   padding: 1rem 2rem;
   border-radius: 3rem;
-  border: 1px solid #7fdfb0;
-  background: #89e7b8;
-  color: #0b2920;
+  border: 1px solid var(--app-voice-accent-border);
+  background: var(--app-voice-accent);
+  color: var(--app-voice-accent-ink);
   font: inherit;
   font-weight: 700;
   cursor: pointer;
@@ -46,9 +46,9 @@
 }
 
 .voice-question__record--active {
-  background: #f0b3a8;
-  border-color: #f0b3a8;
-  color: #371a17;
+  background: var(--app-voice-record-active);
+  border-color: var(--app-voice-record-active);
+  color: var(--app-voice-record-active-ink);
 }
 
 .ask__listen {
@@ -70,8 +70,8 @@
     z-index: 2;
     gap: 0.5rem;
     padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
-    background: #0c1721;
-    border-top: 1px solid #29413f;
+    background: var(--app-mobile-nav-surface);
+    border-top: 1px solid var(--app-mobile-nav-border);
   }
 
   .mobile-project-nav a {
@@ -79,17 +79,17 @@
     align-items: center;
     justify-content: center;
     min-height: 3rem;
-    color: #dcebe6;
+    color: var(--app-mobile-nav-text);
     text-decoration: none;
     border-radius: 0.75rem;
   }
 
   .mobile-project-nav a:first-child {
-    color: #0b2920;
-    background: #89e7b8;
+    color: var(--app-voice-accent-ink);
+    background: var(--app-voice-accent);
     font-weight: 700;
   }
-  .mobile-project-nav a[aria-current="page"] { outline: 2px solid #89e7b8; }
+  .mobile-project-nav a[aria-current="page"] { outline: 2px solid var(--app-voice-accent); }
   .voice-question__record { width: 100%; }
   .ask-form__examples { order: 2; }
   .ask textarea { scroll-margin-bottom: 8rem; }
