@@ -1,0 +1,36 @@
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
+import { afterEach, expect, it, vi } from "vitest";
+import * as api from "../api/client";
+import { SearchView } from "./SearchView";
+let projectId = "one";
+const selectItem = vi.fn();
+vi.mock("../state/ProjectContext", () => ({ useProject: () => ({ projectId, selectItem }) }));
+afterEach(() => { vi.restoreAllMocks(); projectId = "one"; selectItem.mockReset(); });
+const page: api.ProjectSearchPage = { results: [{ kind: "clearance", id: "asset", title: "asset", excerpt: "Música" }], total: 1, next_cursor: null, revision_id: "revision", coverage: [] };
+it("searches only after explicit submit, retains failed query and opens a clearance", async () => {
+  const search = vi.spyOn(api, "searchProject").mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce(page);
+  render(<MemoryRouter><SearchView /></MemoryRouter>);
+  const input = screen.getByRole("searchbox");
+  fireEvent.change(input, { target: { value: "musica" } });
+  expect(search).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Search" }));
+  await screen.findByRole("alert");
+  expect(input).toHaveValue("musica");
+  fireEvent.click(screen.getByRole("button", { name: "Search" }));
+  await screen.findByText("Música");
+  expect(search).toHaveBeenLastCalledWith("one", "musica", undefined);
+  fireEvent.click(screen.getByRole("button", { name: "Open" }));
+  expect(selectItem).toHaveBeenCalledWith("asset");
+});
+it("discards private matches that arrive after project switch", async () => {
+  let resolve!: (page: api.ProjectSearchPage) => void;
+  vi.spyOn(api, "searchProject").mockReturnValue(new Promise(done => { resolve = done; }));
+  const view = render(<MemoryRouter><SearchView /></MemoryRouter>);
+  fireEvent.change(screen.getByRole("searchbox"), { target: { value: "musica" } });
+  fireEvent.click(screen.getByRole("button", { name: "Search" }));
+  projectId = "two"; view.rerender(<MemoryRouter><SearchView /></MemoryRouter>);
+  await act(async () => resolve(page));
+  expect(screen.queryByText("Música")).not.toBeInTheDocument();
+  expect(screen.getByRole("searchbox")).toHaveValue("");
+});

@@ -14,6 +14,7 @@ import { OverviewView } from "./views/OverviewView";
 import { ProjectsView } from "./views/ProjectsView";
 import { DocumentsView } from "./views/DocumentsView";
 import { ReportsView } from "./views/ReportsView";
+import { SearchView } from "./views/SearchView";
 import { NotificationsView } from "./views/NotificationsView";
 import { ActivityView } from "./views/ActivityView";
 import { TeamView } from "./views/TeamView";
@@ -46,6 +47,7 @@ export function App(): ReactElement {
           <Route path="reports" element={<ReportsView />} />
           <Route path="activity" element={<ActivityView />} />
           <Route path="notifications" element={<NotificationsView />} />
+          <Route path="search" element={<SearchView />} />
           <Route path="settings" element={<ProjectSettingsView />} />
           <Route path="editor" element={<EditorView />} />
           <Route path="script" element={<ScriptView />} />

@@ -120,6 +120,7 @@ from clearcut.adapters.http.openapi import build_spec
 from clearcut.adapters.http.projects import create_projects_blueprint
 from clearcut.adapters.http.questions import create_questions_blueprint
 from clearcut.adapters.http.scripts import create_scripts_blueprint
+from clearcut.adapters.http.search import create_search_blueprint
 from clearcut.adapters.http.spa import create_spa_blueprint
 from clearcut.adapters.http.system import create_system_blueprint
 from clearcut.adapters.http.tracker import create_tracker_blueprint
@@ -160,6 +161,7 @@ from clearcut.application.reconfirm_clearance import ReconfirmClearance
 from clearcut.application.research_production_location import ResearchProductionLocation
 from clearcut.application.resolve_finding import ResolveFinding
 from clearcut.application.run_durable_analysis import RunDurableAnalysis
+from clearcut.application.search_project import SearchProject
 from clearcut.application.start_analysis import Runner, StartAnalysis, Work
 from clearcut.application.tracker_mutations import ClearanceConfirmation
 from clearcut.application.upload_script_file import UploadScriptFile
@@ -953,6 +955,17 @@ def create_app(build_dir: Path | None = None, *, analysis_runner: Runner | None 
     )
     app.register_blueprint(create_activity_blueprint(use_cases.activity))
     app.register_blueprint(create_notifications_blueprint(use_cases.notifications))
+    app.register_blueprint(
+        create_search_blueprint(
+            SearchProject(
+                draft_store,
+                screenplay_content,
+                use_cases.list_tracker_items,
+                documents,
+                use_cases.local_research,
+            )
+        )
+    )
     app.register_blueprint(
         create_local_research_blueprint(use_cases.local_research, use_cases.research_location)
     )

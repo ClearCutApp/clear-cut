@@ -696,3 +696,13 @@ export function readProjectNotification(projectId: string, notificationId: strin
   return requestJson(`${projectPath(projectId)}/notifications/${encodeURIComponent(notificationId)}/read`, { method: "POST" });
 }
 
+export interface ProjectSearchResult {
+  kind: "script" | "clearance" | "document" | "research"; id: string; title: string; excerpt: string;
+  revision_id?: string; scene_id?: string; version?: number; settings_version?: number;
+}
+export interface ProjectSearchPage {
+  results: ProjectSearchResult[]; total: number; next_cursor: string | null; revision_id: string | null; coverage: string[];
+}
+export function searchProject(projectId: string, query: string, cursor?: string): Promise<ProjectSearchPage> {
+  return requestJson(`${projectPath(projectId)}/search`, jsonRequest("POST", { query, ...(cursor ? { cursor } : {}) }));
+}
