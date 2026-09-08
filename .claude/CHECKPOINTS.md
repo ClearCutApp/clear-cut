@@ -4244,6 +4244,14 @@ behind.
   the user can only see through `curl` is not the MVP the decision asked for.
   Not promoted this turn, because it is three surfaces and two carried items,
   and nothing in it can start before CP-030 lands anyway.
+  **The Tailwind half of D18 is done, 2026-09-08.** Its trigger was "the first
+  class that a test actually exercises", and the UI rebuild fired it. Tailwind
+  v4 is installed and `tokens.css` is the project's `@theme` in two named
+  layers; ADR 0009 carries the amendment. The deferral was correct when made
+  and outlived its reason by five days, during which a second styling system
+  grew in the gap — forty hex literals in `landing.css` and a brand green with
+  no token name. That is the cost of a trigger nobody watches, and it is worth
+  writing down: a deferral with no owner is a decision with no date.
 - **SDD §8(d) end-to-end check on the planted script.** The Ferrari Testarossa,
   "Hotel California", and one seeded-bible contradiction. Runs after CP-030,
   against live services, and it is the submission's evidence.

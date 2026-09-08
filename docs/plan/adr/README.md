@@ -45,7 +45,7 @@ disagrees with an ADR, the ADR is right.
 | [0005](architecture/0005-territorial-grounding-datastore.md) | One Vertex AI Search store, filtered per jurisdiction | Accepted |
 | [0006](architecture/0006-hexagonal-architecture.md) | Hexagonal layout under `src/clearcut/` | Accepted |
 | [0007](architecture/0007-incremental-delta-by-scene-hash.md) | Delta re-analysis by scene hash | Accepted, amended 2026-08-31 |
-| [0009](architecture/0009-frontend-react-spa.md) | React and Vite SPA | Accepted, stale on styling |
+| [0009](architecture/0009-frontend-react-spa.md) | React, Vite and Tailwind SPA | Accepted, amended 2026-09-08 |
 | [0010](architecture/0010-hosting-cloud-run.md) | Host on Cloud Run | Accepted |
 | [0013](architecture/0013-analysis-is-a-job-resource.md) | Analysis is a job resource, not a blocking request | Accepted |
 | [0014](architecture/0014-findings-are-durable-and-the-tracker-key-is-wrong.md) | Findings are durable, and the tracker key is wrong | Accepted |
@@ -63,10 +63,6 @@ disagrees with an ADR, the ADR is right.
 Recorded here rather than silently fixed, because an ADR is a record of what was
 decided and when.
 
-- **0009** specifies Tailwind. The dependency was never added; the frontend
-  styles with vanilla CSS over design tokens in `web/src/styles/`. It also
-  describes three surfaces, which became six routed views. The framework and
-  build tool it picks are still what ships.
 - **0008** remains a launch requirement. Historical CP-058 credential claims are
   not current environment evidence. Verify dated receiver-side Grafana evidence
   against the present deployment; see the current situation report.
