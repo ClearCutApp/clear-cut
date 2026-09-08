@@ -119,7 +119,7 @@ describe("ItemDetailPanel", () => {
     const names = screen
       .getAllByRole("button")
       .map((button) => button.getAttribute("aria-label") ?? button.textContent);
-    expect(names).toEqual(["Close", "Draft email", "Notify"]);
+    expect(names).toEqual(["Close", "Draft email", "Notify", "Clearance history"]);
     expect(screen.queryByRole("button", { name: UNSERVED_ACTION })).toBeNull();
   });
 });

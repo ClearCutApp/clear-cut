@@ -84,6 +84,7 @@ from clearcut.adapters.demo.in_memory import (
     InMemoryTrackerStore,
     InMemoryWebGrounding,
 )
+from clearcut.adapters.documents.permission_export import permission_document
 from clearcut.adapters.documents.screenplay_export import screenplay_fdx, screenplay_pdf
 from clearcut.adapters.documents.screenplay_import import ScreenplayImporter
 from clearcut.adapters.gcp.activity_outbox import FirestoreActivityOutbox
@@ -109,6 +110,7 @@ from clearcut.adapters.gemini.continuity import GeminiContinuityCheck
 from clearcut.adapters.gemini.extractor import GeminiSceneExtractor
 from clearcut.adapters.http.activity import create_activity_blueprint
 from clearcut.adapters.http.bible import create_bible_blueprint
+from clearcut.adapters.http.clearance_details import create_clearance_details_blueprint
 from clearcut.adapters.http.documents import create_documents_blueprint
 from clearcut.adapters.http.drafts import create_drafts_blueprint
 from clearcut.adapters.http.identity import install_identity_boundary
@@ -154,6 +156,7 @@ from clearcut.application.local_research_ports import LocalResearchStore
 from clearcut.application.notification_ports import ProjectNotifications
 from clearcut.application.project_activity import ProjectActivity
 from clearcut.application.project_analysis_lore import ProjectAnalysisLore
+from clearcut.application.reconfirm_clearance import ReconfirmClearance
 from clearcut.application.research_production_location import ResearchProductionLocation
 from clearcut.application.resolve_finding import ResolveFinding
 from clearcut.application.run_durable_analysis import RunDurableAnalysis
@@ -925,6 +928,27 @@ def create_app(build_dir: Path | None = None, *, analysis_runner: Runner | None 
     app.register_blueprint(
         create_documents_blueprint(
             documents, draft_store, screenplay_content, importer, screenplay_pdf, screenplay_fdx
+        )
+    )
+    app.register_blueprint(
+        create_clearance_details_blueprint(
+            use_cases.resolve_finding,
+            documents,
+            use_cases.get_tracker_item,
+            lambda item, format_name: permission_document(
+                item,
+                format_name,
+                access.get_project(item.project_id).title
+                if access is not None
+                else use_cases.get_project.execute(item.project_id).title,
+            ),
+            ReconfirmClearance(
+                use_cases.clearance_snapshots, use_cases.analysis_artifacts, use_cases.confirmations
+            )
+            if use_cases.clearance_snapshots is not None
+            and use_cases.analysis_artifacts is not None
+            and use_cases.confirmations is not None
+            else None,
         )
     )
     app.register_blueprint(create_activity_blueprint(use_cases.activity))

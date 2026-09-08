@@ -343,14 +343,14 @@ export function ProjectProvider({
 
   const changeState = useCallback(
     (itemId: string, state: TrackerState) =>
-      runMutation(itemId, () => updateTrackerItemState(projectId, itemId, state)),
-    [runMutation, projectId],
+      runMutation(itemId, () => updateTrackerItemState(projectId, itemId, state, tracker?.find((item) => item.item_id === itemId)?.version ?? 0)),
+    [runMutation, projectId, tracker],
   );
 
   const draftEmail = useCallback(
     (itemId: string) =>
-      runMutation(itemId, () => createTrackerItemEmailDraft(projectId, itemId)),
-    [runMutation, projectId],
+      runMutation(itemId, () => createTrackerItemEmailDraft(projectId, itemId, tracker?.find((item) => item.item_id === itemId)?.version ?? 0)),
+    [runMutation, projectId, tracker],
   );
 
   const notify = useCallback(

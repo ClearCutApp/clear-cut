@@ -52,8 +52,8 @@ describe("stubFetch", () => {
     await getAnalysis("p", "a");
     await listTrackerItems("p");
     await getTrackerItem("p", "i");
-    await updateTrackerItemState("p", "i", "CLEARED");
-    await createTrackerItemEmailDraft("p", "i");
+    await updateTrackerItemState("p", "i", "CLEARED", 1);
+    await createTrackerItemEmailDraft("p", "i", 1);
     await createTrackerItemNotification("p", "i", "no answer");
     await askProjectQuestion("p", "US", "why?");
 
@@ -74,7 +74,7 @@ describe("stubFetch", () => {
       "notification",
       "question",
     ]);
-    expect(calls[11].body).toEqual({ state: "CLEARED" });
+    expect(calls[11].body).toEqual({ state: "CLEARED", expected_version: 1 });
   });
 
   it("answers a sequence in order and repeats its last entry", async () => {

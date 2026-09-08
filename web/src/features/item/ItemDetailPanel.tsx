@@ -15,6 +15,10 @@ import { NeedsReviewBadge } from "../../components/atoms/NeedsReviewBadge";
 import { RiskBadge } from "../../components/atoms/RiskBadge";
 import { StateBadge } from "../../components/atoms/StateBadge";
 import { FindingFacts } from "./FindingFacts";
+import { ClearanceDetailsEditor } from "./ClearanceDetailsEditor";
+import { ClearanceReconfirmation } from "./ClearanceReconfirmation";
+import { ItemHistory } from "./ItemHistory";
+import { useLocale } from "../../state/LocaleContext";
 import { ItemActions } from "./ItemActions";
 import { TrackerFacts } from "./TrackerFacts";
 
@@ -34,7 +38,16 @@ function useDialogBehavior(
   const closeButton = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
+    const trigger = document.activeElement;
     closeButton.current?.focus();
+    return () => {
+      queueMicrotask(() => {
+        const replacement = [...document.querySelectorAll<HTMLButtonElement>("button[data-tracker-item-id]")]
+          .find((button) => button.dataset.trackerItemId === title);
+        if (replacement) replacement.focus();
+        else if (trigger instanceof HTMLElement && trigger.isConnected) trigger.focus();
+      });
+    };
   }, [title]);
 
   useEffect(() => {
@@ -101,8 +114,10 @@ export interface ItemDetailPanelProps {
   error: string | null;
   onStateChange: (state: TrackerState) => void;
   onDraftEmail: () => void;
-  onNotify: (reason: string) => void;
+  onNotify: (reason: string) => void | Promise<boolean | void>;
   onClose: () => void;
+  onReload?: () => void;
+  confirmationRevision?: string;
 }
 
 /**
@@ -122,7 +137,10 @@ export function ItemDetailPanel({
   onDraftEmail,
   onNotify,
   onClose,
+  onReload,
+  confirmationRevision,
 }: ItemDetailPanelProps): ReactElement {
+  const { text } = useLocale();
   const analyzePath = `/projects/${encodeURIComponent(item.project_id)}/analyze`;
   return (
     <ItemPanelFrame title={item.finding_id} subtitle={item.required_document} onClose={onClose}>
@@ -140,8 +158,14 @@ export function ItemDetailPanel({
         </p>
       )}
       <TrackerFacts item={item} pending={pending} onStateChange={onStateChange} />
+      {item.needs_review && confirmationRevision && onReload && <ClearanceReconfirmation
+        key={`${item.item_id}:${item.version}:${confirmationRevision}`} item={item}
+        revisionId={confirmationRevision} onSaved={onReload} />}
       <ItemActions pending={pending} onDraftEmail={onDraftEmail} onNotify={onNotify} />
       <ErrorNotice message={error} />
+      {error && onReload && <button type="button" className="button button--quiet" onClick={onReload}>{text("Reload clearance", "Recargar autorización")}</button>}
+      {onReload && <ClearanceDetailsEditor key={`${item.project_id}:${item.item_id}`} item={item} onSaved={onReload} />}
+      <ItemHistory key={`${item.project_id}:${item.item_id}:${item.version}`} projectId={item.project_id} itemId={item.item_id} version={item.version} />
     </ItemPanelFrame>
   );
 }

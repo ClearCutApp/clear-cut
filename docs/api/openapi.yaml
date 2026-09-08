@@ -410,8 +410,20 @@ paths:
 
   /api/projects/{project_id}/analyses/{analysis_id}:
     parameters:
-      - $ref: '#/components/parameters/ProjectId'
-      - $ref: '#/components/parameters/AnalysisId'
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    - name: analysis_id
+      in: path
+      required: true
+      description: One queued analysis, as returned by the 202 that created it.
+      schema:
+        type: string
+        minLength: 1
     get:
       tags:
       - Scripts
@@ -462,9 +474,8 @@ paths:
       summary: This project's tracker items
       responses:
         '200':
-          description: |
-            One entry per item, at its newest version. An empty array when the
-            project has no items.
+          description: One entry per item, at its newest version. An empty array when the project has
+            no items.
           content:
             application/json:
               schema:
@@ -487,8 +498,20 @@ paths:
 
   /api/projects/{project_id}/tracker-items/{item_id}:
     parameters:
-      - $ref: '#/components/parameters/ProjectId'
-      - $ref: '#/components/parameters/ItemId'
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    - name: item_id
+      in: path
+      required: true
+      description: One tracker item.
+      schema:
+        type: string
+        minLength: 1
     get:
       tags:
       - Tracker
@@ -519,11 +542,9 @@ paths:
       - Tracker
       operationId: updateTrackerItemState
       summary: Move one item between states
-      description: |
-        Every ordered pair of states is legal, including back out of `CLEARED`
-        and into the state the item already holds. A transition is an audit
-        record of what a producer did, not a cache of where the item stands, so
-        each one writes a new version.
+      description: Every ordered pair of states is legal, including back out of `CLEARED` and into the
+        state the item already holds. A transition is an audit record of what a producer did, not a
+        cache of where the item stands, so each one writes a new version.
       requestBody:
         required: true
         content:
@@ -550,26 +571,47 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '500':
-          $ref: '#/components/responses/InternalError'
+          description: The server failed for a reason it does not attribute. The body carries a message
+            and never a stack trace.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Clearance changed; reload it before retrying.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /api/projects/{project_id}/tracker-items/{item_id}/email-drafts:
     parameters:
-      - $ref: '#/components/parameters/ProjectId'
-      - $ref: '#/components/parameters/ItemId'
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    - name: item_id
+      in: path
+      required: true
+      description: One tracker item.
+      schema:
+        type: string
+        minLength: 1
     post:
       tags:
       - Tracker
       operationId: createTrackerItemEmailDraft
       summary: Draft the outreach email for one item
-      description: |
-        Fills the outreach template from the item's rights holder, contact and
-        required document, and stores it on the item as `draft_email`. The
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/TrackerExpectedVersion'
+      description: 'Fills the outreach template from the item''s rights holder, contact and required
         document, and stores it on the item as `draft_email`. The system never sends it: a producer
         copies the draft and sends it themselves.'
       responses:
@@ -586,11 +628,35 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '500':
-          $ref: '#/components/responses/InternalError'
+          description: The server failed for a reason it does not attribute. The body carries a message
+            and never a stack trace.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Clearance changed; reload it before retrying.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/projects/{project_id}/tracker-items/{item_id}/notifications:
     parameters:
-      - $ref: '#/components/parameters/ProjectId'
-      - $ref: '#/components/parameters/ItemId'
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    - name: item_id
+      in: path
+      required: true
+      description: One tracker item.
+      schema:
+        type: string
+        minLength: 1
     post:
       tags:
       - Tracker
@@ -714,8 +780,10 @@ paths:
       tags:
       - Questions
       operationId: askProjectQuestion
+      summary: Ask about this project's clearance state
         projection for the committed revision. Local questions require recorded production-location
         evidence. Missing evidence and incomplete indexing are reported explicitly; research never grants
+        clearance.
       requestBody:
         required: true
         content:
@@ -820,8 +888,10 @@ paths:
             schema:
               type: object
               required:
+              - expected_version
               - document
               properties:
+                expected_version:
                   type: integer
                   minimum: 0
                 document:
@@ -896,7 +966,9 @@ paths:
             schema:
               type: object
               required:
+              - expected_version
               properties:
+                expected_version:
                   type: integer
                   minimum: 0
   /api/projects/{project_id}/revisions/{revision_id}:
@@ -1116,10 +1188,12 @@ paths:
               type: object
               required:
               - file
+              - expected_version
               properties:
                 file:
                   type: string
                   format: binary
+                expected_version:
                   type: integer
                   minimum: 0
   /api/projects/{project_id}/revisions/{revision_id}/exports/{format}:
@@ -1164,10 +1238,172 @@ paths:
           description: File exceeds 25 MiB
 
   /api/projects/{project_id}/tracker-items/{item_id}/history:
+    parameters:
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    - name: item_id
+      in: path
+      required: true
+      description: One tracker item.
+      schema:
+        type: string
+        minLength: 1
+    get:
+      tags:
+      - Tracker
+      operationId: listTrackerItemHistory
+      summary: Immutable clearance audit events, newest first
+      parameters:
+      - name: before_version
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/projects/{project_id}/tracker-items/{item_id}/details:
+    parameters:
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    - name: item_id
+      in: path
+      required: true
+      description: One tracker item.
+      schema:
+        type: string
+        minLength: 1
+    put:
+      tags:
+      - Clearance details
+      operationId: updateClearanceDetails
+      summary: Save evidence and permission details without changing clearance status
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClearanceDetailsUpdate'
+      responses:
+        '200':
+          description: New immutable item version.
+          content:
+            application/json:
+              schema:
                 $ref: '#/components/schemas/TrackerItem'
+        '400':
+          description: Invalid details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Assignment or membership does not allow this action.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Clearance changed; preserve your local details and reload.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/projects/{project_id}/tracker-items/{item_id}/permission-request:
+    parameters:
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    - name: item_id
+      in: path
+      required: true
+      description: One tracker item.
+      schema:
+        type: string
+        minLength: 1
+    get:
+      tags:
+      - Clearance details
+      operationId: downloadPermissionRequest
+      summary: Download the reviewed permission draft at the expected item version
+      parameters:
+      - name: version
+        in: query
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+      - name: format
+        in: query
+        schema:
+          type: string
+          enum:
+          - pdf
+          - txt
+          default: pdf
+      responses:
+        '200':
+          description: Private attachment; never sent to a mailbox.
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
             text/plain:
+              schema:
+                type: string
+        '400':
+          description: Save a draft and provide valid parameters.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Clearance changed; reload before exporting.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/projects/{project_id}/analyses/{analysis_id}/cancellation:
     parameters:
     - name: project_id
@@ -1180,6 +1416,7 @@ paths:
     - name: analysis_id
       in: path
       required: true
+      description: One queued analysis, as returned by the 202 that created it.
       schema:
         type: string
         minLength: 1
@@ -1268,6 +1505,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ClearanceReport'
         '409':
+          description: Clearance snapshot changed.
           content:
             application/json:
               schema:
@@ -1340,8 +1578,72 @@ paths:
                 $ref: '#/components/schemas/Error'
 
   /api/projects/{project_id}/tracker-items/{item_id}/reconfirmation:
+    parameters:
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    - name: item_id
+      in: path
+      required: true
+      description: One tracker item.
+      schema:
+        type: string
+        minLength: 1
+    post:
+      tags:
+      - Clearance details
+      operationId: reconfirmClearance
       summary: Explicitly confirm evidence and conditions apply to the current revision
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - expected_version
+              - revision_id
+              - acknowledged
+              properties:
+                expected_version:
+                  type: integer
+                  minimum: 1
+                revision_id:
+                  type: string
+                  minLength: 1
+                acknowledged:
+                  type: boolean
+                  const: true
+      responses:
+        '200':
+          description: Audited human confirmation.
+          content:
+            application/json:
+              schema:
                 $ref: '#/components/schemas/TrackerItem'
+        '400':
+          description: Explicit acknowledgement and current binding required.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Clearance or analyzed revision changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/projects/{project_id}/activity:
     parameters:
     - name: project_id
@@ -1501,9 +1803,11 @@ paths:
             schema:
               type: object
               required:
+              - expected_version
               - role
               - active
               properties:
+                expected_version:
                   type: integer
                   minimum: 1
                 role:
@@ -1672,7 +1976,9 @@ paths:
             schema:
               type: object
               required:
+              - expected_version
               properties:
+                expected_version:
                   type: integer
                   minimum: 1
 
@@ -1829,8 +2135,10 @@ paths:
             schema:
               type: object
               required:
+              - expected_version
               - role
               properties:
+                expected_version:
                   type: integer
                   minimum: 1
                 role:
@@ -1932,10 +2240,12 @@ paths:
             schema:
               type: object
               required:
+              - expected_version
               - title
               - jurisdiction_code
               - locations
               properties:
+                expected_version:
                   type: integer
                   minimum: 1
                 title:
@@ -1997,6 +2307,7 @@ paths:
       tags:
       - Local research
       operationId: researchProductionLocation
+      summary: Research a saved location with Parallel and retain cited official evidence
       requestBody:
         required: true
         content:
@@ -2029,6 +2340,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '502':
+          description: Research provider unavailable.
           content:
             application/json:
               schema:
@@ -2109,10 +2421,6 @@ paths:
         type: string
         minLength: 1
     post:
-      tags: [Questions]
-      operationId: askProjectQuestion
-      summary: Ask about this project's clearance state
-      description: |
       tags:
       - Search
       operationId: searchProject
@@ -2384,9 +2692,7 @@ components:
           type: string
         script_id:
           type: string
-          description: |
-            The script version this analysis produces. Assigned when the job is
-            queued, readable at
+          description: The script version this analysis produces. Assigned when the job is queued, readable
             at `/api/projects/{project_id}/scripts/{script_id}` once `state` is `SUCCEEDED`.
         state:
           $ref: '#/components/schemas/AnalysisState'
@@ -2413,6 +2719,10 @@ components:
       - analysis_id
       - revision_id
       - generation_id
+      - clearance_epoch
+      - created_at
+      - counts
+      properties:
         report_id:
           type: string
         project_id:
@@ -2433,6 +2743,11 @@ components:
           type: string
         template_version:
           type: string
+        clearance_epoch:
+          type: integer
+        counts:
+          type: object
+
     ActivityEvent:
       type: object
       required:
@@ -2530,6 +2845,24 @@ components:
       - scenes
       - findings
       properties:
+        revision_id:
+          type: string
+        revision_draft_version:
+          type: integer
+        settings_version:
+          type:
+          - integer
+          - 'null'
+        scene_anchors:
+          type: array
+          items:
+            type: object
+        clearance_bindings:
+          type: object
+        coverage_gaps:
+          type: array
+          items:
+            type: object
         script_id:
           type: string
         project_id:
@@ -2745,19 +3078,24 @@ components:
       type: object
       description: The actionable side of a finding.
       required:
-        - item_id
-        - project_id
-        - finding_id
-        - scene_numbers
-        - state
-        - needs_review
-        - required_document
-        - contact
-        - litigation_posture
-        - draft_email
-        - note
-        - updated_at
-        - version
+      - item_id
+      - project_id
+      - finding_id
+      - scene_numbers
+      - state
+      - needs_review
+      - required_document
+      - contact
+      - litigation_posture
+      - draft_email
+      - note
+      - updated_at
+      - version
+      - clearance_conditions
+      - due_date
+      - assignee_id
+      - evidence_file_ids
+      - rights_holder_citations
       properties:
         item_id:
           type: string
@@ -2767,9 +3105,8 @@ components:
           type: string
         scene_numbers:
           type: array
-          description: |
-            Every scene this item covers. More than one when the same asset was
-            deduplicated across scenes.
+          description: Every scene this item covers. More than one when the same asset was deduplicated
+            across scenes.
           minItems: 1
           items:
             type: integer
@@ -2778,9 +3115,8 @@ components:
           $ref: '#/components/schemas/TrackerState'
         needs_review:
           type: boolean
-          description: |
-            A cleared item whose scene changed in a later version. It is neither
-            silently kept nor silently dropped: a producer looks at it again.
+          description: 'A cleared item whose scene changed in a later version. It is neither silently
+            kept nor silently dropped: a producer looks at it again.'
         required_document:
           type: string
         contact:
@@ -2797,10 +3133,8 @@ components:
           - 'null'
         note:
           type: string
-          description: |
-            Why this item is in the state it is, when a version was written for
-            a reason the state alone does not carry. Empty otherwise.
-          examples: ['scene 7 removed in version 2']
+          description: Why this item is in the state it is, when a version was written for a reason the
+            state alone does not carry. Empty otherwise.
         updated_at:
           type: string
           format: date-time
@@ -2808,15 +3142,33 @@ components:
           type: integer
           minimum: 1
           description: Each action writes a new version rather than mutating this row.
-          examples: [4]
+        clearance_conditions:
+          type: string
+        due_date:
+          type: string
+        assignee_id:
+          type: string
+        evidence_file_ids:
+          type: array
+          items:
+            type: string
+        rights_holder_citations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Citation'
       additionalProperties: false
 
     TrackerItemStateUpdate:
       type: object
-      required: [state]
+      required:
+      - state
+      - expected_version
       properties:
         state:
           $ref: '#/components/schemas/TrackerState'
+        expected_version:
+          type: integer
+          minimum: 1
       additionalProperties: false
 
     NotificationCreate:
@@ -3133,3 +3485,50 @@ components:
     TrackerExpectedVersion:
       type: object
       required:
+      - expected_version
+      properties:
+        expected_version:
+          type: integer
+          minimum: 1
+      additionalProperties: false
+
+    ClearanceDetailsUpdate:
+      type: object
+      required:
+      - expected_version
+      - note
+      - clearance_conditions
+      - due_date
+      - assignee_id
+      - evidence_file_ids
+      - draft_email
+      properties:
+        expected_version:
+          type: integer
+          minimum: 1
+        note:
+          type: string
+          maxLength: 4000
+        clearance_conditions:
+          type: string
+          maxLength: 4000
+        due_date:
+          type: string
+          description: YYYY-MM-DD or empty to remove the deadline.
+        assignee_id:
+          type: string
+          maxLength: 128
+        evidence_file_ids:
+          type: array
+          maxItems: 20
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+            maxLength: 128
+        draft_email:
+          type:
+          - string
+          - 'null'
+          maxLength: 20000
+      additionalProperties: false

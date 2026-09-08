@@ -214,18 +214,19 @@ describe("updateTrackerItemState", () => {
     const { fetchStub, captured } = captureRequest({});
     globalThis.fetch = fetchStub;
 
-    await updateTrackerItemState("proj_1", "item_1", "CLEARED");
+    await updateTrackerItemState("proj_1", "item_1", "CLEARED", 1);
 
     expect(captured[0].init?.method).toBe("PATCH");
     expect(JSON.parse(String(captured[0].init?.body))).toEqual({
       state: "CLEARED",
+      expected_version: 1,
     });
   });
 
   it("maps a non-2xx response to a typed ApiError carrying the status", async () => {
     globalThis.fetch = respondWith(404, "not found");
 
-    const failure = updateTrackerItemState("proj_1", "item_1", "CLEARED").catch(
+    const failure = updateTrackerItemState("proj_1", "item_1", "CLEARED", 1).catch(
       (error: unknown) => error,
     );
 
@@ -234,14 +235,14 @@ describe("updateTrackerItemState", () => {
 });
 
 describe("createTrackerItemEmailDraft", () => {
-  it("posts to the item's own draft collection with no body", async () => {
+  it("posts the expected item version to its draft collection", async () => {
     const { fetchStub, captured } = captureRequest({});
     globalThis.fetch = fetchStub;
 
-    await createTrackerItemEmailDraft("proj_1", "item_1");
+    await createTrackerItemEmailDraft("proj_1", "item_1", 1);
 
     expect(captured[0].init?.method).toBe("POST");
-    expect(captured[0].init?.body).toBeUndefined();
+    expect(JSON.parse(String(captured[0].init?.body))).toEqual({ expected_version: 1 });
     expect(captured[0].url).toContain("email-drafts");
   });
 });

@@ -82,7 +82,7 @@ describe("ItemDetailPanelHost", () => {
     );
     expect(screen.getByText(/Version 2/)).toBeInTheDocument();
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(calls.find((call) => call.kind === "patch")?.body).toEqual({ state: "IN_PROGRESS" });
+    expect(calls.find((call) => call.kind === "patch")?.body).toEqual({ state: "IN_PROGRESS", expected_version: 1 });
   });
 
   it("shows a PATCH failure inside the panel and keeps the row as it was", async () => {

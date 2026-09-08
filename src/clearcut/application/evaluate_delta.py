@@ -461,6 +461,7 @@ def _new_tracker_item(
         state=TrackerState.BLOCKED,
         required_document=finding.required_document,
         contact=claim.contact if claim is not None else "",
+        rights_holder_citations=claim.citations if claim is not None else (),
         litigation_posture=claim.litigation_posture if claim is not None else "",
         note="",
         updated_at=at,

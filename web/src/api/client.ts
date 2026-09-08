@@ -109,6 +109,11 @@ export interface TrackerItem {
   contact: string;
   litigation_posture: string;
   draft_email: string | null;
+  clearance_conditions?: string;
+  due_date?: string;
+  assignee_id?: string;
+  evidence_file_ids?: string[];
+  rights_holder_citations?: Citation[];
   note: string;
   updated_at: string;
   version: number;
@@ -296,6 +301,12 @@ function projectPath(projectId: string): string {
 
 function trackerItemPath(projectId: string, itemId: string): string {
   return `${projectPath(projectId)}/tracker-items/${encodeURIComponent(itemId)}`;
+}
+
+export function reconfirmClearance(projectId: string, itemId: string, expectedVersion: number, revisionId: string): Promise<TrackerItem> {
+  return requestJson(`${trackerItemPath(projectId, itemId)}/reconfirmation`, jsonRequest("POST", {
+    expected_version: expectedVersion, revision_id: revisionId, acknowledged: true,
+  }));
 }
 
 export interface ClearanceCounts {
@@ -534,10 +545,11 @@ export function updateTrackerItemState(
   projectId: string,
   itemId: string,
   state: TrackerState,
+  expectedVersion: number,
 ): Promise<TrackerItem> {
   return requestJson<TrackerItem>(
     trackerItemPath(projectId, itemId),
-    jsonRequest("PATCH", { state }),
+    jsonRequest("PATCH", { state, expected_version: expectedVersion }),
   );
 }
 
@@ -546,10 +558,11 @@ export function updateTrackerItemState(
 export function createTrackerItemEmailDraft(
   projectId: string,
   itemId: string,
+  expectedVersion: number,
 ): Promise<TrackerItem> {
   return requestJson<TrackerItem>(
     `${trackerItemPath(projectId, itemId)}/email-drafts`,
-    { method: "POST" },
+    jsonRequest("POST", { expected_version: expectedVersion }),
   );
 }
 
@@ -635,6 +648,37 @@ export function importScreenplay(projectId: string, file: File, expectedVersion:
 export async function exportScreenplay(projectId: string, revisionId: string, format: "pdf" | "fdx"): Promise<Blob> {
   const response = await requestResponse(`${projectPath(projectId)}/revisions/${encodeURIComponent(revisionId)}/exports/${format}`);
   return response.blob();
+}
+
+export interface TrackerAuditEvent {
+  event_id: string;
+  actor: string;
+  version: number;
+  previous_version: number;
+  at: string;
+  item: TrackerItem;
+}
+
+export function listTrackerItemHistory(projectId: string, itemId: string, beforeVersion?: number): Promise<TrackerAuditEvent[]> {
+  const query = beforeVersion === undefined ? "" : `?before_version=${beforeVersion}`;
+  return requestJson<TrackerAuditEvent[]>(`${trackerItemPath(projectId, itemId)}/history${query}`);
+}
+
+export interface ClearanceDetails {
+  note: string;
+  clearance_conditions: string;
+  due_date: string;
+  assignee_id: string;
+  evidence_file_ids: string[];
+  draft_email: string | null;
+}
+
+export function updateClearanceDetails(projectId: string, itemId: string, expectedVersion: number, details: ClearanceDetails): Promise<TrackerItem> {
+  return requestJson<TrackerItem>(`${trackerItemPath(projectId, itemId)}/details`, jsonRequest("PUT", { ...details, expected_version: expectedVersion }));
+}
+
+export async function downloadPermissionRequest(projectId: string, itemId: string, version: number, format: "pdf" | "txt"): Promise<Blob> {
+  return (await requestResponse(`${trackerItemPath(projectId, itemId)}/permission-request?version=${version}&format=${format}`)).blob();
 }
 
 export interface ProjectNotification {
