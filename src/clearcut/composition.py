@@ -94,6 +94,7 @@ from clearcut.adapters.gcp.drafts import FirestoreDraftStore
 from clearcut.adapters.gcp.firebase_identity import FirebaseIdentityVerifier
 from clearcut.adapters.gcp.firestore_access import FirestoreProjectAccess
 from clearcut.adapters.gcp.job_launcher import CloudRunAnalysisLauncher
+from clearcut.adapters.gcp.lore_projection import FirestoreLoreProjection
 from clearcut.adapters.gcp.notifications import FirestoreNotifications
 from clearcut.adapters.gcp.project_settings import FirestoreProjectSettings
 from clearcut.adapters.gcp.screenplay_content import GcsScreenplayContent
@@ -145,6 +146,7 @@ from clearcut.application.list_scripts import ListScripts
 from clearcut.application.list_tracker_items import ListTrackerItems
 from clearcut.application.notification_ports import ProjectNotifications
 from clearcut.application.project_activity import ProjectActivity
+from clearcut.application.project_analysis_lore import ProjectAnalysisLore
 from clearcut.application.resolve_finding import ResolveFinding
 from clearcut.application.run_durable_analysis import RunDurableAnalysis
 from clearcut.application.start_analysis import Runner, StartAnalysis, Work
@@ -506,6 +508,17 @@ def _scene_vectors(project: str) -> BigQuerySceneVectors:
     return BigQuerySceneVectors(store, embed)
 
 
+def build_lore_dispatcher() -> tuple[FirestoreLoreProjection, ProjectAnalysisLore]:
+    project = _required_env("GOOGLE_CLOUD_PROJECT")
+    queue = FirestoreLoreProjection(firestore.Client(project=project))
+    artifacts = GcsAnalysisArtifacts(
+        storage.Client(project=project), _required_env("SCRIPTS_INTAKE_BUCKET")
+    )
+    return queue, ProjectAnalysisLore(
+        queue, artifacts, _scene_vectors(project), lambda: datetime.now(UTC)
+    )
+
+
 def _build_live_use_cases(
     *,
     runner: Runner = run_traced_in_background,
@@ -594,6 +607,7 @@ def _build_live_use_cases(
             bigquery.Client(project=project, location=_GCP_LOCATION),
             f"{project}.{_BIGQUERY_DATASET}.{_BIGQUERY_LORE_TABLE}",
             location=_GCP_LOCATION,
+            timeout=providers.bigquery_timeout,
         )
     if storage_client is None:
         storage_client = storage.Client(project=project)
