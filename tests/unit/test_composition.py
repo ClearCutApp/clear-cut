@@ -39,7 +39,6 @@ from opentelemetry import trace
 from clearcut import composition
 from clearcut.adapters.bigquery.lore_store import BigQueryLoreStore
 from clearcut.adapters.clickhouse.client import bare_host
-from clearcut.adapters.clickhouse.tracker import ClickHouseTrackerStore
 from clearcut.adapters.demo.in_memory import (
     InMemoryContinuityCheck,
     InMemoryLegalGrounding,
@@ -51,6 +50,7 @@ from clearcut.adapters.demo.in_memory import (
     InMemoryTrackerStore,
 )
 from clearcut.adapters.gcp.document_ai import DocumentAIIngestion
+from clearcut.adapters.gcp.tracker import FirestoreTrackerStore
 from clearcut.adapters.gcp.vertex_search import VertexSearchGrounding
 from clearcut.adapters.gemini.continuity import GeminiContinuityCheck
 from clearcut.adapters.gemini.extractor import GeminiSceneExtractor
@@ -406,7 +406,7 @@ def test_build_live_use_cases_wires_the_eight_live_adapters_with_no_socket(
     assert isinstance(graph.analyze_script._research, ParallelRightsResearch)
     assert isinstance(graph.analyze_script._continuity, GeminiContinuityCheck)
     assert isinstance(graph.analyze_script._lore, BigQueryLoreStore)
-    assert isinstance(graph.analyze_script._tracker, ClickHouseTrackerStore)
+    assert isinstance(graph.analyze_script._tracker, FirestoreTrackerStore)
     assert isinstance(graph.evaluate_delta._notifier, WebhookNotifier)
     # The branch that actually pays the 77-169s Parallel round trips, so the
     # branch whose traces must not come apart (Change B).
@@ -433,7 +433,7 @@ def test_build_live_use_cases_wires_answer_project_question_to_the_live_collabor
 
     assert isinstance(graph.answer_project_question._lore, BigQueryLoreStore)
     assert isinstance(graph.answer_project_question._grounding, VertexSearchGrounding)
-    assert isinstance(graph.answer_project_question._tracker, ClickHouseTrackerStore)
+    assert isinstance(graph.answer_project_question._tracker, FirestoreTrackerStore)
 
 
 def test_build_live_use_cases_passes_each_env_read_value_to_its_adapter(

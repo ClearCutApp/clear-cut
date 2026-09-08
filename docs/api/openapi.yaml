@@ -434,6 +434,9 @@ paths:
         non-empty `error`. A run whose instance was reclaimed mid-run is
         reported as `FAILED` by the read that finds it stale, so a job never
         sits in `RUNNING` forever.
+      description: Live jobs resume expired leases through the scheduled dispatcher. SUCCEEDED, FAILED
+        and CANCELLED are terminal. Cancellation blocks publication; an already submitted provider task
+        may continue remotely.
       responses:
         '200':
           description: The analysis job at its newest version.
@@ -605,7 +608,7 @@ paths:
       - Tracker
       operationId: createTrackerItemNotification
       summary: Notify the producer about one item
-      description: Posts the item and the reason to the configured outbound webhook.
+      description: Records a private project notification. Optional external delivery is queued to an
         explicit project binding; private reason text remains in-app.
       requestBody:
         required: true
@@ -615,23 +618,31 @@ paths:
               $ref: '#/components/schemas/NotificationCreate'
       responses:
         '201':
-          description: The item at its new version. The webhook accepted the notification.
+          description: The unchanged item. The notification was recorded, not necessarily delivered.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/TrackerItem'
         '400':
-          description: |
-            `reason` is missing, blank, or whitespace only. A notification with
-            no reason tells the producer nothing an unsent one would not.
+          description: '`reason` is missing, blank, or whitespace only. A notification with no reason
+            tells the producer nothing an unsent one would not.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '404':
-          $ref: '#/components/responses/NotFound'
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Clearance changed before recording the notification.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '502':
-          description: The webhook rejected the notification. Nothing was recorded.
           description: Notification storage is unavailable.
           content:
             application/json:
@@ -703,6 +714,7 @@ paths:
           $ref: '#/components/responses/InternalError'
 
   /api/projects/{project_id}/questions:
+        evidence. Missing evidence and incomplete indexing are reported explicitly; research never grants
             no supported jurisdiction.'
   /api/projects/{project_id}/draft:
     get:
@@ -1116,7 +1128,50 @@ paths:
   /api/projects/{project_id}/tracker-items/{item_id}/permission-request:
             text/plain:
   /api/projects/{project_id}/analyses/{analysis_id}/cancellation:
+    parameters:
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    - name: analysis_id
+      in: path
+      required: true
+      description: One queued analysis, as returned by the 202 that created it.
+      schema:
+        type: string
+        minLength: 1
+    post:
+      tags:
+      - Scripts
+      operationId: cancelAnalysis
+      summary: Cancel a durable analysis before publication
+      responses:
+        '200':
+          description: Cancellation state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisJob'
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: The server failed for a reason it does not attribute. The body carries a message
+            and never a stack trace.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/projects/{project_id}/reports:
+          description: Fixed report published.
+                $ref: '#/components/schemas/ClearanceReport'
   /api/projects/{project_id}/reports/context:
   /api/projects/{project_id}/reports/{report_id}/download:
             text/csv:
@@ -1569,8 +1624,13 @@ paths:
 
   /api/projects/{project_id}/settings:
   /api/projects/{project_id}/local-research:
+      - Local research
+      summary: Read the latest 50 saved location research records
+          description: Dated research records.
+      - Local research
   /api/projects/{project_id}/notifications:
   /api/projects/{project_id}/notifications/{notification_id}/read:
+      summary: Mark a notification read for the signed-in user
           content:
             application/json:
               schema:
@@ -1599,6 +1659,7 @@ paths:
       tags:
       - Search
       operationId: searchProject
+      summary: Search saved script, clearances, document names and recent local research
       requestBody:
         required: true
         content:
@@ -1828,7 +1889,6 @@ components:
         gcs_uri:
           type: string
           description: The URI `POST /api/projects/{project_id}/script-files` returned.
-          examples: ['gs://clearcut-scripts/prj-4f2a/el-ultimo-verano-v2.pdf']
         version:
           type: integer
           minimum: 1
@@ -1887,6 +1947,9 @@ components:
           description: Each transition writes a new version rather than mutating this row.
       additionalProperties: false
 
+    ClearanceReport:
+      type: object
+      required:
     ActivityEvent:
       type: object
       required:
@@ -1960,7 +2023,6 @@ components:
           minimum: 1
         gcs_uri:
           type: string
-          examples: ['gs://clearcut-scripts/prj-4f2a/el-ultimo-verano-v2.pdf']
         jurisdiction_code:
           type: string
         scenes:

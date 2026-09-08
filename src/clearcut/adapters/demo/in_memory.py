@@ -31,6 +31,7 @@ to take.
 
 import time
 from collections import Counter
+from dataclasses import asdict
 from threading import RLock
 from typing import Any
 
@@ -45,7 +46,7 @@ from clearcut.domain.finding import Category, Finding
 from clearcut.domain.jurisdiction import Jurisdiction
 from clearcut.domain.project import Project
 from clearcut.domain.script import Scene, Script
-from clearcut.domain.tracker import TrackerItem
+from clearcut.domain.tracker import TrackerConflict, TrackerItem
 from clearcut.observability import stage_span
 
 # The bucket `scenario.GCS_URI` already names. Mock mode writes nowhere,
@@ -310,6 +311,35 @@ class InMemoryTrackerStore:
                 self._items[(item.project_id, item.item_id)] = item
         _record_stage("track", start)
         _refresh_tracker_items_gauge(items)
+
+    def compare_save(self, item: TrackerItem, expected_version: int, actor: str) -> None:
+        with self._lock:
+            current = self.latest(item.project_id, item.item_id)
+            if current.version != expected_version or item.version != expected_version + 1:
+                raise TrackerConflict(current.version)
+            self.save([item])
+            self._events.setdefault((item.project_id, item.item_id), []).append(
+                {
+                    "event_id": f"clearance-{item.project_id}-{item.item_id}-{item.version}",
+                    "actor": actor,
+                    "version": item.version,
+                    "previous_version": expected_version,
+                    "at": item.updated_at,
+                    "item": asdict(item),
+                }
+            )
+
+    def history(
+        self, project_id: str, item_id: str, before_version: int | None = None
+    ) -> list[dict[str, Any]]:
+        self.latest(project_id, item_id)
+        with self._lock:
+            events = self._events.get((project_id, item_id), [])
+            return [
+                event
+                for event in reversed(events)
+                if before_version is None or event["version"] < before_version
+            ][:50]
 
     def latest(self, project_id: str, item_id: str) -> TrackerItem:
         item = self._items.get((project_id, item_id))

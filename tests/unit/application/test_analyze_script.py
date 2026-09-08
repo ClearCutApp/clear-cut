@@ -999,3 +999,19 @@ def test_an_enrichment_missing_from_one_finding_degrades_only_that_finding() -> 
     assert report.findings[2].citations == (citation,)
     assert report.tracker_items[0].contact == "legal@quilmes.example"
     assert report.tracker_items[2].contact == "legal@quilmes.example"
+
+
+def test_calculate_uses_frozen_scenes_without_publishing_any_store() -> None:
+    tracker, lore, findings = _Tracker(), _LoreStore(), _FindingStore()
+    use_case = _use_case(
+        tracker=tracker,
+        lore=lore,
+        finding_store=findings,
+        ingestion_error=AssertionError("must not parse mutable input"),
+    )
+    report = use_case.calculate(
+        "project", "script", 1, "gs://immutable/revision.pdf", _MEXICO, _AT, [_scene()]
+    )
+    assert len(report.findings) == 1 and len(report.tracker_items) == 1
+    assert tracker.saved == [] and tracker.recorded == []
+    assert lore.indexed == [] and findings.saved == []

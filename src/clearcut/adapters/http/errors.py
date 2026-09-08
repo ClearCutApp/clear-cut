@@ -22,6 +22,7 @@ from flask import Response, jsonify
 from flask.typing import ResponseReturnValue
 
 from clearcut.domain.document import InvalidDocument
+from clearcut.domain.durable_analysis import AnalysisBusy
 from clearcut.domain.errors import RecordNotFound, SourceUnavailable
 from clearcut.domain.identity import AccessDenied
 from clearcut.domain.screenplay import DraftConflict, InvalidScreenplay
@@ -58,6 +59,8 @@ def run_use_case(
         body = build()
     except WorkspaceConflict:
         return error_response(409, "workspace changed; reload before retrying")
+    except AnalysisBusy:
+        return error_response(409, "a project analysis is already active")
     except TrackerConflict as error:
         return jsonify({"error": str(error), "current_version": error.current_version}), 409
     except DraftConflict as error:

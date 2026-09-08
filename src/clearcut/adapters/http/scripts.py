@@ -20,17 +20,23 @@ draft costs no second transfer of a 25 MiB PDF.
 """
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
-from flask import Blueprint, request
+from flask import Blueprint, g, request
 from flask.typing import ResponseReturnValue
 
 from clearcut.adapters.http import errors, scripts_spec, serializers, validators
+from clearcut.application.draft_ports import DraftStore
+from clearcut.application.durable_ports import AnalysisManifestReader, DurableJobs
 from clearcut.application.get_analysis import GetAnalysis
 from clearcut.application.get_script import GetScript
 from clearcut.application.list_scripts import ListScripts
 from clearcut.application.start_analysis import StartAnalysis
 from clearcut.application.upload_script_file import UploadScriptFile
+from clearcut.application.workspace_ports import OwnedFiles
+from clearcut.domain.durable_analysis import DurableJob, NewAnalysis
+from clearcut.domain.errors import RecordNotFound
 from clearcut.domain.jurisdiction import Jurisdiction
 
 JsonDict = dict[str, Any]
@@ -93,6 +99,11 @@ def create_scripts_blueprint(
     get_script: GetScript,
     start_analysis: StartAnalysis,
     get_analysis: GetAnalysis,
+    owned_files: OwnedFiles | None = None,
+    durable_jobs: DurableJobs | None = None,
+    drafts: DraftStore | None = None,
+    manifests: AnalysisManifestReader | None = None,
+    provider_config_json: str = "{}",
 ) -> Blueprint:
     bp = Blueprint("clearcut_scripts", __name__)
 
@@ -104,7 +115,12 @@ def create_scripts_blueprint(
 
         def build() -> JsonDict:
             stored = upload_script_file.execute(project_id, uploaded.filename, uploaded.content)
-            return serializers.script_file_json(stored)
+            result = serializers.script_file_json(stored)
+            if owned_files is not None:
+                file_id = validators.new_id()
+                owned_files.register_file(project_id, file_id, stored.gcs_uri)
+                result["file_id"] = file_id
+            return result
 
         return errors.run_use_case(build, status=201)
 
@@ -119,7 +135,40 @@ def create_scripts_blueprint(
     @bp.route("/api/projects/<project_id>/scripts", methods=["POST"])
     def scripts_create(project_id: str) -> ResponseReturnValue:
         payload = validators.json_body()
-        gcs_uri = validators.require_field(payload, "gcs_uri")
+        if durable_jobs is not None and drafts is None:
+            return errors.error_response(503, "revision analysis is not configured")
+        if durable_jobs is not None and drafts is not None:
+            revision_id = payload.get("revision_id")
+            if not isinstance(revision_id, str) or not revision_id or "/" in revision_id:
+                return errors.error_response(400, "an immutable saved revision_id is required")
+            jurisdiction = validators.resolve_jurisdiction(
+                str(payload.get("jurisdiction_code", ""))
+            )
+            if not isinstance(jurisdiction, Jurisdiction):
+                return jurisdiction
+            command = NewAnalysis(
+                validators.new_id(),
+                validators.new_id(),
+                project_id,
+                g.organization_id,
+                g.identity.user_id,
+                revision_id,
+                jurisdiction.code,
+                provider_config_json,
+                datetime.now(UTC),
+            )
+
+            def enqueue() -> JsonDict:
+                revision = drafts.revision(project_id, revision_id)
+                return _durable_json(durable_jobs.enqueue(command, revision))
+
+            return errors.run_use_case(
+                enqueue,
+                status=202,
+                location=f"/api/projects/{project_id}/analyses/{command.analysis_id}",
+            )
+        reference = "file_id" if owned_files is not None else "gcs_uri"
+        gcs_uri = validators.require_field(payload, reference)
         if not isinstance(gcs_uri, str):
             return gcs_uri
         version = validators.require_version(payload)
@@ -135,8 +184,13 @@ def create_scripts_blueprint(
         script_id = validators.new_id()
 
         def build() -> JsonDict:
+            uri = (
+                owned_files.resolve_file(project_id, gcs_uri)
+                if owned_files is not None
+                else gcs_uri
+            )
             job = start_analysis.execute(
-                project_id, analysis_id, script_id, version, gcs_uri, jurisdiction
+                project_id, analysis_id, script_id, version, uri, jurisdiction
             )
             return serializers.analysis_job_json(job)
 
@@ -148,14 +202,65 @@ def create_scripts_blueprint(
 
     @bp.route("/api/projects/<project_id>/scripts/<script_id>", methods=["GET"])
     def scripts_show(project_id: str, script_id: str) -> ResponseReturnValue:
-        return errors.run_use_case(
-            lambda: serializers.script_json(get_script.execute(project_id, script_id))
-        )
+        def build() -> JsonDict:
+            result = serializers.script_json(get_script.execute(project_id, script_id))
+            if manifests is not None:
+                manifest = manifests.manifest(project_id, script_id)
+                for key in (
+                    "revision_id",
+                    "revision_draft_version",
+                    "scene_anchors",
+                    "clearance_bindings",
+                    "coverage_gaps",
+                ):
+                    result[key] = manifest[key]
+                result["settings_version"] = manifest.get("settings_version")
+            return result
+
+        return errors.run_use_case(build)
 
     @bp.route("/api/projects/<project_id>/analyses/<analysis_id>", methods=["GET"])
     def analyses_show(project_id: str, analysis_id: str) -> ResponseReturnValue:
+        def build() -> JsonDict:
+            if durable_jobs is not None:
+                try:
+                    if analysis_id == "current":
+                        current = durable_jobs.current(project_id)
+                        return _durable_json(current) if current else {"analysis": None}
+                    return _durable_json(durable_jobs.get(project_id, analysis_id))
+                except RecordNotFound:
+                    pass
+            return serializers.analysis_job_json(get_analysis.execute(project_id, analysis_id))
+
+        return errors.run_use_case(build)
+
+    @bp.route("/api/projects/<project_id>/analyses/<analysis_id>/cancellation", methods=["POST"])
+    def analyses_cancel(project_id: str, analysis_id: str) -> ResponseReturnValue:
+        if durable_jobs is None:
+            return errors.error_response(409, "this demo analysis does not support cancellation")
         return errors.run_use_case(
-            lambda: serializers.analysis_job_json(get_analysis.execute(project_id, analysis_id))
+            lambda: _durable_json(
+                durable_jobs.request_cancel(
+                    project_id, analysis_id, g.identity.user_id, datetime.now(UTC)
+                )
+            )
         )
 
     return bp
+
+
+def _durable_json(job: DurableJob) -> JsonDict:
+    return {
+        "analysis_id": job.request.analysis_id,
+        "project_id": job.request.project_id,
+        "script_id": job.request.script_id,
+        "revision_id": job.request.revision_id,
+        "state": job.state,
+        "stage": job.stage,
+        "created_at": job.request.created_at.isoformat(),
+        "updated_at": job.updated_at.isoformat(),
+        "error": job.error_code,
+        "version": job.request.script_version,
+        "attempt": job.attempt,
+        "cancel_requested": job.cancel_requested,
+    }

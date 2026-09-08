@@ -141,7 +141,7 @@ def _adapter_with_transport_failure(error: httpx.TransportError) -> ParallelRigh
     return ParallelRightsResearch(http_client, "parallel-test-key")
 
 
-def test_read_timeout_raises_research_unavailable_with_a_distinct_message() -> None:
+def test_read_timeout_raises_sanitized_research_unavailable() -> None:
     adapter = _adapter_with_transport_failure(httpx.ReadTimeout("timed out"))
 
     with pytest.raises(ResearchUnavailable) as excinfo:
@@ -150,10 +150,7 @@ def test_read_timeout_raises_research_unavailable_with_a_distinct_message() -> N
     assert type(excinfo.value) is ResearchUnavailable
     assert "responded with status" not in str(excinfo.value)
     assert excinfo.value.status_code is None
-    # `parallel.APITimeoutError`'s own message, which `research.py:104`
-    # interpolates in -- pins the message to the underlying error's own text
-    # rather than to something the message merely happens not to say (D34).
-    assert "Request timed out." in str(excinfo.value)
+    assert str(excinfo.value) == "Parallel Task API request failed"
 
 
 def test_read_timeout_is_catchable_as_source_unavailable_alone() -> None:

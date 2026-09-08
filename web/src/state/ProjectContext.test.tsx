@@ -171,7 +171,7 @@ describe("ProjectProvider runAnalysis", () => {
 
     expect(outcome).toEqual({ ok: true, value: SCRIPT_FIXTURE });
     expect(result.current.analysis).toEqual(SCRIPT_FIXTURE);
-    expect(result.current.job?.state).toBe("QUEUED");
+    expect(result.current.job?.state).toBe("SUCCEEDED");
     expect(result.current.jurisdictionCode).toBe(SCRIPT_FIXTURE.jurisdiction_code);
     expect(calls.filter((call) => call.kind === "analysis")).toHaveLength(2);
     await waitFor(() => expect(result.current.tracker).toHaveLength(3));

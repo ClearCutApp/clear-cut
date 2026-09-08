@@ -181,14 +181,34 @@ excerpts with URLs and publish dates. Its `mode` field sets the latency floor:
 `turbo` near 250ms, `fast` near 700ms, `advanced` near 3s. See
 https://docs.parallel.ai/search/search-quickstart.
 
-**Search MCP** at `https://search.parallel.ai/mcp` wraps that same search for
-tool calling and needs no auth header, though a bearer token raises the rate
-limit. It is registered with the agent in Agent Builder as a tool endpoint,
-which gives the agent live web search inside a clearance pass. A separate Task
-MCP at `https://task-mcp.parallel.ai/mcp` exposes `createDeepResearch`,
-`createTaskGroup`, `getStatus`, and `getResultMarkdown`, and stays available if
-we later drive deep research from the agent instead of from our own adapter.
-See https://docs.parallel.ai/integrations/mcp/quickstart.
+Its `mode` field sets the latency floor and the price band, and there are four
+of them:
+
+| Mode | Median latency | Price |
+|---|---|---|
+| `turbo` | 200ms | $1 per 1,000 |
+| `fast` | under 1s | $1 per 1,000 |
+| `basic` | 1s | $5 per 1,000 |
+| `advanced` | 3s | $5 per 1,000 |
+
+**`advanced` is what the API uses when `mode` is omitted**, which is the one
+thing to know about that table: a caller that does not set the field buys the
+slowest and most expensive tier by default. The adapter sets `fast`
+explicitly. That tier is near-premium quality at the cheapest band, and unlike
+`turbo` it still returns the excerpts the adapter turns into citations.
+
+**Search MCP, not used at runtime.** The server at
+`https://search.parallel.ai/mcp` wraps that same search for tool calling and
+needs no auth header, though a bearer token raises the rate limit. It is meant
+to be registered with an agent in Agent Builder as a tool endpoint. ClearCut
+has no such agent: the Search API adapter above is what the deployed service
+calls, and the only place that MCP URL appears in this repository is
+`.mcp.json`, which configures Claude Code for the people developing ClearCut.
+A separate Task MCP at `https://task-mcp.parallel.ai/mcp` exposes
+`createDeepResearch`, `createTaskGroup`, `getStatus`, and `getResultMarkdown`.
+Both are kept here for whoever later drives research from an agent instead of
+from our own adapter, and for nothing else. See
+https://docs.parallel.ai/integrations/mcp/quickstart.
 
 Parallel keeps working examples for all of these in
 https://github.com/parallel-web/parallel-cookbook, split into
@@ -235,6 +255,8 @@ Secret Manager entries mounted as environment variables. The full set:
 | Variable | Holds |
 |---|---|
 | `CLEARCUT_MODE` | `mock` for the in-memory demo, `live` for the real adapter graph; unset defaults to `live` |
+| `CLEARCUT_ANALYSIS_JOB` | Worker job name; required by the scheduled dispatcher, not the HTTP service |
+| `CLOUD_RUN_REGION` | Dispatcher worker region; defaults to `us-central1` |
 | `GOOGLE_CLOUD_PROJECT` | project ID, `clearcut-hack` |
 | `DOCAI_PROCESSOR_ID` | Document AI processor from section 3, as a full resource name: `projects/clearcut-hack/locations/us/processors/<id>` |
 | `PARALLEL_API_KEY` | Parallel Task API and Search API auth (`x-api-key`) |

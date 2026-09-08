@@ -156,17 +156,22 @@ export interface ScriptFile {
   content_type: string;
 }
 
-export interface ScriptCreate {
+export interface LegacyScriptCreate {
+  file_id?: string;
   gcs_uri: string;
   version: number;
   jurisdiction_code: string;
 }
+export type ScriptCreate = LegacyScriptCreate | { revision_id: string; jurisdiction_code: string };
 
 /** `SUCCEEDED` and `FAILED` are terminal; a later run is a new analysis. */
-export type AnalysisState = "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED";
+export type AnalysisState = "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELLED";
 
 export interface AnalysisJob {
   revision_id?: string;
+  stage?: string;
+  attempt?: number;
+  cancel_requested?: boolean;
   analysis_id: string;
   project_id: string;
   script_id: string;
@@ -441,6 +446,15 @@ export function getAnalysis(
   return requestJson<AnalysisJob>(
     `${projectPath(projectId)}/analyses/${encodeURIComponent(analysisId)}`,
   );
+}
+
+export function cancelAnalysis(projectId: string, analysisId: string): Promise<AnalysisJob> {
+  return requestJson<AnalysisJob>(`${projectPath(projectId)}/analyses/${encodeURIComponent(analysisId)}/cancellation`, jsonRequest("POST", {}));
+}
+
+export async function getCurrentAnalysis(projectId: string): Promise<AnalysisJob | null> {
+  const value = await requestJson<AnalysisJob | {analysis: null}>(`${projectPath(projectId)}/analyses/current`);
+  return "analysis_id" in value ? value : null;
 }
 
 // ------------------------------------------------------------- tracker --

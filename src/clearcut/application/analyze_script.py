@@ -107,6 +107,7 @@ def _tracker_item(
         state=TrackerState.BLOCKED,
         required_document=finding.required_document,
         contact=claim.contact if claim is not None else "",
+        rights_holder_citations=claim.citations if claim is not None else (),
         litigation_posture=claim.litigation_posture if claim is not None else "",
         note="",
         updated_at=at,
@@ -170,6 +171,29 @@ class AnalyzeScript:
         at: str,
     ) -> AnalysisReport:
         scenes = self._ingestion.parse(gcs_uri, script_id)
+        report = self.calculate(project_id, script_id, version, gcs_uri, jurisdiction, at, scenes)
+        records: list[BibleFact | Scene] = list(scenes)
+        self._lore.index(project_id, records)
+        self._tracker.save(list(report.tracker_items))
+        self._findings.save(project_id, script_id, list(report.findings))
+        self._tracker.record_script(report.script)
+        return report
+
+    def calculate(
+        self,
+        project_id: str,
+        script_id: str,
+        version: int,
+        gcs_uri: str,
+        jurisdiction: Jurisdiction,
+        at: str,
+        scenes: list[Scene],
+    ) -> AnalysisReport:
+        """Compute a result without publishing stores, lore indexes or notifications.
+
+        Durable workers pass checkpointed providers and immutable revision scenes;
+        the generation publisher owns every externally visible write afterward.
+        """
         script = Script(
             script_id=script_id,
             project_id=project_id,
@@ -182,17 +206,6 @@ class AnalyzeScript:
         contradictions = self._continuity_findings(project_id, scenes)
         deduped = dedupe_findings(extracted + contradictions)
         findings, items = self._enrich(deduped, project_id, jurisdiction, at)
-
-        records: list[BibleFact | Scene] = list(scenes)
-        self._lore.index(project_id, records)
-        self._tracker.save(items)
-        # Beside the tracker write, not after `record_script`: the item and
-        # the finding it came from are one fact, and a run that stored half
-        # of it leaves a tracker row nothing explains (ADR 0014). Keyed by
-        # this run's own `script_id`, because reopening version 2 must show
-        # what version 2 triggered.
-        self._findings.save(project_id, script_id, findings)
-        self._tracker.record_script(script)
 
         return AnalysisReport(script=script, findings=tuple(findings), tracker_items=tuple(items))
 

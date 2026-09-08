@@ -46,6 +46,8 @@ OPTIONAL_ENV_VARS = frozenset(
         "OTEL_EXPORTER_OTLP_HEADERS",
         "CLEARCUT_MODE",
         "CLEARCUT_PROVIDER_OPTIONS",
+        "CLEARCUT_ANALYSIS_JOB",
+        "CLOUD_RUN_REGION",
         # Public Firebase browser config: optional build override or runtime endpoint.
         "VITE_FIREBASE_API_KEY",
         "VITE_FIREBASE_AUTH_DOMAIN",

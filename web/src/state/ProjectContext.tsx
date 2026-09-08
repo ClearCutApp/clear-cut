@@ -16,6 +16,7 @@ import {
   createTrackerItemEmailDraft,
   createTrackerItemNotification,
   getAnalysis,
+  getCurrentAnalysis,
   getProject,
   getScript,
   listScripts,
@@ -36,6 +37,7 @@ import { DEMO_PROJECT } from "../app/demo";
 import { pollUntilSettled } from "../features/analysis/model";
 import { attempt, fail, failureMessage, succeed, type Outcome } from "./outcome";
 import { jurisdictionFor, rememberProject } from "./recentProjects";
+import { useServerMode } from "./ServerModeContext";
 
 export interface ProjectContextValue {
   projectId: string;
@@ -143,6 +145,7 @@ export function ProjectProvider({
   const [pendingItemIds, setPendingItemIds] = useState<ReadonlySet<string>>(new Set());
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
 
+  const mode = useServerMode();
   const loadTracker = useCallback(
     async (isCancelled: () => boolean): Promise<void> => {
       try {
@@ -187,6 +190,34 @@ export function ProjectProvider({
       cancelled = true;
     };
   }, [projectId]);
+
+  useEffect(() => {
+    if (mode !== "live") return;
+    let cancelled = false;
+    void (async () => {
+      const queued = await getCurrentAnalysis(projectId);
+      if (!queued || cancelled) return;
+      setJob(queued);
+      if (queued.state !== "QUEUED" && queued.state !== "RUNNING") return;
+      const result = await pollUntilSettled(queued, {
+        readJob: async () => {
+          if (cancelled) throw new Error("Project changed");
+          const current = await getAnalysis(projectId, queued.analysis_id);
+          if (!cancelled) setJob(current);
+          return current;
+        }, wait: pollWait, now: () => Date.now(),
+      });
+      if (cancelled) return;
+      if (result.kind === "ready") {
+        const completed = await getScript(projectId, result.scriptId);
+        if (!cancelled) {
+          setAnalysis(completed); setAnalysisError(null);
+          void loadTracker(() => cancelled);
+        }
+      } else setAnalysisError(result.message);
+    })().catch(() => { /* Existing script remains usable when polling is unavailable. */ });
+    return () => { cancelled = true; };
+  }, [projectId, mode, pollWait, loadTracker]);
 
   // The newest stored version, so a finding survives a reload. `listScripts`
   // answers newest first, and an empty list means no analysis ever ran --
@@ -246,7 +277,11 @@ export function ProjectProvider({
       const settled = await attempt(
         () =>
           pollUntilSettled(queued.value, {
-            readJob: () => getAnalysis(projectId, analysisId),
+            readJob: async () => {
+              const current = await getAnalysis(projectId, analysisId);
+              setJob(current);
+              return current;
+            },
             wait: pollWait,
             now: () => Date.now(),
           }),

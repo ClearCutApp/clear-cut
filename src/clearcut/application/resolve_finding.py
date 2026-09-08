@@ -19,9 +19,14 @@ action, a separate `Transition`, moves the item from BLOCKED to IN_PROGRESS
 """
 
 from dataclasses import dataclass
+from typing import Any
 
+from clearcut.application.notification_ports import ProjectNotifications
 from clearcut.application.ports import Notifier, TrackerStore
-from clearcut.domain.tracker import TrackerItem, TrackerState
+from clearcut.application.tracker_mutations import TrackerMutations
+from clearcut.domain.errors import SourceUnavailable
+from clearcut.domain.tracker import ClearanceDetails, TrackerConflict, TrackerItem, TrackerState
+from clearcut.domain.workspace import InvalidWorkspace
 
 
 @dataclass(frozen=True)
@@ -44,7 +49,12 @@ class Notify:
     reason: str
 
 
-Action = Transition | DraftEmail | Notify
+@dataclass(frozen=True)
+class EditDetails:
+    details: ClearanceDetails
+
+
+Action = Transition | DraftEmail | Notify | EditDetails
 
 
 def _draft_email_text(item: TrackerItem) -> str:
@@ -59,24 +69,62 @@ def _draft_email_text(item: TrackerItem) -> str:
     )
 
 
-def _apply(item: TrackerItem, action: Transition | DraftEmail, at: str) -> TrackerItem:
+def _apply(
+    item: TrackerItem, action: Transition | DraftEmail | EditDetails, at: str
+) -> TrackerItem:
     if isinstance(action, Transition):
         return item.transitioned_to(action.state, at)
+    if isinstance(action, EditDetails):
+        return item.with_details(action.details, at)
     return item.with_draft_email(_draft_email_text(item), at)
 
 
 class ResolveFinding:
     """`ResolveFinding(tracker, notifier)` (docs/plan/sdd.md Section 4.2)."""
 
-    def __init__(self, tracker: TrackerStore, notifier: Notifier) -> None:
+    def __init__(
+        self,
+        tracker: TrackerStore,
+        notifier: Notifier,
+        mutations: TrackerMutations | None = None,
+        notifications: ProjectNotifications | None = None,
+    ) -> None:
         self._tracker = tracker
         self._notifier = notifier
+        self._mutations = mutations
+        self._notifications = notifications
 
-    def execute(self, project_id: str, item_id: str, action: Action, at: str) -> TrackerItem:
+    def execute(
+        self,
+        project_id: str,
+        item_id: str,
+        action: Action,
+        at: str,
+        *,
+        expected_version: int | None = None,
+        actor: str = "demo",
+    ) -> TrackerItem:
         item = self._tracker.latest(project_id, item_id)
         if isinstance(action, Notify):
-            self._notifier.notify(item, action.reason)
+            if not isinstance(action.reason, str) or not 1 <= len(action.reason.strip()) <= 2000:
+                raise InvalidWorkspace("notification reason must contain 1–2000 characters")
+            if self._notifications is not None:
+                self._notifications.record(item, actor, action.reason, at)
+            else:
+                self._notifier.notify(item, action.reason)
             return item
+        if expected_version is not None and item.version != expected_version:
+            raise TrackerConflict(item.version)
         updated = _apply(item, action, at)
-        self._tracker.save([updated])
+        if self._mutations is not None:
+            self._mutations.compare_save(updated, item.version, actor)
+        else:
+            self._tracker.save([updated])
         return updated
+
+    def history(
+        self, project_id: str, item_id: str, before_version: int | None = None
+    ) -> list[dict[str, Any]]:
+        if self._mutations is None:
+            raise SourceUnavailable("clearance audit unavailable")
+        return self._mutations.history(project_id, item_id, before_version)

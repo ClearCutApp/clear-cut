@@ -26,13 +26,18 @@ class NotificationFailed(SourceUnavailable):
 class WebhookNotifier:
     """Implements `Notifier` over an outbound HTTP webhook."""
 
-    def __init__(self, http_client: httpx.Client, webhook_url: str) -> None:
+    def __init__(
+        self, http_client: httpx.Client, webhook_url: str, *, enabled: bool = True
+    ) -> None:
         if not webhook_url.strip():
             raise ValueError("webhook_url must not be blank")
         self._client = http_client
         self._url = webhook_url
+        self._enabled = enabled
 
     def notify(self, item: TrackerItem, reason: str) -> None:
+        if not self._enabled:
+            raise NotificationFailed("unscoped webhook delivery is disabled")
         try:
             response = self._client.post(self._url, json=_body(item, reason))
         except httpx.TransportError as error:

@@ -5,6 +5,8 @@ import type { ScriptCreate } from "../api/client";
 import { AnalyzeForm } from "../components/molecules/AnalyzeForm";
 import { ScriptFileUpload } from "../features/analyze/ScriptFileUpload";
 import { useProject } from "../state/ProjectContext";
+import { useServerMode } from "../state/ServerModeContext";
+import { RevisionAnalysisView } from "./RevisionAnalysisView";
 
 /**
  * Where an analysis is started. Queueing answers 202 and the data layer
@@ -17,12 +19,18 @@ import { useProject } from "../state/ProjectContext";
  * above it re-analyses only the scenes whose content hash changed.
  */
 export function AnalyzeView(): ReactElement {
+  const mode = useServerMode();
+  return mode === "live" ? <RevisionAnalysisView /> : <LegacyAnalyzeView />;
+}
+
+function LegacyAnalyzeView(): ReactElement {
   const { projectId, jurisdictionCode, scripts, analysis, analysisError, runAnalysis, uploadScript } =
     useProject();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [storedFileId, setStoredFileId] = useState<string | null>(null);
   const [storedUri, setStoredUri] = useState<string | null>(null);
   const navigate = useNavigate();
 
@@ -33,6 +41,7 @@ export function AnalyzeView(): ReactElement {
     setUploading(false);
     if (outcome.ok) {
       setStoredUri(outcome.value.gcs_uri);
+      setStoredFileId(outcome.value.file_id ?? null);
       return;
     }
     setUploadError(outcome.message);
@@ -47,7 +56,9 @@ export function AnalyzeView(): ReactElement {
   async function handleSubmit(request: ScriptCreate): Promise<void> {
     setSubmitting(true);
     setError(null);
-    const outcome = await runAnalysis(request);
+    const outcome = await runAnalysis(
+      storedFileId === null ? request : { ...request, file_id: storedFileId },
+    );
     setSubmitting(false);
     if (outcome.ok) {
       await navigate(`/projects/${encodeURIComponent(projectId)}`);

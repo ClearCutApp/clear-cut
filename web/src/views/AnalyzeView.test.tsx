@@ -124,4 +124,22 @@ describe("AnalyzeView", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("gcs_uri is required");
   });
+
+  it("analyzes the owned file ID returned by an upload", async () => {
+    const { calls } = renderAnalyze({
+      "upload-script": ok({ file_id: "file-owned", gcs_uri: "gs://bucket/original.pdf",
+        filename: "draft.pdf", size_bytes: 9, content_type: "application/pdf" }),
+      "create-script": { status: 503, body: "worker unavailable" },
+    });
+    fireEvent.change(screen.getByLabelText("Screenplay PDF"), {
+      target: { files: [new File(["%PDF-test"], "draft.pdf", { type: "application/pdf" })] },
+    });
+    await waitFor(() => expect(screen.getByLabelText("Script URI")).toHaveValue(
+      "gs://bucket/original.pdf",
+    ));
+    fireEvent.click(screen.getByRole("button", { name: "Analyze" }));
+    await waitFor(() => expect(calls.find((call) => call.kind === "create-script")?.body)
+      .toMatchObject({ file_id: "file-owned" }));
+  });
+
 });
