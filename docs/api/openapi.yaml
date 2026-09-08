@@ -410,20 +410,8 @@ paths:
 
   /api/projects/{project_id}/analyses/{analysis_id}:
     parameters:
-    - name: project_id
-      in: path
-      required: true
-      description: The project that owns the record.
-      schema:
-        type: string
-        minLength: 1
-    - name: analysis_id
-      in: path
-      required: true
-      description: One queued analysis, as returned by the 202 that created it.
-      schema:
-        type: string
-        minLength: 1
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/AnalysisId'
     get:
       tags:
       - Scripts
@@ -1139,7 +1127,6 @@ paths:
     - name: analysis_id
       in: path
       required: true
-      description: One queued analysis, as returned by the 202 that created it.
       schema:
         type: string
         minLength: 1
@@ -1176,6 +1163,7 @@ paths:
   /api/projects/{project_id}/reports/{report_id}/download:
             text/csv:
   /api/projects/{project_id}/tracker-items/{item_id}/reconfirmation:
+      summary: Explicitly confirm evidence and conditions apply to the current revision
                 $ref: '#/components/schemas/TrackerItem'
   /api/projects/{project_id}/activity:
     parameters:
@@ -1686,8 +1674,59 @@ paths:
           description: Dated research records.
       - Local research
   /api/projects/{project_id}/notifications:
+    parameters:
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    get:
+      tags:
+      - Notifications
+      operationId: listProjectNotifications
+      parameters:
+      - name: before
+        in: query
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Notifications and optional next cursor.
+          content:
+            application/json:
+              schema:
+                type: object
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/projects/{project_id}/notifications/{notification_id}/read:
+    parameters:
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    - name: notification_id
+      in: path
+      required: true
+      schema:
+        type: string
+    post:
+      tags:
+      - Notifications
+      operationId: readProjectNotification
       summary: Mark a notification read for the signed-in user
+      responses:
+        '200':
+          description: Read mark saved.
           content:
             application/json:
               schema:
@@ -1984,7 +2023,9 @@ components:
           type: string
         script_id:
           type: string
-          description: The script version this analysis produces. Assigned when the job is queued, readable
+          description: |
+            The script version this analysis produces. Assigned when the job is
+            queued, readable at
             at `/api/projects/{project_id}/scripts/{script_id}` once `state` is `SUCCEEDED`.
         state:
           $ref: '#/components/schemas/AnalysisState'

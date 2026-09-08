@@ -601,3 +601,18 @@ export async function exportScreenplay(projectId: string, revisionId: string, fo
   return response.blob();
 }
 
+export interface ProjectNotification {
+  notification_id: string; item_id: string; item_version: number;
+  actor: string; reason: string; created_at: string; read: boolean;
+  delivery: "in_app_only" | "queued" | "pending" | "delivering" | "delivered" | "blocked" | "failed";
+}
+export interface NotificationPage {
+  configured: boolean; notifications: ProjectNotification[]; next_cursor: string | null;
+}
+export function getProjectNotifications(projectId: string, before?: string): Promise<NotificationPage> {
+  return requestJson(`${projectPath(projectId)}/notifications${before ? `?before=${encodeURIComponent(before)}` : ""}`);
+}
+export function readProjectNotification(projectId: string, notificationId: string): Promise<{ read: boolean }> {
+  return requestJson(`${projectPath(projectId)}/notifications/${encodeURIComponent(notificationId)}/read`, { method: "POST" });
+}
+

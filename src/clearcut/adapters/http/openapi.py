@@ -25,6 +25,7 @@ from clearcut.adapters.http import (
     bible,
     documents,
     drafts,
+    notifications,
     projects,
     questions,
     schemas,
@@ -64,6 +65,7 @@ DOMAINS: tuple[Domain, ...] = (
     bible,
     questions,
     drafts,
+    notifications,
     voice,
     documents,
 )

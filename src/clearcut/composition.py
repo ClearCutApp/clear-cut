@@ -109,6 +109,7 @@ from clearcut.adapters.http.bible import create_bible_blueprint
 from clearcut.adapters.http.documents import create_documents_blueprint
 from clearcut.adapters.http.drafts import create_drafts_blueprint
 from clearcut.adapters.http.identity import install_identity_boundary
+from clearcut.adapters.http.notifications import create_notifications_blueprint
 from clearcut.adapters.http.openapi import build_spec
 from clearcut.adapters.http.projects import create_projects_blueprint
 from clearcut.adapters.http.questions import create_questions_blueprint
@@ -125,6 +126,7 @@ from clearcut.application.add_bible_facts import AddBibleFacts
 from clearcut.application.analyze_script import AnalyzeScript
 from clearcut.application.answer_project_question import AnswerProjectQuestion
 from clearcut.application.create_project import CreateProject
+from clearcut.application.dispatch_notifications import DispatchNotifications
 from clearcut.application.document_ports import ProjectDocuments
 from clearcut.application.draft_ports import DraftStore, ScreenplayContent
 from clearcut.application.durable_ports import (
@@ -876,6 +878,7 @@ def create_app(build_dir: Path | None = None, *, analysis_runner: Runner | None 
         )
     )
     app.register_blueprint(create_activity_blueprint(use_cases.activity))
+    app.register_blueprint(create_notifications_blueprint(use_cases.notifications))
     app.register_blueprint(
         create_workspaces_blueprint(
             FirestoreTeams(firestore.Client(project=_required_env("GOOGLE_CLOUD_PROJECT")))
@@ -904,3 +907,16 @@ def create_app(build_dir: Path | None = None, *, analysis_runner: Runner | None 
         draft_store,
     )
     return app
+
+
+def build_notification_dispatcher() -> "DispatchNotifications":
+    from datetime import UTC, datetime
+
+    from clearcut.adapters.gcp.notification_delivery import FirestoreNotificationDelivery
+    from clearcut.adapters.notify.delivery import BoundNotificationSender
+
+    return DispatchNotifications(
+        FirestoreNotificationDelivery(firestore.Client(project=os.environ["GOOGLE_CLOUD_PROJECT"])),
+        BoundNotificationSender(os.environ),
+        lambda: datetime.now(UTC),
+    )

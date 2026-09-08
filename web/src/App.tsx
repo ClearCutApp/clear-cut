@@ -13,6 +13,7 @@ import { NotFoundView } from "./views/NotFoundView";
 import { OverviewView } from "./views/OverviewView";
 import { ProjectsView } from "./views/ProjectsView";
 import { DocumentsView } from "./views/DocumentsView";
+import { NotificationsView } from "./views/NotificationsView";
 import { ActivityView } from "./views/ActivityView";
 import { TeamView } from "./views/TeamView";
 import { JoinWorkspaceView } from "./views/JoinWorkspaceView";
@@ -41,6 +42,7 @@ export function App(): ReactElement {
           <Route path="analyze" element={<AnalyzeView />} />
           <Route path="documents" element={<DocumentsView />} />
           <Route path="activity" element={<ActivityView />} />
+          <Route path="notifications" element={<NotificationsView />} />
           <Route path="editor" element={<EditorView />} />
           <Route path="script" element={<ScriptView />} />
           <Route path="ask" element={<AskView />} />
