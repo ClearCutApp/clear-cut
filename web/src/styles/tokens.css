@@ -1,68 +1,144 @@
-/* Design tokens. Dark by default, after the mockup; light when the reader
-   prefers it. Every color the app paints is named here and nowhere else:
-   components carry a token or a class modifier, never a hex value, so this
-   file is the single color map. Comments separate the groups because the
-   standard config forbids blank lines between custom properties. */
+/* Design tokens, in two named layers, and the single source Tailwind reads.
+
+   `brand` is the marketing vocabulary the landing paints with. `product` is
+   the application vocabulary every authenticated screen paints with. They are
+   different palettes on purpose -- a hero and a clearance tracker do not want
+   the same green -- and naming both here is what keeps them from drifting into
+   two parallel systems again.
+
+   Raw values carry an `--app-` or `--brand-` prefix and live in `:root`, so a
+   media query can remap them. `@theme inline` then maps Tailwind's namespaces
+   onto those raw values: `inline` is what makes `bg-ground` follow the light
+   remap instead of freezing at the dark value.
+
+   `--*: initial` clears Tailwind's own defaults. The consequence is the rule
+   this file has always asserted, now enforced by the compiler rather than by
+   convention: a color that is not named here has no utility that paints it.
+   `bg-slate-900` does not compile. */
 
 :root {
   color-scheme: dark light;
 
-  /* Type */
-  --font-sans: "Geist", -apple-system, blinkmacsystemfont, "Segoe UI", sans-serif;
-  --font-mono: "Geist Mono", ui-monospace, "SF Mono", "Cascadia Code", monospace;
+  /* ------------------------------------------------ product: type */
+  --app-font-sans: "Geist", -apple-system, blinkmacsystemfont, "Segoe UI", sans-serif;
+  --app-font-mono: "Geist Mono", ui-monospace, "SF Mono", "Cascadia Code", monospace;
 
-  /* Surfaces */
-  --color-ground: #090d14;
-  --color-sidebar: #0d121d;
-  --color-card: #121824;
-  --color-card-hover: #182030;
+  /* ------------------------------------------------ product: surfaces */
+  --app-ground: #090d14;
+  --app-sidebar: #0d121d;
+  --app-card: #121824;
+  --app-card-hover: #182030;
 
-  /* Lines */
-  --color-border: #1e2838;
-  --color-border-focus: #2c3a50;
+  /* ------------------------------------------------ product: lines */
+  --app-border: #1e2838;
+  --app-border-focus: #2c3a50;
 
-  /* Text */
-  --color-text: #f3f4f6;
-  --color-text-muted: #8c98a8;
-  --color-text-dim: #5a6676;
+  /* ------------------------------------------------ product: text */
+  --app-text: #f3f4f6;
+  --app-text-muted: #8c98a8;
+  --app-text-dim: #5a6676;
 
-  /* Tones, each with a translucent glow for badges and notices */
-  --color-green: #10b981;
-  --color-green-glow: rgb(16 185 129 / 15%);
-  --color-amber: #f59e0b;
-  --color-amber-glow: rgb(245 158 11 / 15%);
-  --color-red: #ef4444;
-  --color-red-glow: rgb(239 68 68 / 15%);
-  --color-blue: #3b82f6;
-  --color-blue-glow: rgb(59 130 246 / 15%);
+  /* ------------------------------------------------ product: tones */
+  --app-green: #10b981;
+  --app-green-glow: rgb(16 185 129 / 15%);
+  --app-amber: #f59e0b;
+  --app-amber-glow: rgb(245 158 11 / 15%);
+  --app-red: #ef4444;
+  --app-red-glow: rgb(239 68 68 / 15%);
+  --app-blue: #3b82f6;
+  --app-blue-glow: rgb(59 130 246 / 15%);
 
-  /* Accent */
-  --color-accent: var(--color-green);
-  --color-accent-contrast: #041a10;
+  /* ------------------------------------------------ product: accent */
+  --app-accent: var(--app-green);
+  --app-accent-contrast: #041a10;
 
-  /* Tracker states */
-  --color-state-blocked: var(--color-red);
-  --color-state-blocked-glow: var(--color-red-glow);
-  --color-state-in-progress: var(--color-amber);
-  --color-state-in-progress-glow: var(--color-amber-glow);
-  --color-state-cleared: var(--color-green);
-  --color-state-cleared-glow: var(--color-green-glow);
+  /* ------------------------------------------------ brand: marketing */
+  --brand-green: #42dba5;
+  --brand-green-hover: #6aebbb;
+  --brand-ink: #071a14;
+  --brand-ground: #090e13;
+  --brand-text: #f3f3ed;
+  --brand-muted: #95a8a9;
+  --brand-muted-soft: #aab5b9;
+  --brand-muted-dim: #8a999e;
+  --brand-rule: #263238;
+  --brand-rule-soft: #202c32;
+  --brand-rule-switch: #41514f;
 
-  /* Risk levels */
-  --color-risk-low: var(--color-green);
-  --color-risk-low-glow: var(--color-green-glow);
-  --color-risk-medium: var(--color-amber);
-  --color-risk-medium-glow: var(--color-amber-glow);
-  --color-risk-high: var(--color-red);
-  --color-risk-high-glow: var(--color-red-glow);
-  --color-risk-critical: var(--color-red);
-  --color-risk-critical-glow: var(--color-red-glow);
+  /* ------------------------------------------------ brand: script paper */
+  --brand-paper: #eae8dd;
+  --brand-paper-ink: #30332d;
+  --brand-paper-rule: #b7bbaf;
+  --brand-paper-mark: #a9dfc3;
+  --brand-paper-aside: #dfe3d7;
+  --brand-paper-accent: #319b74;
+  --brand-paper-dim: #616b5e;
 
-  /* Errors */
-  --color-error: var(--color-red);
-  --color-error-glow: var(--color-red-glow);
+  /* ------------------------------------------------ brand: auth surfaces */
+  --brand-auth-ground: #0a1118;
+  --brand-auth-field: #101e26;
+  --brand-auth-field-border: #31434c;
+  --brand-auth-button-border: #4c6069;
+  --brand-auth-text: #eaf1ef;
+  --brand-auth-copy: #a3b2b9;
+  --brand-auth-divider: #85969e;
 
-  /* Spacing */
+  /* ------------------------------------------------ radii */
+  --app-radius-container: 8px;
+  --app-radius-control: 6px;
+  --app-radius-badge: 4px;
+  --brand-radius: 3px;
+
+  /* ------------------------------------------------ motion */
+  --app-transition-fast: 150ms ease;
+
+  /* ------------------------------------------------ layout */
+  --app-sidebar-width: 15rem;
+  --app-panel-width: 22.5rem;
+  --app-content-max: 80rem;
+
+  /* ---------------------------------------- compatibility aliases
+
+     The names the unmigrated partials still read. Each one is deleted with
+     the partial that reads it; when the last partial is gone, so is this
+     block. Nothing new may be added here. */
+  --font-sans: var(--app-font-sans);
+  --font-mono: var(--app-font-mono);
+  --color-ground: var(--app-ground);
+  --color-sidebar: var(--app-sidebar);
+  --color-card: var(--app-card);
+  --color-card-hover: var(--app-card-hover);
+  --color-border: var(--app-border);
+  --color-border-focus: var(--app-border-focus);
+  --color-text: var(--app-text);
+  --color-text-muted: var(--app-text-muted);
+  --color-text-dim: var(--app-text-dim);
+  --color-green: var(--app-green);
+  --color-green-glow: var(--app-green-glow);
+  --color-amber: var(--app-amber);
+  --color-amber-glow: var(--app-amber-glow);
+  --color-red: var(--app-red);
+  --color-red-glow: var(--app-red-glow);
+  --color-blue: var(--app-blue);
+  --color-blue-glow: var(--app-blue-glow);
+  --color-accent: var(--app-accent);
+  --color-accent-contrast: var(--app-accent-contrast);
+  --color-state-blocked: var(--app-red);
+  --color-state-blocked-glow: var(--app-red-glow);
+  --color-state-in-progress: var(--app-amber);
+  --color-state-in-progress-glow: var(--app-amber-glow);
+  --color-state-cleared: var(--app-green);
+  --color-state-cleared-glow: var(--app-green-glow);
+  --color-risk-low: var(--app-green);
+  --color-risk-low-glow: var(--app-green-glow);
+  --color-risk-medium: var(--app-amber);
+  --color-risk-medium-glow: var(--app-amber-glow);
+  --color-risk-high: var(--app-red);
+  --color-risk-high-glow: var(--app-red-glow);
+  --color-risk-critical: var(--app-red);
+  --color-risk-critical-glow: var(--app-red-glow);
+  --color-error: var(--app-red);
+  --color-error-glow: var(--app-red-glow);
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -71,52 +147,145 @@
   --space-6: 2rem;
   --space-7: 3rem;
   --space-8: 4rem;
-
-  /* Radii */
-  --radius-container: 8px;
-  --radius-control: 6px;
-  --radius-badge: 4px;
-
-  /* Motion */
-  --transition-fast: 150ms ease;
-
-  /* Layout */
-  --sidebar-width: 15rem;
-  --panel-width: 22.5rem;
-  --content-max: 80rem;
+  --radius-container: var(--app-radius-container);
+  --radius-control: var(--app-radius-control);
+  --radius-badge: var(--app-radius-badge);
+  --transition-fast: var(--app-transition-fast);
+  --sidebar-width: var(--app-sidebar-width);
+  --panel-width: var(--app-panel-width);
+  --content-max: var(--app-content-max);
 }
 
-/* The light theme is the same vocabulary remapped to the Geist values the
-   app shipped with before the dark default (D63). Accent text flips to
-   white because the light green is dark enough to carry it. */
+/* The light theme remaps the same product vocabulary to the Geist values the
+   app shipped with before the dark default (D63). Accent text flips to white
+   because the light green is dark enough to carry it. The brand layer does not
+   remap: the landing is dark by design, in both schemes. */
 @media (prefers-color-scheme: light) {
   :root {
     /* Surfaces */
-    --color-ground: #fafafa;
-    --color-sidebar: #fff;
-    --color-card: #fff;
-    --color-card-hover: #fafafa;
+    --app-ground: #fafafa;
+    --app-sidebar: #fff;
+    --app-card: #fff;
+    --app-card-hover: #fafafa;
 
     /* Lines */
-    --color-border: #eaeaea;
-    --color-border-focus: #d4d4d4;
+    --app-border: #eaeaea;
+    --app-border-focus: #d4d4d4;
 
     /* Text */
-    --color-text: #171717;
-    --color-text-muted: #666;
-    --color-text-dim: #999;
+    --app-text: #171717;
+    --app-text-muted: #666;
+    --app-text-dim: #999;
 
     /* Tones */
-    --color-green: #18794e;
-    --color-green-glow: #ddf3e4;
-    --color-amber: #ad5700;
-    --color-amber-glow: #fff4d6;
-    --color-red: #e5484d;
-    --color-red-glow: #ffe9e9;
-    --color-blue: #0070f3;
-    --color-blue-glow: #e1efff;
+    --app-green: #18794e;
+    --app-green-glow: #ddf3e4;
+    --app-amber: #ad5700;
+    --app-amber-glow: #fff4d6;
+    --app-red: #e5484d;
+    --app-red-glow: #ffe9e9;
+    --app-blue: #0070f3;
+    --app-blue-glow: #e1efff;
 
     /* Accent */
-    --color-accent-contrast: #fff;
+    --app-accent-contrast: #fff;
   }
+}
+
+/* Tailwind's theme. Every utility the app can write comes from here. */
+@theme inline {
+  --*: initial;
+
+  /* Type */
+  --font-sans: var(--app-font-sans);
+  --font-mono: var(--app-font-mono);
+
+  /* Product surfaces */
+  --color-ground: var(--app-ground);
+  --color-sidebar: var(--app-sidebar);
+  --color-card: var(--app-card);
+  --color-card-hover: var(--app-card-hover);
+
+  /* Product lines */
+  --color-border: var(--app-border);
+  --color-border-focus: var(--app-border-focus);
+
+  /* Product text */
+  --color-text: var(--app-text);
+  --color-text-muted: var(--app-text-muted);
+  --color-text-dim: var(--app-text-dim);
+
+  /* Product tones */
+  --color-green: var(--app-green);
+  --color-green-glow: var(--app-green-glow);
+  --color-amber: var(--app-amber);
+  --color-amber-glow: var(--app-amber-glow);
+  --color-red: var(--app-red);
+  --color-red-glow: var(--app-red-glow);
+  --color-blue: var(--app-blue);
+  --color-blue-glow: var(--app-blue-glow);
+
+  /* Product accent */
+  --color-accent: var(--app-accent);
+  --color-accent-contrast: var(--app-accent-contrast);
+
+  /* Tracker states, risk levels and errors alias the four tones, so a state
+     or risk word maps to a tone in exactly one place. */
+  --color-state-blocked: var(--app-red);
+  --color-state-blocked-glow: var(--app-red-glow);
+  --color-state-in-progress: var(--app-amber);
+  --color-state-in-progress-glow: var(--app-amber-glow);
+  --color-state-cleared: var(--app-green);
+  --color-state-cleared-glow: var(--app-green-glow);
+  --color-risk-low: var(--app-green);
+  --color-risk-low-glow: var(--app-green-glow);
+  --color-risk-medium: var(--app-amber);
+  --color-risk-medium-glow: var(--app-amber-glow);
+  --color-risk-high: var(--app-red);
+  --color-risk-high-glow: var(--app-red-glow);
+  --color-risk-critical: var(--app-red);
+  --color-risk-critical-glow: var(--app-red-glow);
+  --color-error: var(--app-red);
+  --color-error-glow: var(--app-red-glow);
+
+  /* Brand */
+  --color-brand: var(--brand-green);
+  --color-brand-hover: var(--brand-green-hover);
+  --color-brand-ink: var(--brand-ink);
+  --color-brand-ground: var(--brand-ground);
+  --color-brand-text: var(--brand-text);
+  --color-brand-muted: var(--brand-muted);
+  --color-brand-muted-soft: var(--brand-muted-soft);
+  --color-brand-muted-dim: var(--brand-muted-dim);
+  --color-brand-rule: var(--brand-rule);
+  --color-brand-rule-soft: var(--brand-rule-soft);
+  --color-brand-rule-switch: var(--brand-rule-switch);
+  --color-brand-paper: var(--brand-paper);
+  --color-brand-paper-ink: var(--brand-paper-ink);
+  --color-brand-paper-rule: var(--brand-paper-rule);
+  --color-brand-paper-mark: var(--brand-paper-mark);
+  --color-brand-paper-aside: var(--brand-paper-aside);
+  --color-brand-paper-accent: var(--brand-paper-accent);
+  --color-brand-paper-dim: var(--brand-paper-dim);
+  --color-brand-auth-ground: var(--brand-auth-ground);
+  --color-brand-auth-field: var(--brand-auth-field);
+  --color-brand-auth-field-border: var(--brand-auth-field-border);
+  --color-brand-auth-button-border: var(--brand-auth-button-border);
+  --color-brand-auth-text: var(--brand-auth-text);
+  --color-brand-auth-copy: var(--brand-auth-copy);
+  --color-brand-auth-divider: var(--brand-auth-divider);
+
+  /* Spacing. The scale is the one the partials already step through. */
+  --spacing: 0.25rem;
+
+  /* Radii */
+  --radius-container: var(--app-radius-container);
+  --radius-control: var(--app-radius-control);
+  --radius-badge: var(--app-radius-badge);
+  --radius-brand: var(--brand-radius);
+
+  /* Layout */
+  --container-sidebar: var(--app-sidebar-width);
+  --container-panel: var(--app-panel-width);
+  --container-content: var(--app-content-max);
 }

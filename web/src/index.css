@@ -1,18 +1,34 @@
-/* Entry point: the ordered partials and nothing else. Order is meaning:
-   tokens before anything that reads them, base before the components that
-   build on it, the shell before the features it frames, and the features
-   in the order a reader meets them. */
+/* Entry point: Tailwind, then the ordered partials and nothing else. Order is
+   meaning: the framework before the tokens that extend its theme, tokens
+   before anything that reads them, base before the components that build on
+   it, the shell before the features it frames, and the features in the order
+   a reader meets them.
 
-@import url("./styles/tokens.css");
-@import url("./styles/base.css");
-@import url("./styles/shell.css");
-@import url("./styles/components.css");
-@import url("./styles/projects.css");
-@import url("./styles/analyze.css");
-@import url("./styles/tracker.css");
-@import url("./styles/script.css");
-@import url("./styles/item.css");
-@import url("./styles/ask.css");
-@import url("./styles/landing.css");
-@import url("./styles/editor.css");
-@import url("./styles/voice.css");
+   String notation, not `url()`: Tailwind's own import requires it, and an
+   entry file with two notations reads as two conventions.
+
+   Tailwind is imported by layer, without `preflight.css`, on purpose.
+   Preflight is a reset, and this app already has one: `base.css` styles the
+   elements it means to style, and the browser's own margins carry the rest.
+   Adding preflight zeroes the default `p` margin, which silently collapses
+   the vertical rhythm of every paragraph the app never gave an explicit
+   margin -- the landing's script card among them. Theme and utilities are
+   what we came for; the reset is a separate decision, and not this one. */
+
+@layer theme, base, components, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@import "./styles/tokens.css";
+@import "./styles/base.css";
+@import "./styles/shell.css";
+@import "./styles/components.css";
+@import "./styles/projects.css";
+@import "./styles/analyze.css";
+@import "./styles/tracker.css";
+@import "./styles/script.css";
+@import "./styles/item.css";
+@import "./styles/ask.css";
+@import "./styles/landing.css";
+@import "./styles/editor.css";
+@import "./styles/voice.css";
