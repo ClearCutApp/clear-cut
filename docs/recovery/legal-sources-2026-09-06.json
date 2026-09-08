@@ -1,0 +1,305 @@
+{
+  "date": "2026-09-06",
+  "provenance": "Official-source discovery by recovery research agent; not ingestion proof.",
+  "countries": [
+    {
+      "jurisdiction": "AR",
+      "subject_coverage": "copyright, trademark, personality/privacy where included; incomplete local coverage",
+      "ingestion_status": "unverified",
+      "evaluation_status": "missing",
+      "sources": [
+        "https://www.argentina.gob.ar/normativa/nacional/ley-11723-42755/actualizacion",
+        "https://www.argentina.gob.ar/normativa/nacional/18803/actualizacion",
+        "https://www.argentina.gob.ar/normativa/nacional/ley-26994-235975/actualizacion",
+        "https://www.argentina.gob.ar/normativa/nacional/ley-25326-64790/actualizacion"
+      ],
+      "coverage_gap": "Location-specific permit and rights questions require project research.",
+      "documents": [
+        {
+          "id": "argentina-copyright",
+          "jurisdiction": "argentina",
+          "subject": "copyright",
+          "title": "Ley 11.723 — Propiedad Intelectual",
+          "url": "https://www.argentina.gob.ar/normativa/nacional/ley-11723-42755/actualizacion",
+          "kind": "statute",
+          "as_of": "publication retrieved during ingestion; not a certification of completeness",
+          "skip_pdf_pages": 0
+        },
+        {
+          "id": "argentina-trademark",
+          "jurisdiction": "argentina",
+          "subject": "trademark",
+          "title": "Ley 22.362 — Marcas y Designaciones",
+          "url": "https://www.argentina.gob.ar/normativa/nacional/18803/actualizacion",
+          "kind": "statute",
+          "as_of": "publication retrieved during ingestion; not a certification of completeness",
+          "skip_pdf_pages": 0
+        },
+        {
+          "id": "argentina-civil-personality",
+          "jurisdiction": "argentina",
+          "subject": "civil-personality",
+          "title": "Ley 26.994 — Código Civil y Comercial",
+          "url": "https://www.argentina.gob.ar/normativa/nacional/ley-26994-235975/actualizacion",
+          "kind": "statute",
+          "as_of": "publication retrieved during ingestion; not a certification of completeness",
+          "skip_pdf_pages": 0
+        },
+        {
+          "id": "argentina-privacy",
+          "jurisdiction": "argentina",
+          "subject": "privacy",
+          "title": "Ley 25.326 — Protección de Datos Personales",
+          "url": "https://www.argentina.gob.ar/normativa/nacional/ley-25326-64790/actualizacion",
+          "kind": "statute",
+          "as_of": "publication retrieved during ingestion; not a certification of completeness",
+          "skip_pdf_pages": 0
+        }
+      ]
+    },
+    {
+      "jurisdiction": "MX",
+      "subject_coverage": "copyright, trademark, personality/privacy where included; incomplete local coverage",
+      "ingestion_status": "unverified",
+      "evaluation_status": "missing",
+      "sources": [
+        "https://www.diputados.gob.mx/LeyesBiblio/pdf/LFDA.pdf",
+        "https://www.diputados.gob.mx/LeyesBiblio/pdf/LFPPI.pdf",
+        "https://www.diputados.gob.mx/LeyesBiblio/pdf/CCF.pdf",
+        "https://www.diputados.gob.mx/LeyesBiblio/pdf/LFPDPPP.pdf"
+      ],
+      "coverage_gap": "Use the 2025 replacement LFPDPPP, not the superseded text.",
+      "documents": [
+        {
+          "id": "mexico-copyright",
+          "jurisdiction": "mexico",
+          "subject": "copyright",
+          "title": "Ley Federal del Derecho de Autor",
+          "url": "https://www.diputados.gob.mx/LeyesBiblio/pdf/LFDA.pdf",
+          "kind": "statute",
+          "as_of": "publication retrieved during ingestion; not a certification of completeness",
+          "skip_pdf_pages": 0
+        },
+        {
+          "id": "mexico-industrial-property",
+          "jurisdiction": "mexico",
+          "subject": "industrial-property",
+          "title": "Ley Federal de Protección a la Propiedad Industrial",
+          "url": "https://www.diputados.gob.mx/LeyesBiblio/pdf/LFPPI.pdf",
+          "kind": "statute",
+          "as_of": "publication retrieved during ingestion; not a certification of completeness",
+          "skip_pdf_pages": 0
+        },
+        {
+          "id": "mexico-civil-personality",
+          "jurisdiction": "mexico",
+          "subject": "civil-personality",
+          "title": "Código Civil Federal",
+          "url": "https://www.diputados.gob.mx/LeyesBiblio/pdf/CCF.pdf",
+          "kind": "statute",
+          "as_of": "publication retrieved during ingestion; not a certification of completeness",
+          "skip_pdf_pages": 0
+        },
+        {
+          "id": "mexico-privacy",
+          "jurisdiction": "mexico",
+          "subject": "privacy",
+          "title": "Ley Federal de Protección de Datos Personales en Posesión de los Particulares (2025)",
+          "url": "https://www.diputados.gob.mx/LeyesBiblio/pdf/LFPDPPP.pdf",
+          "kind": "statute",
+          "as_of": "2025 replacement LFPDPPP; reject superseded original",
+          "skip_pdf_pages": 0,
+          "required_pattern": "(20\\s*(?:-|/|de\\s+marzo\\s+de\\s+)\\s*(?:03\\s*(?:-|/)\\s*)?2025)"
+        }
+      ]
+    },
+    {
+      "jurisdiction": "ES",
+      "subject_coverage": "copyright, trademark, personality/privacy where included; incomplete local coverage",
+      "ingestion_status": "unverified",
+      "evaluation_status": "missing",
+      "sources": [
+        "https://www.boe.es/buscar/act.php?id=BOE-A-1996-8930",
+        "https://www.boe.es/buscar/act.php?id=BOE-A-2001-23093",
+        "https://www.boe.es/buscar/act.php?id=BOE-A-1982-11196",
+        "https://www.boe.es/buscar/act.php?id=BOE-A-2018-16673"
+      ],
+      "coverage_gap": "Location-specific permit and rights questions require project research.",
+      "documents": [
+        {
+          "id": "spain-copyright",
+          "jurisdiction": "spain",
+          "subject": "copyright",
+          "title": "Real Decreto Legislativo 1/1996 — Propiedad Intelectual",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-1996-8930",
+          "kind": "statute",
+          "as_of": "publication retrieved during ingestion; not a certification of completeness",
+          "skip_pdf_pages": 0
+        },
+        {
+          "id": "spain-trademark",
+          "jurisdiction": "spain",
+          "subject": "trademark",
+          "title": "Ley 17/2001 — Marcas",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2001-23093",
+          "kind": "statute",
+          "as_of": "publication retrieved during ingestion; not a certification of completeness",
+          "skip_pdf_pages": 0
+        },
+        {
+          "id": "spain-personality",
+          "jurisdiction": "spain",
+          "subject": "personality",
+          "title": "Ley Orgánica 1/1982 — Honor, Intimidad y Propia Imagen",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-1982-11196",
+          "kind": "statute",
+          "as_of": "publication retrieved during ingestion; not a certification of completeness",
+          "skip_pdf_pages": 0
+        },
+        {
+          "id": "spain-privacy",
+          "jurisdiction": "spain",
+          "subject": "privacy",
+          "title": "Ley Orgánica 3/2018 — Protección de Datos Personales",
+          "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2018-16673",
+          "kind": "statute",
+          "as_of": "publication retrieved during ingestion; not a certification of completeness",
+          "skip_pdf_pages": 0
+        }
+      ]
+    },
+    {
+      "jurisdiction": "CO",
+      "subject_coverage": "copyright, trademark, personality/privacy where included; incomplete local coverage",
+      "ingestion_status": "unverified",
+      "evaluation_status": "missing",
+      "sources": [
+        "https://www.funcionpublica.gov.co/eva/gestornormativo/norma.php?i=3431",
+        "https://www.comunidadandina.org/DocOficialesFiles/Gacetas/Gace600.pdf",
+        "https://www.secretariasenado.gov.co/senado/basedoc/ley_1581_2012.html"
+      ],
+      "coverage_gap": "Decision 486 begins on page 2 of Gaceta 600; exclude Decision 485.",
+      "documents": [
+        {
+          "id": "colombia-copyright",
+          "jurisdiction": "colombia",
+          "subject": "copyright",
+          "title": "Ley 23 de 1982 — Derechos de Autor",
+          "url": "https://www.funcionpublica.gov.co/eva/gestornormativo/norma.php?i=3431",
+          "kind": "statute",
+          "as_of": "publication retrieved during ingestion; not a certification of completeness",
+          "skip_pdf_pages": 0
+        },
+        {
+          "id": "colombia-industrial-property",
+          "jurisdiction": "colombia",
+          "subject": "industrial-property",
+          "title": "Decisión Andina 486 — Propiedad Industrial",
+          "url": "https://www.comunidadandina.org/DocOficialesFiles/Gacetas/Gace600.pdf",
+          "kind": "statute",
+          "as_of": "publication retrieved during ingestion; not a certification of completeness",
+          "skip_pdf_pages": 1,
+          "required_text": [
+            "486"
+          ]
+        },
+        {
+          "id": "colombia-privacy",
+          "jurisdiction": "colombia",
+          "subject": "privacy",
+          "title": "Ley 1581 de 2012 — Protección de Datos Personales",
+          "url": "https://www.secretariasenado.gov.co/senado/basedoc/ley_1581_2012.html",
+          "kind": "statute",
+          "as_of": "publication retrieved during ingestion; not a certification of completeness",
+          "skip_pdf_pages": 0
+        }
+      ]
+    },
+    {
+      "jurisdiction": "US",
+      "subject_coverage": "copyright, trademark, personality/privacy where included; incomplete local coverage",
+      "ingestion_status": "unverified",
+      "evaluation_status": "missing",
+      "sources": [
+        "https://www.copyright.gov/title17/",
+        "https://uscode.house.gov/view.xhtml?edition=prelim&num=0&req=granuleid%3AUSC-prelim-title15-chapter22-front",
+        "https://constitution.congress.gov/browse/essay/amdt1-7-5-10/ALDE_00013811/"
+      ],
+      "coverage_gap": "Congress constitutional essay is commentary, not a statute. State privacy/publicity and local permits remain gaps.",
+      "documents": [
+        {
+          "id": "usa-copyright",
+          "jurisdiction": "usa",
+          "subject": "copyright",
+          "title": "United States Code Title 17 — Copyright (December 2025 edition)",
+          "url": "https://www.copyright.gov/title17/title17.pdf",
+          "kind": "statute",
+          "as_of": "December 2025 official edition; amendments through 2025-12-18, later changes unverified",
+          "skip_pdf_pages": 0
+        }
+      ],
+      "excluded_sources": [
+        {
+          "url": "https://uscode.house.gov/view.xhtml?edition=prelim&num=0&req=granuleid%3AUSC-prelim-title15-chapter22-front",
+          "reason": "Current full text unavailable during discovery; 2024 govinfo fallback is historical and excluded from active corpus."
+        },
+        {
+          "url": "https://constitution.congress.gov/browse/essay/amdt1-7-5-10/ALDE_00013811/",
+          "reason": "Constitutional commentary, not a statute."
+        }
+      ]
+    },
+    {
+      "jurisdiction": "CA",
+      "subject_coverage": "copyright, trademark, personality/privacy where included; incomplete local coverage",
+      "ingestion_status": "unverified",
+      "evaluation_status": "missing",
+      "sources": [
+        "https://laws-lois.justice.gc.ca/eng/acts/C-42/Index.html",
+        "https://laws-lois.justice.gc.ca/eng/acts/t-13/",
+        "https://laws-lois.justice.gc.ca/eng/acts/P-8.6/",
+        "https://www.priv.gc.ca/en/privacy-topics/privacy-laws-in-canada/"
+      ],
+      "coverage_gap": "Provincial privacy/publicity and local permits remain gaps.",
+      "documents": [
+        {
+          "id": "canada-copyright",
+          "jurisdiction": "canada",
+          "subject": "copyright",
+          "title": "Copyright Act (R.S.C., 1985, c. C-42)",
+          "url": "https://laws-lois.justice.gc.ca/eng/acts/C-42/FullText.html",
+          "kind": "statute",
+          "as_of": "Official site displayed current-to 2026-06-21 at discovery; inspect retrieved text for updates",
+          "skip_pdf_pages": 0
+        },
+        {
+          "id": "canada-trademark",
+          "jurisdiction": "canada",
+          "subject": "trademark",
+          "title": "Trademarks Act (R.S.C., 1985, c. T-13)",
+          "url": "https://laws-lois.justice.gc.ca/eng/acts/t-13/FullText.html",
+          "kind": "statute",
+          "as_of": "Official site displayed current-to 2026-06-21 at discovery; inspect retrieved text for updates",
+          "skip_pdf_pages": 0
+        },
+        {
+          "id": "canada-privacy",
+          "jurisdiction": "canada",
+          "subject": "privacy",
+          "title": "Personal Information Protection and Electronic Documents Act (S.C. 2000, c. 5)",
+          "url": "https://laws-lois.justice.gc.ca/eng/acts/P-8.6/FullText.html",
+          "kind": "statute",
+          "as_of": "Official site displayed current-to 2026-06-21 at discovery; inspect retrieved text for updates",
+          "skip_pdf_pages": 0
+        }
+      ],
+      "excluded_sources": [
+        {
+          "url": "https://www.priv.gc.ca/en/privacy-topics/privacy-laws-in-canada/",
+          "reason": "Privacy overview is guidance, not normative full text."
+        }
+      ]
+    }
+  ],
+  "schema_version": 1
+}

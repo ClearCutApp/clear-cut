@@ -429,11 +429,6 @@ paths:
       - Scripts
       operationId: getAnalysis
       summary: The state of one queued analysis
-      description: |
-        `SUCCEEDED` carries the `script_id` to read. `FAILED` carries a
-        non-empty `error`. A run whose instance was reclaimed mid-run is
-        reported as `FAILED` by the read that finds it stale, so a job never
-        sits in `RUNNING` forever.
       description: Live jobs resume expired leases through the scheduled dispatcher. SUCCEEDED, FAILED
         and CANCELLED are terminal. Cancellation blocks publication; an already submitted provider task
         may continue remotely.
@@ -781,6 +776,7 @@ paths:
       - Questions
       operationId: askProjectQuestion
       summary: Ask about this project's clearance state
+      description: Answers from authorized project facts, cited legal sources or the completed scene
         projection for the committed revision. Local questions require recorded production-location
         evidence. Missing evidence and incomplete indexing are reported explicitly; research never grants
         clearance.
@@ -2360,6 +2356,7 @@ paths:
       tags:
       - Notifications
       operationId: listProjectNotifications
+      summary: Read 50 notifications, newest first, with private read marks
       parameters:
       - name: before
         in: query
@@ -3280,7 +3277,7 @@ components:
             $ref: '#/components/schemas/BibleFact'
         citations:
           type: array
-          description: The legal sources the answer rests on.
+          description: Supporting legal sources or exact saved-revision scene references.
           items:
             $ref: '#/components/schemas/Citation'
       additionalProperties: false
