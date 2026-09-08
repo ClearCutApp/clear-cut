@@ -22,7 +22,8 @@ and the store rounds to it on the way in.
 
 `ensure_schema` is not repeated per store. It holds the only copy of the DDL,
 so `infra/provision_tracker_schema.py` and every store's own `ensure_schema`
-method issue the exact same five statements.
+method issue the exact same statements -- the five creates, then the column
+additions `ALTERATIONS` carries for tables an earlier deployment already made.
 """
 
 from __future__ import annotations
@@ -65,7 +66,10 @@ CREATE TABLE IF NOT EXISTS projects (
     project_id String,
     title String,
     jurisdiction_code String,
-    created_at String
+    created_at String,
+    poster_uri Nullable(String),
+    `format` Nullable(String),
+    status Nullable(String)
 ) ENGINE = ReplacingMergeTree
 ORDER BY project_id
 """
@@ -120,10 +124,26 @@ DDL = (
 # schema.py --recreate` does, and only after a human confirms.
 DROP_DDL = tuple(f"DROP TABLE IF EXISTS {table}" for table in TABLES)
 
+# `CREATE TABLE IF NOT EXISTS` says nothing to a table that already exists, so
+# a column added to a create statement above never reaches a deployment that
+# ran the previous one. These add it, and only it: `ADD COLUMN IF NOT EXISTS`
+# is a no-op on a table that already carries the column and appends it in the
+# declared order on one that does not, so `SELECT *` returns the same column
+# order either way. Widening a table this way keeps every existing row --
+# unlike `--recreate`, which is for a key change and takes the rows with it.
+#
+# `format` is quoted because `FORMAT` opens a clause in ClickHouse's own SQL
+# and an unquoted column of that name reads as the start of one.
+ALTERATIONS = (
+    "ALTER TABLE projects ADD COLUMN IF NOT EXISTS poster_uri Nullable(String)",
+    "ALTER TABLE projects ADD COLUMN IF NOT EXISTS `format` Nullable(String)",
+    "ALTER TABLE projects ADD COLUMN IF NOT EXISTS status Nullable(String)",
+)
+
 
 def ensure_schema(client: ch_client._ChClient) -> None:
     try:
-        for statement in DDL:
+        for statement in (*DDL, *ALTERATIONS):
             client.command(statement)
     except Exception as exc:
         raise ch_client.ClickHouseUnavailable(f"failed to create tables: {exc}") from exc

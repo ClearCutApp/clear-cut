@@ -445,18 +445,42 @@ called the Dynamic Scalability Module.
 
 ## 5. Frontend separation of concerns
 
-**Status: WIP.** Amended 2026-09-05. The description below was written for a
-three-organism app and survived an entire UI rewrite unedited; it named a
-`TrackerDashboard` component that no longer exists and a Tailwind dependency
-that was never installed. What follows is what ships.
+**Status: WIP.** Amended 2026-09-05 and 2026-09-08. The description here was
+written for a three-organism app and survived an entire UI rewrite unedited; it
+named a `TrackerDashboard` component that no longer exists and a Tailwind
+dependency that was never installed. The component is still gone. The
+dependency is now installed. What follows is what ships.
 
 The SPA lives in `web/` at the repo root, outside `src/clearcut/`, built with
-React 19 and Vite. Routing is `react-router` v8. Styling is vanilla CSS over
-design tokens rather than Tailwind: the dependency was never added, and ADR
-0009 is stale on that point. `web/src/index.css` is ten ordered `@import`
-lines; the tokens live in `web/src/styles/tokens.css`. The backend never
-renders a template; one Cloud Run service serves the JSON API and the static
-`web/` build output.
+React 19 and Vite 8. Routing is `react-router` v8. Styling is Tailwind v4 over
+design tokens, which is what ADR 0009 chose and what the code now does; see
+that record's 2026-09-08 amendment for why it took this long.
+
+`web/src/index.css` imports Tailwind by layer and then the ordered partials.
+Preflight is deliberately not imported: it is a reset, `web/src/styles/base.css`
+already is one, and measured against the page preflight zeroed the default `p`
+margin and collapsed the vertical rhythm of every paragraph carrying no explicit
+margin.
+
+`web/src/styles/tokens.css` is the project's `@theme`, in two named layers.
+`brand` is the vocabulary the landing paints with, `product` the one every
+authenticated screen paints with; they are different palettes on purpose. Raw
+values keep an `--app-`/`--brand-` prefix in `:root` so the light media query
+can remap them, and `@theme inline` maps Tailwind's namespaces onto those raw
+values -- `inline` is what makes `bg-ground` follow the remap instead of
+freezing at the dark value, so the dark-first model needs no `dark:` variant
+anywhere. `--*: initial` clears Tailwind's own defaults, which turns the rule
+that file always asserted into one the compiler enforces: a color that is not
+named there has no utility that paints it.
+
+Layout and spacing are utilities. The semantic vocabulary is not: `.state-badge
+--blocked` and its siblings stay component classes in `@layer components`,
+because their whole job is to map a state or risk word to a tone in exactly one
+place, and utilities sprayed across sixty-five components would turn one place
+into sixty. `@apply` is not used, for the same reason.
+
+The backend never renders a template; one Cloud Run service serves the JSON API
+and the static `web/` build output.
 
 The top-level layout is by responsibility, not by atomic tier:
 

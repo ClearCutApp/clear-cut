@@ -3,208 +3,210 @@
    restyle them. Every color comes from tokens.css through a class modifier,
    so a state or risk word maps to a tone in exactly one place. */
 
-/* -------------------------------------------------------------- badges */
+@layer components {
+  /* -------------------------------------------------------------- badges */
 
-.state-badge,
-.risk-badge,
-.needs-review-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  font-size: 12px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.4;
-  white-space: nowrap;
-  border-radius: var(--radius-badge);
-}
+  .state-badge,
+  .risk-badge,
+  .needs-review-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: 12px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.4;
+    white-space: nowrap;
+    border-radius: var(--app-radius-badge);
+  }
 
-/* The state badge is the design's pill with a leading dot. The dot takes
-   the badge's own color, so it repeats the tone the word already carries
-   and adds no meaning of its own -- a colored circle is never the only
-   thing saying what state an item is in (.claude/WRITING.md Section 2). */
-.state-badge {
-  display: inline-flex;
-  gap: 6px;
-  align-items: center;
-  padding: 3px 10px;
-  border-radius: 999px;
-}
+  /* The state badge is the design's pill with a leading dot. The dot takes
+     the badge's own color, so it repeats the tone the word already carries
+     and adds no meaning of its own -- a colored circle is never the only
+     thing saying what state an item is in (.claude/WRITING.md Section 2). */
+  .state-badge {
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+    padding: 3px 10px;
+    border-radius: 999px;
+  }
 
-.state-badge::before {
-  width: 6px;
-  height: 6px;
-  content: "";
-  background: currentcolor;
-  border-radius: 50%;
-}
+  .state-badge::before {
+    width: 6px;
+    height: 6px;
+    content: "";
+    background: currentcolor;
+    border-radius: 50%;
+  }
 
-.state-badge--blocked {
-  color: var(--color-state-blocked);
-  background: var(--color-state-blocked-glow);
-}
+  .state-badge--blocked {
+    color: var(--app-state-blocked);
+    background: var(--app-state-blocked-glow);
+  }
 
-.state-badge--in-progress {
-  color: var(--color-state-in-progress);
-  background: var(--color-state-in-progress-glow);
-}
+  .state-badge--in-progress {
+    color: var(--app-state-in-progress);
+    background: var(--app-state-in-progress-glow);
+  }
 
-.state-badge--cleared {
-  color: var(--color-state-cleared);
-  background: var(--color-state-cleared-glow);
-}
+  .state-badge--cleared {
+    color: var(--app-state-cleared);
+    background: var(--app-state-cleared-glow);
+  }
 
-.risk-badge--low {
-  color: var(--color-risk-low);
-  background: var(--color-risk-low-glow);
-}
+  .risk-badge--low {
+    color: var(--app-risk-low);
+    background: var(--app-risk-low-glow);
+  }
 
-.risk-badge--medium {
-  color: var(--color-risk-medium);
-  background: var(--color-risk-medium-glow);
-}
+  .risk-badge--medium {
+    color: var(--app-risk-medium);
+    background: var(--app-risk-medium-glow);
+  }
 
-.risk-badge--high {
-  color: var(--color-risk-high);
-  background: var(--color-risk-high-glow);
-}
+  .risk-badge--high {
+    color: var(--app-risk-high);
+    background: var(--app-risk-high-glow);
+  }
 
-.risk-badge--critical {
-  color: var(--color-risk-critical);
-  background: var(--color-risk-critical-glow);
-}
+  .risk-badge--critical {
+    color: var(--app-risk-critical);
+    background: var(--app-risk-critical-glow);
+  }
 
-.needs-review-badge {
-  color: var(--color-blue);
-  background: var(--color-blue-glow);
-}
+  .needs-review-badge {
+    color: var(--app-blue);
+    background: var(--app-blue-glow);
+  }
 
-/* -------------------------------------------------------- error notice */
+  /* -------------------------------------------------------- error notice */
 
-.error-notice {
-  margin: var(--space-3) 0 0;
-  padding: 10px 12px;
-  font-size: 13px;
-  color: var(--color-error);
-  background: var(--color-error-glow);
-  border: 1px solid var(--color-error);
-  border-radius: var(--radius-control);
-}
+  .error-notice {
+    margin: 0.75rem 0 0;
+    padding: 10px 12px;
+    font-size: 13px;
+    color: var(--app-error);
+    background: var(--app-error-glow);
+    border: 1px solid var(--app-error);
+    border-radius: var(--app-radius-control);
+  }
 
-/* --------------------------------------------------------- empty state */
+  /* --------------------------------------------------------- empty state */
 
-.empty-state {
-  padding: var(--space-6) var(--space-4);
-  font-size: 13px;
-  color: var(--color-text-muted);
-  text-align: center;
-  border: 1px dashed var(--color-border);
-  border-radius: var(--radius-container);
-}
+  .empty-state {
+    padding: 2rem 1rem;
+    font-size: 13px;
+    color: var(--app-text-muted);
+    text-align: center;
+    border: 1px dashed var(--app-border);
+    border-radius: var(--app-radius-container);
+  }
 
-.empty-state__title {
-  margin: 0 0 var(--space-2);
-  font-weight: 600;
-  color: var(--color-text);
-}
+  .empty-state__title {
+    margin: 0 0 0.5rem;
+    font-weight: 600;
+    color: var(--app-text);
+  }
 
-/* --------------------------------------------------------- filter pill */
+  /* --------------------------------------------------------- filter pill */
 
-.filter-pill {
-  display: inline-flex;
-  gap: var(--space-2);
-  align-items: center;
-  padding: 6px 12px;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  background: transparent;
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  transition:
-    color var(--transition-fast),
-    border-color var(--transition-fast),
-    background var(--transition-fast);
-}
+  .filter-pill {
+    display: inline-flex;
+    gap: 0.5rem;
+    align-items: center;
+    padding: 6px 12px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--app-text-muted);
+    cursor: pointer;
+    background: transparent;
+    border: 1px solid var(--app-border);
+    border-radius: 999px;
+    transition:
+      color var(--app-transition-fast),
+      border-color var(--app-transition-fast),
+      background var(--app-transition-fast);
+  }
 
-.filter-pill:hover {
-  color: var(--color-text);
-  border-color: var(--color-border-focus);
-}
+  .filter-pill:hover {
+    color: var(--app-text);
+    border-color: var(--app-border-focus);
+  }
 
-.filter-pill--active {
-  color: var(--color-accent);
-  background: var(--color-green-glow);
-  border-color: var(--color-accent);
-}
+  .filter-pill--active {
+    color: var(--app-accent);
+    background: var(--app-green-glow);
+    border-color: var(--app-accent);
+  }
 
-.filter-pill__count {
-  font-variant-numeric: tabular-nums;
-  color: var(--color-text-dim);
-}
+  .filter-pill__count {
+    font-variant-numeric: tabular-nums;
+    color: var(--app-text-dim);
+  }
 
-.filter-pill--active .filter-pill__count {
-  color: inherit;
-}
+  .filter-pill--active .filter-pill__count {
+    color: inherit;
+  }
 
-/* ---------------------------------------------------------------- card */
+  /* ---------------------------------------------------------------- card */
 
-.card {
-  margin-bottom: var(--space-5);
-  padding: var(--space-5);
-  background: var(--color-card);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-container);
-}
+  .card {
+    margin-bottom: 1.5rem;
+    padding: 1.5rem;
+    background: var(--app-card);
+    border: 1px solid var(--app-border);
+    border-radius: var(--app-radius-container);
+  }
 
-/* ----------------------------------------------------------- stat card */
+  /* ----------------------------------------------------------- stat card */
 
-/* The tone rides on the bottom edge, after the design, so a card reads as
-   one number rather than as a colored panel. `--unavailable` is the card
-   with no number: dashed, dim, and carrying its reason where the others
-   carry a detail. */
-.stat-card {
-  padding: var(--space-4);
-  background: var(--color-card);
-  border: 1px solid var(--color-border);
-  border-bottom: 2px solid var(--color-border);
-  border-radius: var(--radius-container);
-}
+  /* The tone rides on the bottom edge, after the design, so a card reads as
+     one number rather than as a colored panel. `--unavailable` is the card
+     with no number: dashed, dim, and carrying its reason where the others
+     carry a detail. */
+  .stat-card {
+    padding: 1rem;
+    background: var(--app-card);
+    border: 1px solid var(--app-border);
+    border-bottom: 2px solid var(--app-border);
+    border-radius: var(--app-radius-container);
+  }
 
-.stat-card--green {
-  border-bottom-color: var(--color-green);
-}
+  .stat-card--green {
+    border-bottom-color: var(--app-green);
+  }
 
-.stat-card--amber {
-  border-bottom-color: var(--color-amber);
-}
+  .stat-card--amber {
+    border-bottom-color: var(--app-amber);
+  }
 
-.stat-card--blue {
-  border-bottom-color: var(--color-blue);
-}
+  .stat-card--blue {
+    border-bottom-color: var(--app-blue);
+  }
 
 
 
-.stat-card__value {
-  margin: 0;
-  font-size: 24px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
-}
+  .stat-card__value {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
 
-.stat-card__label {
-  margin: 0;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--color-text);
-}
+  .stat-card__label {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--app-text);
+  }
 
-.stat-card__detail {
-  margin: var(--space-1) 0 0;
-  font-size: 11px;
-  line-height: 1.45;
-  color: var(--color-text-muted);
-  text-wrap: pretty;
+  .stat-card__detail {
+    margin: 0.25rem 0 0;
+    font-size: 11px;
+    line-height: 1.45;
+    color: var(--app-text-muted);
+    text-wrap: pretty;
+  }
 }

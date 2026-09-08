@@ -6,8 +6,14 @@ created and never analyzed, which is every project for the minutes between
 the upload and the first finding.
 
 `projects` is a `ReplacingMergeTree` with no version column: `Project` is
-immutable apart from its title, and a re-save of the same `project_id` is a
-correction of that row rather than a new state to keep alongside the old one.
+immutable apart from its title and the three optional presentation fields, and
+a re-save of the same `project_id` is a correction of that row rather than a
+new state to keep alongside the old one.
+
+The favourite marker is deliberately not here. It is one user's opinion about
+a project rather than a fact about it, so it lives per user on the Firestore
+side (`adapters/gcp/firestore_access.py`) and never in this table, where a
+second user's read would find it.
 """
 
 from __future__ import annotations
@@ -19,7 +25,15 @@ from clearcut.adapters.clickhouse import schema
 from clearcut.domain.errors import RecordNotFound
 from clearcut.domain.project import Project
 
-PROJECT_COLUMNS = ["project_id", "title", "jurisdiction_code", "created_at"]
+PROJECT_COLUMNS = [
+    "project_id",
+    "title",
+    "jurisdiction_code",
+    "created_at",
+    "poster_uri",
+    "format",
+    "status",
+]
 
 
 class ProjectNotFound(RecordNotFound):
@@ -77,14 +91,33 @@ def _project_to_row(project: Project) -> list[Any]:
         project.title,
         project.jurisdiction_code,
         project.created_at,
+        project.poster_uri,
+        project.format,
+        project.status,
     ]
 
 
 def _row_to_project(row: tuple[Any, ...]) -> Project:
-    values = dict(zip(PROJECT_COLUMNS, row, strict=True))
+    """One `SELECT *` row as a `Project`, tolerating a narrower row.
+
+    The zip is deliberately not `strict`: `poster_uri`, `format` and `status`
+    were added to `projects` after rows already existed, and a table that has
+    not been widened yet answers `SELECT *` with the original four values.
+    Reading those as an unset poster and no format is the truth about that
+    row; refusing to read it at all would take the whole list down over three
+    columns nothing had ever written.
+
+    An empty string folds into `None` for the same reason `findings.py` folds
+    `contradicts`: a `Nullable(String)` column read back through a driver that
+    prefers the empty string must not become a format the domain then refuses.
+    """
+    values = dict(zip(PROJECT_COLUMNS, row, strict=False))
     return Project(
         project_id=values["project_id"],
         title=values["title"],
         jurisdiction_code=values["jurisdiction_code"],
         created_at=values["created_at"],
+        poster_uri=values.get("poster_uri") or None,
+        format=values.get("format") or None,
+        status=values.get("status") or None,
     )

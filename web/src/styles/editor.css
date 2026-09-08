@@ -20,8 +20,8 @@
 }
 
 .screenplay-editor__paper, .screenplay-editor__preview {
-  background: #f5f2e9;
-  color: #1d2526;
+  background: var(--app-paper);
+  color: var(--app-paper-ink);
   border-radius: 0.25rem;
   padding: clamp(1.25rem, 5vw, 4rem);
   font: 1rem/1.5 "Courier New", monospace;
@@ -79,7 +79,7 @@
 }
 
 .screenplay-editor__recovery {
-  border: 1px solid #ccaf6f;
+  border: 1px solid var(--app-paper-recovery-border);
   padding: 1rem;
   margin-bottom: 1.5rem;
  
@@ -112,7 +112,7 @@
 .screenplay-editor__import {
   margin-bottom: 1.5rem;
   padding: 1rem;
-  border: 1px solid #29413f;
+  border: 1px solid var(--app-paper-rule);
 }
 
 .documents-view__list {
@@ -126,7 +126,7 @@
   flex-wrap: wrap;
   gap: 1rem;
   justify-content: space-between;
-  border-bottom: 1px solid #29413f;
+  border-bottom: 1px solid var(--app-paper-rule);
   padding-block: 1rem;
   overflow-wrap: anywhere;
 }

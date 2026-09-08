@@ -3,176 +3,178 @@
    (`field`, `button`); nothing feature-shaped belongs in this file. The
    body scrolls: no rule locks an element to the viewport height. */
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
+@layer components {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
 
-body {
-  margin: 0;
-  font-family: var(--font-sans);
-  font-size: 14px;
-  line-height: 1.5;
-  color: var(--color-text);
-  background: var(--color-ground);
-  -webkit-font-smoothing: antialiased;
-}
+  body {
+    margin: 0;
+    font-family: var(--app-font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--app-text);
+    background: var(--app-ground);
+    -webkit-font-smoothing: antialiased;
+  }
 
-/* ---------------------------------------------------------- type scale */
+  /* ---------------------------------------------------------- type scale */
 
-h1 {
-  margin: 0;
-  font-size: 24px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  text-wrap: balance;
-}
+  h1 {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
 
-h2 {
-  margin: 0 0 var(--space-4);
-  font-size: 16px;
-  font-weight: 600;
-  text-wrap: balance;
-}
+  h2 {
+    margin: 0 0 1rem;
+    font-size: 16px;
+    font-weight: 600;
+    text-wrap: balance;
+  }
 
-h3 {
-  margin: 0 0 var(--space-1);
-  font-size: 14px;
-  font-weight: 600;
-}
+  h3 {
+    margin: 0 0 0.25rem;
+    font-size: 14px;
+    font-weight: 600;
+  }
 
-/* --------------------------------------------------------------- links */
+  /* --------------------------------------------------------------- links */
 
-a {
-  color: var(--color-accent);
-  text-decoration: none;
-}
+  a {
+    color: var(--app-accent);
+    text-decoration: none;
+  }
 
-a:hover {
-  text-decoration: underline;
-}
+  a:hover {
+    text-decoration: underline;
+  }
 
-/* -------------------------------------------------------------- fields */
+  /* -------------------------------------------------------------- fields */
 
-.field {
-  margin-bottom: var(--space-3);
-}
+  .field {
+    margin-bottom: 0.75rem;
+  }
 
-.field label {
-  display: block;
-  margin-bottom: var(--space-1);
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--color-text-muted);
-}
+  .field label {
+    display: block;
+    margin-bottom: 0.25rem;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--app-text-muted);
+  }
 
-input,
-textarea,
-select {
-  display: block;
-  width: 100%;
-  max-width: 32rem;
-  padding: 8px 10px;
-  font-family: inherit;
-  font-size: 14px;
-  color: var(--color-text);
-  background: var(--color-card);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
-  transition:
-    border-color var(--transition-fast),
-    background var(--transition-fast);
-}
+  input,
+  textarea,
+  select {
+    display: block;
+    width: 100%;
+    max-width: 32rem;
+    padding: 8px 10px;
+    font-family: inherit;
+    font-size: 14px;
+    color: var(--app-text);
+    background: var(--app-card);
+    border: 1px solid var(--app-border);
+    border-radius: var(--app-radius-control);
+    transition:
+      border-color var(--app-transition-fast),
+      background var(--app-transition-fast);
+  }
 
-textarea {
-  min-height: 4.5rem;
-  resize: vertical;
-}
+  textarea {
+    min-height: 4.5rem;
+    resize: vertical;
+  }
 
-select {
-  cursor: pointer;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238c98a8' stroke-width='1.5' fill='none' fill-rule='evenodd'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 10px center;
-  padding-right: 28px;
-  appearance: none;
-}
+  select {
+    cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238c98a8' stroke-width='1.5' fill='none' fill-rule='evenodd'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 28px;
+    appearance: none;
+  }
 
-input:hover,
-textarea:hover,
-select:hover {
-  border-color: var(--color-border-focus);
-}
+  input:hover,
+  textarea:hover,
+  select:hover {
+    border-color: var(--app-border-focus);
+  }
 
-input:disabled,
-select:disabled,
-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
+  input:disabled,
+  select:disabled,
+  button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
 
-/* focus-visible ring on every interactive element (Don Norman: feedback) */
-a:focus-visible,
-button:focus-visible,
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-}
+  /* focus-visible ring on every interactive element (Don Norman: feedback) */
+  a:focus-visible,
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid var(--app-accent);
+    outline-offset: 2px;
+  }
 
-.field__input--mono {
-  font-family: var(--font-mono);
-  font-size: 13px;
-}
+  .field__input--mono {
+    font-family: var(--app-font-mono);
+    font-size: 13px;
+  }
 
-form {
-  margin-bottom: var(--space-1);
-}
+  form {
+    margin-bottom: 0.25rem;
+  }
 
-/* ------------------------------------------------------------- buttons */
+  /* ------------------------------------------------------------- buttons */
 
-.button {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-top: var(--space-1);
-  padding: 8px 14px;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1;
-  border-radius: var(--radius-control);
-  border: 1px solid transparent;
-  cursor: pointer;
-  transition:
-    background var(--transition-fast),
-    border-color var(--transition-fast),
-    transform var(--transition-fast);
-}
+  .button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.25rem;
+    padding: 8px 14px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1;
+    border-radius: var(--app-radius-control);
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition:
+      background var(--app-transition-fast),
+      border-color var(--app-transition-fast),
+      transform var(--app-transition-fast);
+  }
 
-.button:active:not(:disabled) {
-  transform: translateY(1px);
-}
+  .button:active:not(:disabled) {
+    transform: translateY(1px);
+  }
 
-.button--primary {
-  color: var(--color-accent-contrast);
-  background: var(--color-accent);
-  border-color: var(--color-accent);
-}
+  .button--primary {
+    color: var(--app-accent-contrast);
+    background: var(--app-accent);
+    border-color: var(--app-accent);
+  }
 
-.button--primary:hover:not(:disabled) {
-  filter: brightness(1.08);
-}
+  .button--primary:hover:not(:disabled) {
+    filter: brightness(1.08);
+  }
 
-.button--secondary {
-  color: var(--color-text);
-  background: var(--color-card);
-  border-color: var(--color-border);
-}
+  .button--secondary {
+    color: var(--app-text);
+    background: var(--app-card);
+    border-color: var(--app-border);
+  }
 
-.button--secondary:hover:not(:disabled) {
-  background: var(--color-card-hover);
-  border-color: var(--color-border-focus);
+  .button--secondary:hover:not(:disabled) {
+    background: var(--app-card-hover);
+    border-color: var(--app-border-focus);
+  }
 }

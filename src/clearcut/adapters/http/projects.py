@@ -9,6 +9,12 @@ The server mints the id here for exactly that reason.
 not an omission: reading `domain.jurisdiction.JURISDICTIONS` is not I/O, so a
 port for it would be a port with one in-process implementation, which
 AGENT.md section 4 bans.
+
+`PUT`/`DELETE /api/projects/{project_id}/favourite` reaches a different port
+from every other route here. A favourite is one user's mark on a project, not
+a property of it, so it is neither on the `Project` aggregate nor in the
+project store: `ProjectFavourites` owns it, and this module only joins the
+caller's marks to the projects it was already going to serve.
 """
 
 from typing import Any
@@ -20,9 +26,11 @@ from clearcut.adapters.http import errors, schemas, serializers, validators
 from clearcut.application.create_project import CreateProject
 from clearcut.application.get_project import GetProject
 from clearcut.application.list_projects import ListProjects
-from clearcut.application.workspace_ports import ProjectAccess
+from clearcut.application.ports import ClearanceSummaries
+from clearcut.application.workspace_ports import ProjectAccess, ProjectFavourites
 from clearcut.domain.jurisdiction import JURISDICTIONS, Jurisdiction
-from clearcut.domain.project import Project
+from clearcut.domain.project import PROJECT_FORMATS, PROJECT_STATUSES, Project
+from clearcut.domain.tracker import EMPTY_CLEARANCE_SUMMARY, ClearanceSummary
 
 JsonDict = dict[str, Any]
 
@@ -45,6 +53,59 @@ SCHEMAS: JsonDict = {
         },
         "additionalProperties": False,
     },
+    "ProjectFormat": {
+        "type": ["string", "null"],
+        "enum": [*sorted(PROJECT_FORMATS), None],
+        "description": (
+            "What kind of production this is. `null` means nobody has said; a client "
+            "shows nothing rather than guessing one."
+        ),
+    },
+    "ProjectStatus": {
+        "type": ["string", "null"],
+        "enum": [*sorted(PROJECT_STATUSES), None],
+        "description": "Where the production has reached. `null` means nobody has said.",
+    },
+    "ProjectPosterUri": {
+        "type": ["string", "null"],
+        "description": (
+            "Where this project's poster art lives. `null` when none has been set, "
+            "which is the default: the server never invents one, and a client draws "
+            "whatever placeholder it likes rather than a poster this project does not "
+            "have. Nothing in this API uploads or fetches the image."
+        ),
+    },
+    "ClearanceSummary": {
+        "type": "object",
+        "required": ["total", "cleared", "in_progress", "blocked", "needs_review"],
+        "properties": {
+            "total": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Every clearance item this project holds; the denominator.",
+            },
+            "cleared": {"type": "integer", "minimum": 0},
+            "in_progress": {"type": "integer", "minimum": 0},
+            "blocked": {"type": "integer", "minimum": 0},
+            "needs_review": {
+                "type": "integer",
+                "minimum": 0,
+                "description": (
+                    "Items flagged for a producer to look at again. An item counts "
+                    "here instead of in its state, never in both, so the four "
+                    "buckets sum to `total`."
+                ),
+            },
+        },
+        "additionalProperties": False,
+        "description": (
+            "The clearance totals of one project, counted the way the tracker page "
+            "counts them. No percentage: the bar is `cleared / total`, and a second "
+            "server-side definition of how cleared a project is would be one a "
+            "reader has to reconcile. All zero means nobody has analysed this "
+            "project yet -- never that the numbers are unknown."
+        ),
+    },
     "ProjectCreate": {
         "type": "object",
         "required": ["title", "jurisdiction_code"],
@@ -55,12 +116,24 @@ SCHEMAS: JsonDict = {
                 "type": "string",
                 "description": "One of the codes `GET /api/jurisdictions` returns.",
             },
+            "poster_uri": schemas.ref("ProjectPosterUri"),
+            "format": schemas.ref("ProjectFormat"),
+            "status": schemas.ref("ProjectStatus"),
         },
         "additionalProperties": False,
     },
     "Project": {
         "type": "object",
-        "required": ["project_id", "title", "jurisdiction_code", "created_at"],
+        "required": [
+            "project_id",
+            "title",
+            "jurisdiction_code",
+            "created_at",
+            "poster_uri",
+            "format",
+            "status",
+            "favourite",
+        ],
         "properties": {
             "project_id": {"type": "string"},
             "title": {"type": "string"},
@@ -70,6 +143,26 @@ SCHEMAS: JsonDict = {
                 "format": "date-time",
                 "description": "UTC, seconds precision.",
             },
+            "poster_uri": schemas.ref("ProjectPosterUri"),
+            "format": schemas.ref("ProjectFormat"),
+            "status": schemas.ref("ProjectStatus"),
+            "favourite": {
+                "type": "boolean",
+                "description": (
+                    "Whether the caller has marked this project. Per user, never per "
+                    "project: two producers reading the same project see two answers."
+                ),
+            },
+            "clearance": schemas.ref("ClearanceSummary"),
+        },
+        "additionalProperties": False,
+    },
+    "ProjectFavourite": {
+        "type": "object",
+        "required": ["project_id", "favourite"],
+        "properties": {
+            "project_id": {"type": "string"},
+            "favourite": {"type": "boolean"},
         },
         "additionalProperties": False,
     },
@@ -130,6 +223,15 @@ PATHS: JsonDict = {
             "tags": [TAG],
             "operationId": "listProjects",
             "summary": "Every project",
+            "description": (
+                "Each project carries a `clearance` object -- the totals its row "
+                "draws a progress bar from -- so a client never asks for one "
+                "tracker per row to render one list. A project nobody has analysed "
+                "reports zeroes. The key is absent altogether only where the "
+                "instance serves no clearance totals, which is not the same claim "
+                "as zero; a client that ignores it reads exactly the list it "
+                "always did."
+            ),
             "responses": {
                 "200": schemas.ok(
                     "The projects this instance holds. An empty array when there are none.",
@@ -167,6 +269,42 @@ PATHS: JsonDict = {
             },
         },
     },
+    "/api/projects/{project_id}/favourite": {
+        "parameters": [schemas.PROJECT_ID],
+        "put": {
+            "tags": [TAG],
+            "operationId": "addProjectFavourite",
+            "summary": "Mark this project as one of the caller's favourites",
+            "description": (
+                "Idempotent: marking an already-marked project is the same request "
+                "again, not an error. A project the caller cannot read answers 404, "
+                "the same as reading it would -- the marker never confirms that a "
+                "project exists somewhere the caller has no access to."
+            ),
+            "responses": {
+                "200": schemas.ok(
+                    "The project is marked.", schemas.json_of(schemas.ref("ProjectFavourite"))
+                ),
+                "404": schemas.NOT_FOUND,
+                "409": schemas.failure("This instance serves no favourites store."),
+                "500": schemas.INTERNAL_ERROR,
+            },
+        },
+        "delete": {
+            "tags": [TAG],
+            "operationId": "removeProjectFavourite",
+            "summary": "Clear the caller's mark on this project",
+            "description": "Idempotent: clearing a project that was never marked succeeds.",
+            "responses": {
+                "200": schemas.ok(
+                    "The project is not marked.", schemas.json_of(schemas.ref("ProjectFavourite"))
+                ),
+                "404": schemas.NOT_FOUND,
+                "409": schemas.failure("This instance serves no favourites store."),
+                "500": schemas.INTERNAL_ERROR,
+            },
+        },
+    },
 }
 
 
@@ -175,8 +313,46 @@ def create_projects_blueprint(
     list_projects: ListProjects,
     get_project: GetProject,
     access: ProjectAccess | None = None,
+    favourites: ProjectFavourites | None = None,
+    clearances: ClearanceSummaries | None = None,
 ) -> Blueprint:
     bp = Blueprint("clearcut_projects", __name__)
+
+    def caller() -> str:
+        """The user whose favourites these are.
+
+        `getattr` rather than `g.identity` because mock mode installs no
+        identity boundary and still has to serve the screen (D36) -- the same
+        fallback `drafts.py` and `documents.py` already use.
+        """
+        identity = getattr(g, "identity", None)
+        return str(identity.user_id) if identity else "demo"
+
+    def marked() -> set[str]:
+        """The caller's marks, as candidates. Never a grant: every id is shown
+        only against a project the route was already allowed to serve."""
+        return favourites.favourites(caller()) if favourites is not None else set()
+
+    def totals(project_ids: list[str]) -> dict[str, ClearanceSummary]:
+        """The clearance summary of each id, in one call to the port.
+
+        `project_ids` is exactly the set this request was already going to
+        serve -- ids the caller is authorized to read, and no others. The
+        totals are scoped by that argument and by nothing else: the port
+        discovers no projects of its own, so there is no query here to widen
+        and no workspace boundary to leak across.
+
+        An id the store has no clearance work for reports zeroes rather than
+        dropping out, because "nobody has analysed this yet" is the answer,
+        and an absent key would be read as "totals unavailable" instead.
+        """
+        if clearances is None:
+            return {}
+        summaries = clearances.summaries_for_projects(project_ids)
+        return {
+            project_id: summaries.get(project_id, EMPTY_CLEARANCE_SUMMARY)
+            for project_id in project_ids
+        }
 
     @bp.route("/api/jurisdictions", methods=["GET"])
     def list_jurisdictions() -> ResponseReturnValue:
@@ -187,11 +363,23 @@ def create_projects_blueprint(
     @bp.route("/api/projects", methods=["GET"])
     def projects_index() -> ResponseReturnValue:
         def visible() -> list[JsonDict]:
-            if access is None:
-                return [serializers.project_json(project) for project in list_projects.execute()]
+            favourite_ids = marked()
+            projects = (
+                list_projects.execute()
+                if access is None
+                else [
+                    access.get_project(project_id)
+                    for project_id in sorted(access.visible_project_ids(g.identity.user_id))
+                ]
+            )
+            clearance = totals([project.project_id for project in projects])
             return [
-                serializers.project_json(access.get_project(project_id))
-                for project_id in sorted(access.visible_project_ids(g.identity.user_id))
+                serializers.project_json(
+                    project,
+                    favourite=project.project_id in favourite_ids,
+                    clearance=clearance.get(project.project_id),
+                )
+                for project in projects
             ]
 
         return errors.run_use_case(visible)
@@ -205,6 +393,18 @@ def create_projects_blueprint(
         jurisdiction = validators.resolve_jurisdiction(str(payload.get("jurisdiction_code", "")))
         if not isinstance(jurisdiction, Jurisdiction):
             return jurisdiction
+        optional_fields: tuple[tuple[str, frozenset[str] | None], ...] = (
+            ("poster_uri", None),
+            ("format", PROJECT_FORMATS),
+            ("status", PROJECT_STATUSES),
+        )
+        for field, allowed in optional_fields:
+            invalid = validators.reject_bad_optional(payload, field, allowed)
+            if invalid is not None:
+                return invalid
+        poster_uri = validators.optional_text(payload, "poster_uri")
+        project_format = validators.optional_text(payload, "format")
+        status = validators.optional_text(payload, "status")
         project_id = validators.new_id()
         at = validators.now()
 
@@ -214,11 +414,15 @@ def create_projects_blueprint(
 
         def build() -> JsonDict:
             if access is not None:
-                project = Project(project_id, title, jurisdiction.code, at)
+                project = Project(
+                    project_id, title, jurisdiction.code, at, poster_uri, project_format, status
+                )
                 access.create_project(g.identity.user_id, organization_id, project)
                 return serializers.project_json(project)
             return serializers.project_json(
-                create_project.execute(project_id, title, jurisdiction, at)
+                create_project.execute(
+                    project_id, title, jurisdiction, at, poster_uri, project_format, status
+                )
             )
 
         return errors.run_use_case(build, status=201, location=f"/api/projects/{project_id}")
@@ -229,9 +433,28 @@ def create_projects_blueprint(
             lambda: serializers.project_json(
                 access.get_project(project_id)
                 if access is not None
-                else get_project.execute(project_id)
+                else get_project.execute(project_id),
+                favourite=project_id in marked(),
             )
         )
+
+    @bp.route("/api/projects/<project_id>/favourite", methods=["PUT", "DELETE"])
+    def projects_favourite(project_id: str) -> ResponseReturnValue:
+        """One route for both directions, because they are one fact with two
+        values. `PUT`/`DELETE` rather than `POST` for the same reason: marking
+        a project twice has to be marking it once."""
+        if favourites is None:
+            return errors.error_response(409, "favourites require a configured store")
+        adding = request.method == "PUT"
+
+        def build() -> JsonDict:
+            if adding:
+                favourites.add_favourite(caller(), project_id)
+            else:
+                favourites.remove_favourite(caller(), project_id)
+            return {"project_id": project_id, "favourite": adding}
+
+        return errors.run_use_case(build)
 
     @bp.route("/api/organizations", methods=["GET", "POST"])
     def organizations() -> ResponseReturnValue:

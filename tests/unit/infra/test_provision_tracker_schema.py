@@ -30,6 +30,19 @@ SCRIPT = Path(__file__).resolve().parents[3] / "infra" / "provision_tracker_sche
 REQUIRED = ("CLICKHOUSE_HOST", "CLICKHOUSE_USER", "CLICKHOUSE_PASSWORD")
 
 
+def schema_module() -> ModuleType:
+    """The adapter package's DDL, imported the ordinary way.
+
+    The script is loaded by path because `infra/` has no `__init__.py`; the
+    schema it reuses is an installed module, and reading `ALTERATIONS` from it
+    is what keeps this test asserting about the one copy of the DDL rather
+    than about a second list written here.
+    """
+    from clearcut.adapters.clickhouse import schema
+
+    return schema
+
+
 def load_script() -> ModuleType:
     spec = importlib.util.spec_from_file_location("provision_tracker_schema", SCRIPT)
     assert spec is not None and spec.loader is not None
@@ -68,23 +81,37 @@ def test_creates_every_table_the_adapters_read() -> None:
     load_script().create_tables(client)
 
     joined = "\n".join(client.commands)
-    assert len(client.commands) == 5
+    creates = [cmd for cmd in client.commands if cmd.startswith("CREATE TABLE")]
+    assert len(creates) == 5
     for table in ALL_TABLES:
         assert table in joined, table
+
+
+def test_widens_a_table_an_earlier_run_already_created() -> None:
+    """`CREATE TABLE IF NOT EXISTS` says nothing to a table that exists, so a
+    column added to one of the five never reaches a deployment that ran the
+    previous version. The provisioner issues the additions too, or the column
+    exists only for deployments provisioned after it was written."""
+    client = RecordingChClient()
+
+    load_script().create_tables(client)
+
+    additions = [cmd for cmd in client.commands if cmd.startswith("ALTER TABLE")]
+    assert additions == list(schema_module().ALTERATIONS)
 
 
 def test_every_statement_is_idempotent() -> None:
     """A second run is a no-op, like both provisioning shell scripts.
 
-    Without `IF NOT EXISTS` the second run fails on an existing table, which
-    turns re-provisioning into a manual repair.
+    Without `IF NOT EXISTS` the second run fails on an existing table or an
+    existing column, which turns re-provisioning into a manual repair.
     """
     client = RecordingChClient()
 
     load_script().create_tables(client)
 
     for statement in client.commands:
-        assert "CREATE TABLE IF NOT EXISTS" in statement, statement
+        assert "IF NOT EXISTS" in statement, statement
 
 
 @pytest.mark.parametrize("missing", REQUIRED)
@@ -150,9 +177,10 @@ def test_recreate_drops_every_table_before_creating_it() -> None:
 
     load_script().recreate_tables(client)
 
-    assert len(client.commands) == 10
     drops = [cmd for cmd in client.commands if cmd.startswith("DROP TABLE")]
+    creates = [cmd for cmd in client.commands if cmd.startswith("CREATE TABLE")]
     assert len(drops) == 5
+    assert len(creates) == 5
     for table in ALL_TABLES:
         drop_index = next(
             i

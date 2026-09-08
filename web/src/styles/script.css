@@ -204,22 +204,21 @@
 /* ----------------------------------------------------------------- paper */
 
 .script-paper {
-  /* The printed page, after the design file: white stock, near-black ink,
-     a lighter grey for the sluglines' weight, and the palest for the line
-     numbers, which are furniture rather than text. */
-  --paper-stock: #fff;
-  --paper-ink: #1f2937;
-  --paper-ink-strong: #111827;
-  --paper-line-number: #9ca3af;
+  /* The printed page, in the local vocabulary this block's rules read. The
+     values themselves are the `--app-print-*` tokens; what is chosen here is
+     only which of them this page maps onto which local name. */
+  --paper-stock: var(--app-print-stock);
+  --paper-ink: var(--app-print-ink);
+  --paper-ink-strong: var(--app-print-ink-strong);
+  --paper-line-number: var(--app-print-line-number);
 
-  /* The three highlight pairs: a translucent wash to sit behind the words
-     and a dark enough ink to keep them readable on it. */
-  --paper-mark-high: rgb(239 68 68 / 20%);
-  --paper-mark-high-ink: #991b1b;
-  --paper-mark-medium: rgb(245 158 11 / 20%);
-  --paper-mark-medium-ink: #92400e;
-  --paper-mark-low: rgb(16 185 129 / 20%);
-  --paper-mark-low-ink: #065f46;
+  /* The three highlight pairs, wash and ink. */
+  --paper-mark-high: var(--app-print-mark-high);
+  --paper-mark-high-ink: var(--app-print-mark-high-ink);
+  --paper-mark-medium: var(--app-print-mark-medium);
+  --paper-mark-medium-ink: var(--app-print-mark-medium-ink);
+  --paper-mark-low: var(--app-print-mark-low);
+  --paper-mark-low-ink: var(--app-print-mark-low-ink);
   --script-zoom: 100%;
 
   padding: var(--space-6);

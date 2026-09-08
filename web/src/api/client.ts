@@ -50,11 +50,30 @@ export interface Jurisdiction {
   display_name: string;
 }
 
+/** The clearance totals `GET /api/projects` serves per project, so a list of
+ * rows costs one request rather than one tracker read per row.
+ *
+ * Same buckets as `trackerStats` in `features/tracker/model.ts`, under the
+ * API's snake_case: an item flagged `needs_review` is counted there and not
+ * in its state, so the four buckets sum to `total`. There is no percentage --
+ * the bar is `cleared / total`, computed where it is drawn. All zero means
+ * nobody has analysed the project yet, not that the numbers are unknown. */
+export interface ClearanceSummary {
+  total: number;
+  cleared: number;
+  in_progress: number;
+  blocked: number;
+  needs_review: number;
+}
+
 export interface Project {
   project_id: string;
   title: string;
   jurisdiction_code: string;
   created_at: string;
+  /** Absent where the instance serves no clearance totals at all, which is a
+   * different claim from a project whose totals are all zero. */
+  clearance?: ClearanceSummary;
 }
 
 export interface ProjectCreate {

@@ -86,6 +86,66 @@
   letter-spacing: -0.02em;
 }
 
+/* The workspace the person is signed in to: initials over a tone, the name,
+   and the role under it. It is not a control -- see the comment in
+   `Sidebar.tsx` -- so it carries no hover, no cursor and no focus ring. */
+.sidebar__workspace {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+}
+
+.sidebar__workspace-avatar {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border-radius: 50%;
+}
+
+/* The three tones `workspaceTone` steps through. Each is the glow behind
+   its own ink, so the circle reads as a tint rather than as a status dot. */
+.sidebar__workspace-avatar--green {
+  color: var(--app-green);
+  background: var(--app-green-glow);
+}
+
+.sidebar__workspace-avatar--amber {
+  color: var(--app-amber);
+  background: var(--app-amber-glow);
+}
+
+.sidebar__workspace-avatar--blue {
+  color: var(--app-blue);
+  background: var(--app-blue-glow);
+}
+
+.sidebar__workspace-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.sidebar__workspace-name {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar__workspace-role {
+  font-size: 11px;
+  color: var(--color-text-dim);
+}
+
 .sidebar__nav {
   display: flex;
   flex-direction: column;
@@ -115,6 +175,18 @@
 .sidebar__link--active {
   color: var(--color-accent);
   background: var(--color-green-glow);
+}
+
+/* Signing out is the one entry in the sidebar that ends something, and the
+   design is the only place it spends the red. It keeps the red on hover too:
+   picking up the neutral hover ink would read as a retreat from the warning. */
+.sidebar__link--danger {
+  color: var(--app-red);
+}
+
+.sidebar__link--danger:hover {
+  color: var(--app-red);
+  background: var(--app-red-glow);
 }
 
 /* A group the API cannot serve: the entries at the dim end of the text

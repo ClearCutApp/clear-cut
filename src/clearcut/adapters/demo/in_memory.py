@@ -31,6 +31,7 @@ to take.
 
 import time
 from collections import Counter
+from collections.abc import Sequence
 from dataclasses import asdict
 from threading import RLock
 from typing import Any
@@ -46,7 +47,12 @@ from clearcut.domain.finding import Category, Finding
 from clearcut.domain.jurisdiction import Jurisdiction
 from clearcut.domain.project import Project
 from clearcut.domain.script import Scene, Script
-from clearcut.domain.tracker import TrackerConflict, TrackerItem
+from clearcut.domain.tracker import (
+    ClearanceSummary,
+    TrackerConflict,
+    TrackerItem,
+    clearance_summary,
+)
 from clearcut.observability import stage_span
 
 # The bucket `scenario.GCS_URI` already names. Mock mode writes nowhere,
@@ -197,6 +203,33 @@ class InMemoryProjectStore:
 
     def all(self) -> list[Project]:
         return list(self._projects.values())
+
+
+class InMemoryProjectFavourites:
+    """Implements `ProjectFavourites` over an in-process dict.
+
+    Mock mode has no workspace and no grants, so "a project this user can
+    read" is "a project this store knows about": `add_favourite` asks
+    `InMemoryProjectStore` for it and lets the `RecordNotFound` it raises
+    through, which is the same 404 the live path answers a project outside
+    the caller's workspace with. Sharing the one store rather than keeping a
+    second list of ids is what makes a project created in this process
+    favouritable in the same request cycle.
+    """
+
+    def __init__(self, projects: InMemoryProjectStore) -> None:
+        self._projects = projects
+        self._marked: dict[str, set[str]] = {}
+
+    def favourites(self, user_id: str) -> set[str]:
+        return set(self._marked.get(user_id, set()))
+
+    def add_favourite(self, user_id: str, project_id: str) -> None:
+        self._projects.get(project_id)
+        self._marked.setdefault(user_id, set()).add(project_id)
+
+    def remove_favourite(self, user_id: str, project_id: str) -> None:
+        self._marked.get(user_id, set()).discard(project_id)
 
 
 class InMemoryScriptStore:
@@ -351,6 +384,28 @@ class InMemoryTrackerStore:
 
     def latest_for_project(self, project_id: str) -> list[TrackerItem]:
         return [item for item in self._items.values() if item.project_id == project_id]
+
+    def summaries_for_projects(self, project_ids: Sequence[str]) -> dict[str, ClearanceSummary]:
+        """Implements `ClearanceSummaries`: one pass over the dict, for every
+        project asked about at once.
+
+        Genuinely one round trip, because there is no trip -- which is the
+        point of keeping the port's promise here too. Mock mode draws the same
+        list screen as live mode, so a route that asked once per project would
+        still be a route the demo could not exercise.
+
+        Only the ids it was given are counted, and an id with no items is left
+        out rather than returned as zero -- the same contract
+        `FirestoreTrackerStore` answers, so the route cannot tell the two
+        apart.
+        """
+        wanted = {project_id for project_id in project_ids if project_id}
+        grouped: dict[str, list[TrackerItem]] = {}
+        with self._lock:
+            for item in self._items.values():
+                if item.project_id in wanted:
+                    grouped.setdefault(item.project_id, []).append(item)
+        return {project_id: clearance_summary(items) for project_id, items in grouped.items()}
 
     def record_script(self, script: Script) -> None:
         self._scripts.save(script)

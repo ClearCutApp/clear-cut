@@ -25,6 +25,7 @@ holding the tracker's writes (AGENT.md Section 3, ISP).
 """
 
 import enum
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
@@ -34,7 +35,7 @@ from clearcut.domain.finding import Category, Citation, Finding
 from clearcut.domain.jurisdiction import Jurisdiction
 from clearcut.domain.project import Project
 from clearcut.domain.script import Scene, Script
-from clearcut.domain.tracker import TrackerItem
+from clearcut.domain.tracker import ClearanceSummary, TrackerItem
 
 
 class Confidence(enum.StrEnum):
@@ -162,6 +163,36 @@ class TrackerStore(Protocol):
     def record_script(self, script: Script) -> None: ...
 
     def latest_script(self, project_id: str) -> Script | None: ...
+
+
+@runtime_checkable
+class ClearanceSummaries(Protocol):
+    """Reads the clearance totals of many projects in one call.
+
+    Separate from `TrackerStore` rather than a sixth method on it (AGENT.md
+    Section 3, ISP): the project list route needs to count, not to write a
+    transition or read a script version, and a route holding the tracker's
+    writes to draw a progress bar is a route holding four methods it must
+    never call.
+
+    One call for the whole list is the point of the port. `GET /api/projects`
+    draws a bar per row, and a per-project read from the browser -- or from
+    the route -- is one request per project to render one screen. An
+    implementation is free to need more than one round trip internally, and
+    says so where it lives, but the caller asks once.
+
+    The contract is deliberately narrow about what it promises:
+
+    - Every id it is given is a project the caller has already been
+      authorized to read. The port never widens a query and never discovers
+      projects on its own -- a summary it was not asked for is a summary it
+      must not return.
+    - An id with no clearance work yet may be missing from the result. The
+      caller reports `EMPTY_CLEARANCE_SUMMARY` for it rather than hiding the
+      row, because "nobody has analysed this" is an answer, not an absence.
+    """
+
+    def summaries_for_projects(self, project_ids: Sequence[str]) -> dict[str, ClearanceSummary]: ...
 
 
 @runtime_checkable
