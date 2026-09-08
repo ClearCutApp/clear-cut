@@ -40,9 +40,13 @@
   position: absolute;
   inset: 0;
   z-index: -1;
+
+  /* The second layer is written top-down -- the form the minifier folded this
+     gradient into before a `var()` made it unfoldable. Same fade, same bytes
+     out: transparent to 72% down is transparent from 28% up. */
   background:
     linear-gradient(90deg, var(--brand-hero-scrim), transparent 85%),
-    linear-gradient(0deg, var(--brand-ground), transparent 28%);
+    linear-gradient(transparent 72%, var(--brand-ground));
 }
 
 .landing-nav {
