@@ -4,7 +4,15 @@ import dataclasses
 
 import pytest
 
-from clearcut.domain.tracker import ClearanceRollup, TrackerItem, TrackerState, clearance_rollup
+from clearcut.domain.tracker import (
+    EMPTY_CLEARANCE_SUMMARY,
+    ClearanceRollup,
+    ClearanceSummary,
+    TrackerItem,
+    TrackerState,
+    clearance_rollup,
+    clearance_summary,
+)
 
 
 def _item(
@@ -348,3 +356,67 @@ def test_clearance_rollup_halved_percentage_rounds_up_and_is_an_int():
 
     assert rollup.clearance_percent == 13
     assert isinstance(rollup.clearance_percent, int)
+
+
+def test_clearance_summary_of_no_items_is_the_empty_one():
+    """A project nobody has analysed answers zeroes, not an absence: the row
+    still draws, with an empty bar."""
+    assert clearance_summary([]) == EMPTY_CLEARANCE_SUMMARY
+    assert EMPTY_CLEARANCE_SUMMARY == ClearanceSummary(
+        total=0, cleared=0, in_progress=0, blocked=0, needs_review=0
+    )
+
+
+def test_clearance_summary_buckets_sum_to_total():
+    """The four buckets partition the items -- an item is in exactly one, so
+    "12 Cleared / 4 Pending / 2 Flagged" never adds up to more than the bar."""
+    items = [
+        _item(state=TrackerState.BLOCKED),
+        _item(state=TrackerState.IN_PROGRESS),
+        _item(state=TrackerState.CLEARED),
+        _item(state=TrackerState.CLEARED, needs_review=True),
+    ]
+
+    summary = clearance_summary(items)
+
+    assert summary == ClearanceSummary(total=4, cleared=1, in_progress=1, blocked=1, needs_review=1)
+    assert summary.cleared + summary.in_progress + summary.blocked + summary.needs_review == 4
+
+
+def test_clearance_summary_counts_a_flagged_item_once_and_not_in_its_state():
+    """The rule the tracker page already applies: `needs_review` wins over
+    `state`, so a cleared-but-flagged item is not also counted as cleared."""
+    summary = clearance_summary([_item(state=TrackerState.CLEARED, needs_review=True)])
+
+    assert summary == ClearanceSummary(total=1, cleared=0, in_progress=0, blocked=0, needs_review=1)
+
+
+def test_clearance_summary_agrees_with_the_rollup_it_delegates_to():
+    """One counting rule, two shapes. The summary carries no percentage of its
+    own precisely so it cannot drift from the rollup's."""
+    items = [
+        _item(state=TrackerState.BLOCKED),
+        _item(state=TrackerState.IN_PROGRESS),
+        _item(state=TrackerState.CLEARED),
+        _item(state=TrackerState.IN_PROGRESS, needs_review=True),
+    ]
+
+    summary, rollup = clearance_summary(items), clearance_rollup(items)
+
+    assert (summary.blocked, summary.in_progress, summary.cleared, summary.needs_review) == (
+        rollup.blocked,
+        rollup.in_progress,
+        rollup.cleared,
+        rollup.needs_review,
+    )
+    assert summary.total == rollup.total
+
+
+def test_clearance_summary_reads_any_iterable_once():
+    """The port hands it `dict.values()`; a generator must work the same, so
+    the function may not consume its argument twice."""
+    items = (_item(state=state) for state in (TrackerState.CLEARED, TrackerState.CLEARED))
+
+    assert clearance_summary(items) == ClearanceSummary(
+        total=2, cleared=2, in_progress=0, blocked=0, needs_review=0
+    )

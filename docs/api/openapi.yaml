@@ -200,6 +200,13 @@ paths:
       tags: [Projects]
       operationId: listProjects
       summary: Every project
+      description: >
+        Each project carries a `clearance` object -- the totals its row draws a
+        progress bar from -- so a client never asks for one tracker per row to
+        render one list. A project nobody has analysed reports zeroes. The key
+        is absent altogether only where the instance serves no clearance
+        totals, which is not the same claim as zero; a client that ignores it
+        reads exactly the list it always did.
       responses:
         '200':
           description: The projects this instance holds. An empty array when there are none.
@@ -2711,6 +2718,50 @@ components:
           description: >
             Whether the caller has marked this project. Per user, never per
             project: two producers reading the same project see two answers.
+        clearance:
+          $ref: '#/components/schemas/ClearanceSummary'
+      additionalProperties: false
+
+    ClearanceSummary:
+      type: object
+      description: >
+        The clearance totals of one project, counted the way the tracker page
+        counts them. No percentage: the bar is `cleared / total`, and a second
+        server-side definition of how cleared a project is would be one a
+        reader has to reconcile. All zero means nobody has analysed this
+        project yet -- never that the numbers are unknown.
+      required:
+        - total
+        - cleared
+        - in_progress
+        - blocked
+        - needs_review
+      properties:
+        total:
+          type: integer
+          minimum: 0
+          description: Every clearance item this project holds; the denominator.
+          examples: [18]
+        cleared:
+          type: integer
+          minimum: 0
+          examples: [12]
+        in_progress:
+          type: integer
+          minimum: 0
+          examples: [3]
+        blocked:
+          type: integer
+          minimum: 0
+          examples: [1]
+        needs_review:
+          type: integer
+          minimum: 0
+          description: >
+            Items flagged for a producer to look at again. An item counts here
+            instead of in its state, never in both, so the four buckets sum to
+            `total`.
+          examples: [2]
       additionalProperties: false
 
     ProjectFavourite:

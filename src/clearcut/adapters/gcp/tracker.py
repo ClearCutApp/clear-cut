@@ -4,6 +4,7 @@ The legacy script store is injected until immutable analysis publication replace
 it. Clearance transactions never send webhooks or contact external providers.
 """
 
+from collections.abc import Sequence
 from dataclasses import asdict
 from typing import Any
 
@@ -18,7 +19,13 @@ from clearcut.domain.finding import Citation
 from clearcut.domain.identity import AccessDenied, project_permits
 from clearcut.domain.screenplay import ContentReference
 from clearcut.domain.script import Script
-from clearcut.domain.tracker import TrackerConflict, TrackerItem, TrackerState
+from clearcut.domain.tracker import (
+    ClearanceSummary,
+    TrackerConflict,
+    TrackerItem,
+    TrackerState,
+    clearance_summary,
+)
 
 
 def _item(data: dict[str, Any]) -> TrackerItem:
@@ -93,6 +100,96 @@ class FirestoreTrackerStore:
 
     def latest_for_project(self, project_id: str) -> list[TrackerItem]:
         return self.snapshot(project_id)[1]
+
+    def _scopes(self, project_ids: list[str]) -> dict[str, dict[str, Any]]:
+        """The `project_access` documents for `project_ids`, in one batched read.
+
+        `get_all` is a single request for the whole list, where a loop of
+        `.get()` would be one request per project. Documents come back in
+        whatever order the backend answers in, and a project that does not
+        exist comes back empty, so both are resolved by id here rather than
+        by position.
+        """
+        references = [self._project(project_id) for project_id in project_ids]
+        wanted = set(project_ids)
+        scopes: dict[str, dict[str, Any]] = {}
+        for document in self._client.get_all(references):
+            data = document.to_dict()
+            if data and document.id in wanted:
+                scopes[document.id] = data
+        return scopes
+
+    def summaries_for_projects(self, project_ids: Sequence[str]) -> dict[str, ClearanceSummary]:
+        """The clearance totals for every project in `project_ids`.
+
+        **This is not one round trip, and Firestore cannot make it one.** The
+        active generation id lives in each `project_access` document and forms
+        part of the path its items are stored under
+        (`clearance_generations/{generation}/items`), so the store cannot name
+        the collections to read until it has read the project documents --
+        and two projects on different generations share no collection to read
+        together. What this does instead is bound the cost: one batched
+        `get_all` for the project documents, then one stream per project that
+        holds clearance work. The route above it still asks once, so no cost
+        is paid per row in the browser.
+
+        The alternative -- a collection group query on `project_id` across
+        `clearances`, `items` and `overrides` -- was rejected on purpose. It
+        needs three collection-group-scoped indexes that
+        `infra/provision_runtime_indexes.py` does not provision, which would
+        make the home screen fail in production until somebody created them by
+        hand; and because the generation is in the path rather than in a
+        field, it would read every superseded generation's items and throw
+        most of them away.
+
+        Unlike `snapshot`, this does not re-read the epoch to prove the list
+        did not move underneath it. A total on a list screen is a display
+        number a producer scans; the tracker page is where they act, and that
+        page still reads through `snapshot`. Paying for a consistency proof
+        per project here would double the reads to make a bar one pixel
+        truer.
+
+        A project whose document exists but holds no clearance work comes
+        back as zeroes; an id with no project document at all is left out.
+        Neither is a claim the caller has to tell apart -- it fills a missing
+        id in with `EMPTY_CLEARANCE_SUMMARY` -- but reading a project that is
+        not there is not something this store will pretend it did.
+        """
+        ids = [
+            project_id
+            for project_id in dict.fromkeys(project_ids)
+            # A slash would resolve to a subcollection of another document,
+            # so an id shaped like a path is refused rather than read.
+            if project_id and "/" not in project_id and "\\" not in project_id
+        ]
+        if not ids:
+            return {}
+        try:
+            scopes = self._scopes(ids)
+            summaries: dict[str, ClearanceSummary] = {}
+            for project_id, scope in scopes.items():
+                generation = scope.get("active_generation", "")
+                project = self._project(project_id)
+                root = (
+                    project.collection("clearance_generations").document(generation)
+                    if generation
+                    else project
+                )
+                items = {
+                    item.item_id: item
+                    for item in (
+                        _item(row.to_dict())
+                        for row in root.collection("items" if generation else "clearances").stream()
+                    )
+                }
+                if generation:
+                    for row in root.collection("overrides").stream():
+                        override = _item(row.to_dict())
+                        items[override.item_id] = override
+                summaries[project_id] = clearance_summary(items.values())
+            return summaries
+        except Exception as exc:
+            raise SourceUnavailable("clearance totals unavailable") from exc
 
     def snapshot(self, project_id: str) -> tuple[ClearanceSnapshot, list[TrackerItem]]:
         project = self._project(project_id)

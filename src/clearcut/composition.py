@@ -156,6 +156,7 @@ from clearcut.application.list_tracker_items import ListTrackerItems
 from clearcut.application.local_research_answer import LocalResearchAnswer
 from clearcut.application.local_research_ports import LocalResearchStore
 from clearcut.application.notification_ports import ProjectNotifications
+from clearcut.application.ports import ClearanceSummaries
 from clearcut.application.project_activity import ProjectActivity
 from clearcut.application.project_analysis_lore import ProjectAnalysisLore
 from clearcut.application.reconfirm_clearance import ReconfirmClearance
@@ -358,6 +359,7 @@ class _UseCaseGraph:
     local_research: LocalResearchStore | None = None
     research_location: ResearchProductionLocation | None = None
     favourites: ProjectFavourites | None = None
+    clearance_summaries: ClearanceSummaries | None = None
 
 
 def _build_mock_use_cases(runner: Runner) -> _UseCaseGraph:
@@ -426,6 +428,7 @@ def _build_mock_use_cases(runner: Runner) -> _UseCaseGraph:
         add_bible_facts=AddBibleFacts(lore),
         answer_project_question=AnswerProjectQuestion(lore, grounding, tracker, web_search),
         favourites=InMemoryProjectFavourites(projects),
+        clearance_summaries=tracker,
     )
 
 
@@ -772,6 +775,7 @@ def _build_live_use_cases(
             ),
             CurrentSceneLore(FirestoreLoreProjection(firestore_client), _scene_vectors(project)),
         ),
+        clearance_summaries=tracker,
         local_research=FirestoreLocalResearch(firestore_client),
         research_location=ResearchProductionLocation(
             FirestoreProjectSettings(firestore_client),
@@ -832,6 +836,7 @@ def _register_api(
             graph.get_project,
             access,
             favourites if favourites is not None else graph.favourites,
+            graph.clearance_summaries,
         )
     )
     app.register_blueprint(

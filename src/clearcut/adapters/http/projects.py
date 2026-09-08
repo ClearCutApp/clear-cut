@@ -26,9 +26,11 @@ from clearcut.adapters.http import errors, schemas, serializers, validators
 from clearcut.application.create_project import CreateProject
 from clearcut.application.get_project import GetProject
 from clearcut.application.list_projects import ListProjects
+from clearcut.application.ports import ClearanceSummaries
 from clearcut.application.workspace_ports import ProjectAccess, ProjectFavourites
 from clearcut.domain.jurisdiction import JURISDICTIONS, Jurisdiction
 from clearcut.domain.project import PROJECT_FORMATS, PROJECT_STATUSES, Project
+from clearcut.domain.tracker import EMPTY_CLEARANCE_SUMMARY, ClearanceSummary
 
 JsonDict = dict[str, Any]
 
@@ -71,6 +73,37 @@ SCHEMAS: JsonDict = {
             "which is the default: the server never invents one, and a client draws "
             "whatever placeholder it likes rather than a poster this project does not "
             "have. Nothing in this API uploads or fetches the image."
+        ),
+    },
+    "ClearanceSummary": {
+        "type": "object",
+        "required": ["total", "cleared", "in_progress", "blocked", "needs_review"],
+        "properties": {
+            "total": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Every clearance item this project holds; the denominator.",
+            },
+            "cleared": {"type": "integer", "minimum": 0},
+            "in_progress": {"type": "integer", "minimum": 0},
+            "blocked": {"type": "integer", "minimum": 0},
+            "needs_review": {
+                "type": "integer",
+                "minimum": 0,
+                "description": (
+                    "Items flagged for a producer to look at again. An item counts "
+                    "here instead of in its state, never in both, so the four "
+                    "buckets sum to `total`."
+                ),
+            },
+        },
+        "additionalProperties": False,
+        "description": (
+            "The clearance totals of one project, counted the way the tracker page "
+            "counts them. No percentage: the bar is `cleared / total`, and a second "
+            "server-side definition of how cleared a project is would be one a "
+            "reader has to reconcile. All zero means nobody has analysed this "
+            "project yet -- never that the numbers are unknown."
         ),
     },
     "ProjectCreate": {
@@ -120,6 +153,7 @@ SCHEMAS: JsonDict = {
                     "project: two producers reading the same project see two answers."
                 ),
             },
+            "clearance": schemas.ref("ClearanceSummary"),
         },
         "additionalProperties": False,
     },
@@ -189,6 +223,15 @@ PATHS: JsonDict = {
             "tags": [TAG],
             "operationId": "listProjects",
             "summary": "Every project",
+            "description": (
+                "Each project carries a `clearance` object -- the totals its row "
+                "draws a progress bar from -- so a client never asks for one "
+                "tracker per row to render one list. A project nobody has analysed "
+                "reports zeroes. The key is absent altogether only where the "
+                "instance serves no clearance totals, which is not the same claim "
+                "as zero; a client that ignores it reads exactly the list it "
+                "always did."
+            ),
             "responses": {
                 "200": schemas.ok(
                     "The projects this instance holds. An empty array when there are none.",
@@ -271,6 +314,7 @@ def create_projects_blueprint(
     get_project: GetProject,
     access: ProjectAccess | None = None,
     favourites: ProjectFavourites | None = None,
+    clearances: ClearanceSummaries | None = None,
 ) -> Blueprint:
     bp = Blueprint("clearcut_projects", __name__)
 
@@ -289,6 +333,27 @@ def create_projects_blueprint(
         only against a project the route was already allowed to serve."""
         return favourites.favourites(caller()) if favourites is not None else set()
 
+    def totals(project_ids: list[str]) -> dict[str, ClearanceSummary]:
+        """The clearance summary of each id, in one call to the port.
+
+        `project_ids` is exactly the set this request was already going to
+        serve -- ids the caller is authorized to read, and no others. The
+        totals are scoped by that argument and by nothing else: the port
+        discovers no projects of its own, so there is no query here to widen
+        and no workspace boundary to leak across.
+
+        An id the store has no clearance work for reports zeroes rather than
+        dropping out, because "nobody has analysed this yet" is the answer,
+        and an absent key would be read as "totals unavailable" instead.
+        """
+        if clearances is None:
+            return {}
+        summaries = clearances.summaries_for_projects(project_ids)
+        return {
+            project_id: summaries.get(project_id, EMPTY_CLEARANCE_SUMMARY)
+            for project_id in project_ids
+        }
+
     @bp.route("/api/jurisdictions", methods=["GET"])
     def list_jurisdictions() -> ResponseReturnValue:
         return errors.run_use_case(
@@ -299,16 +364,22 @@ def create_projects_blueprint(
     def projects_index() -> ResponseReturnValue:
         def visible() -> list[JsonDict]:
             favourite_ids = marked()
-            if access is None:
-                return [
-                    serializers.project_json(project, favourite=project.project_id in favourite_ids)
-                    for project in list_projects.execute()
+            projects = (
+                list_projects.execute()
+                if access is None
+                else [
+                    access.get_project(project_id)
+                    for project_id in sorted(access.visible_project_ids(g.identity.user_id))
                 ]
+            )
+            clearance = totals([project.project_id for project in projects])
             return [
                 serializers.project_json(
-                    access.get_project(project_id), favourite=project_id in favourite_ids
+                    project,
+                    favourite=project.project_id in favourite_ids,
+                    clearance=clearance.get(project.project_id),
                 )
-                for project_id in sorted(access.visible_project_ids(g.identity.user_id))
+                for project in projects
             ]
 
         return errors.run_use_case(visible)

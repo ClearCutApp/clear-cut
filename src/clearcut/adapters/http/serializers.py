@@ -26,7 +26,7 @@ from clearcut.domain.highlight import Span
 from clearcut.domain.jurisdiction import Jurisdiction
 from clearcut.domain.project import Project
 from clearcut.domain.script import Scene
-from clearcut.domain.tracker import TrackerItem
+from clearcut.domain.tracker import ClearanceSummary, TrackerItem
 
 JsonDict = dict[str, Any]
 
@@ -53,8 +53,33 @@ def jurisdiction_json(jurisdiction: Jurisdiction) -> JsonDict:
     return {"code": jurisdiction.code, "display_name": jurisdiction.display_name}
 
 
-def project_json(project: Project, *, favourite: bool = False) -> JsonDict:
-    """The project, plus whether the caller has marked it.
+def clearance_summary_json(summary: ClearanceSummary) -> JsonDict:
+    """The five counts, and no percentage.
+
+    The bar a project row draws is `cleared / total`, which the client can
+    divide for itself. Serializing a percentage as well would publish a third
+    definition of "how cleared is this" beside the domain's weighted
+    `ClearanceRollup.clearance_percent` and the report's
+    `confirmed_cleared_percent`, and two of the three would be wrong wherever
+    they were quoted together.
+    """
+    return {
+        "total": summary.total,
+        "cleared": summary.cleared,
+        "in_progress": summary.in_progress,
+        "blocked": summary.blocked,
+        "needs_review": summary.needs_review,
+    }
+
+
+def project_json(
+    project: Project,
+    *,
+    favourite: bool = False,
+    clearance: ClearanceSummary | None = None,
+) -> JsonDict:
+    """The project, plus whether the caller has marked it and how far its
+    clearance has got.
 
     The three optional fields are always present and `null` when unset, rather
     than omitted: a client that has to tell "absent" from "not set" apart is a
@@ -64,8 +89,15 @@ def project_json(project: Project, *, favourite: bool = False) -> JsonDict:
     the caller's own answer, not the project's -- the same project serialized
     for two producers carries two different values. It defaults to `False` so
     a caller with no favourites store still serves a complete shape.
+
+    `clearance` is the one field that *is* omitted when absent, and for the
+    opposite reason to the three above. A project nobody has analysed reports
+    zeroes, which is an answer; `None` here means this deployment serves no
+    clearance totals at all, which is not the same claim and must not be
+    dressed up as one. An older client that has never heard of the key ignores
+    it either way.
     """
-    return {
+    body: JsonDict = {
         "project_id": project.project_id,
         "title": project.title,
         "jurisdiction_code": project.jurisdiction_code,
@@ -75,6 +107,9 @@ def project_json(project: Project, *, favourite: bool = False) -> JsonDict:
         "status": project.status,
         "favourite": favourite,
     }
+    if clearance is not None:
+        body["clearance"] = clearance_summary_json(clearance)
+    return body
 
 
 def citation_json(citation: Citation) -> JsonDict:

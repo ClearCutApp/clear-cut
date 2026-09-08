@@ -19,7 +19,11 @@ import pytest
 from flask import Flask
 from flask.testing import FlaskClient
 
-from clearcut.adapters.demo.in_memory import InMemoryProjectFavourites, InMemoryProjectStore
+from clearcut.adapters.demo.in_memory import (
+    InMemoryProjectFavourites,
+    InMemoryProjectStore,
+    InMemoryTrackerStore,
+)
 from clearcut.adapters.http.identity import install_identity_boundary
 from clearcut.adapters.http.projects import create_projects_blueprint
 from clearcut.adapters.http.serializers import project_json
@@ -28,6 +32,11 @@ from clearcut.application.get_project import GetProject
 from clearcut.application.list_projects import ListProjects
 from clearcut.domain.identity import AccessDenied, AuthenticationRequired, Identity, permits
 from clearcut.domain.project import Project
+from clearcut.domain.tracker import (
+    ClearanceSummary,
+    TrackerItem,
+    TrackerState,
+)
 
 AT = "2026-09-05T12:00:00Z"
 
@@ -351,3 +360,203 @@ def test_clearing_a_favourite_leaves_the_other_users_mark_alone(live) -> None:
 
     assert access.favourites("alice") == set()
     assert access.favourites("bob") == {"two"}
+
+
+# --- Clearance totals on the list -------------------------------------------
+
+ZEROES = {"total": 0, "cleared": 0, "in_progress": 0, "blocked": 0, "needs_review": 0}
+
+
+def _tracker_item(project_id: str, item_id: str, state: TrackerState, flagged: bool = False):
+    return TrackerItem(
+        item_id,
+        project_id,
+        "finding-" + item_id,
+        (1,),
+        state,
+        "Sync License",
+        "rights@example.com",
+        "",
+        "",
+        AT,
+        1,
+        needs_review=flagged,
+    )
+
+
+class Summaries:
+    """`ClearanceSummaries`, remembering what it was asked for.
+
+    The asked-for ids are the assertion that matters here: authorization on
+    this route is "the totals are scoped to the projects the caller can
+    already see", and a port that was handed a wider set has already leaked
+    whether the response happens to show it or not.
+    """
+
+    def __init__(self, **summaries: ClearanceSummary) -> None:
+        self.summaries = summaries
+        self.asked: list[list[str]] = []
+
+    def summaries_for_projects(self, project_ids):
+        self.asked.append(list(project_ids))
+        return {
+            project_id: summary
+            for project_id, summary in self.summaries.items()
+            if project_id in set(project_ids)
+        }
+
+
+def test_mock_mode_serves_the_totals_a_row_draws_its_bar_from() -> None:
+    store = InMemoryProjectStore()
+    store.save(Project("prj-1", "Nocturne", "AR", AT))
+    tracker = InMemoryTrackerStore()
+    tracker.save(
+        [
+            _tracker_item("prj-1", "a", TrackerState.CLEARED),
+            _tracker_item("prj-1", "b", TrackerState.BLOCKED),
+            _tracker_item("prj-1", "c", TrackerState.CLEARED, flagged=True),
+        ]
+    )
+    app = Flask(__name__)
+    app.register_blueprint(
+        create_projects_blueprint(
+            CreateProject(store), ListProjects(store), GetProject(store), None, None, tracker
+        )
+    )
+
+    listed = app.test_client().get("/api/projects").get_json()
+
+    found = next(item for item in listed if item["project_id"] == "prj-1")
+    assert found["clearance"] == {
+        "total": 3,
+        "cleared": 1,
+        "in_progress": 0,
+        "blocked": 1,
+        "needs_review": 1,
+    }
+
+
+def test_a_project_nobody_has_analysed_reports_zeroes_rather_than_nothing() -> None:
+    """No invented numbers, and no missing key either: the row draws with an
+    empty bar, which is what "no clearance work yet" looks like."""
+    store = InMemoryProjectStore()
+    store.save(Project("prj-1", "Nocturne", "AR", AT))
+    app = Flask(__name__)
+    app.register_blueprint(
+        create_projects_blueprint(
+            CreateProject(store),
+            ListProjects(store),
+            GetProject(store),
+            None,
+            None,
+            InMemoryTrackerStore(),
+        )
+    )
+
+    listed = app.test_client().get("/api/projects").get_json()
+
+    assert next(item for item in listed if item["project_id"] == "prj-1")["clearance"] == ZEROES
+
+
+def test_without_a_clearance_port_the_list_is_exactly_the_one_it_always_was() -> None:
+    """Backward compatible in both directions: an instance that serves no
+    totals omits the key rather than claiming zero, and every other field is
+    untouched."""
+    client, _ = _mock_client(Project("prj-1", "Nocturne", "AR", AT))
+
+    listed = client.get("/api/projects").get_json()
+
+    assert set(listed[0]) == PROJECT_FIELDS
+    assert "clearance" not in listed[0]
+
+
+def test_the_single_project_read_is_unchanged() -> None:
+    """The totals answer the list screen's N+1 problem. A producer opening one
+    project loads its tracker, which is the authoritative read."""
+    store = InMemoryProjectStore()
+    store.save(Project("prj-1", "Nocturne", "AR", AT))
+    tracker = InMemoryTrackerStore()
+    tracker.save([_tracker_item("prj-1", "a", TrackerState.CLEARED)])
+    app = Flask(__name__)
+    app.register_blueprint(
+        create_projects_blueprint(
+            CreateProject(store), ListProjects(store), GetProject(store), None, None, tracker
+        )
+    )
+
+    shown = app.test_client().get("/api/projects/prj-1").get_json()
+
+    assert set(shown) == PROJECT_FIELDS
+
+
+def _live_with_totals(summaries: Summaries) -> FlaskClient:
+    access = Access()
+    store = InMemoryProjectStore()
+    app = Flask(__name__)
+    install_identity_boundary(app, Verifier(), access)
+    app.register_blueprint(
+        create_projects_blueprint(
+            CreateProject(store),
+            ListProjects(store),
+            GetProject(store),
+            access,
+            access,
+            summaries,
+        )
+    )
+    return app.test_client()
+
+
+def test_a_user_cannot_read_another_workspaces_totals() -> None:
+    """Alice may see project `one` and bob project `two`. The totals are
+    scoped by exactly the ids the caller was already authorized for: bob's
+    numbers are neither served to alice nor asked for on her behalf, so there
+    is no widened query here to get wrong."""
+    summaries = Summaries(
+        one=ClearanceSummary(total=4, cleared=3, in_progress=1, blocked=0, needs_review=0),
+        two=ClearanceSummary(total=9, cleared=0, in_progress=0, blocked=7, needs_review=2),
+    )
+    client = _live_with_totals(summaries)
+
+    listed = client.get("/api/projects", headers=_as("alice")).get_json()
+
+    assert [project["project_id"] for project in listed] == ["one"]
+    assert listed[0]["clearance"]["total"] == 4
+    assert summaries.asked == [["one"]]
+    assert [project["clearance"] for project in listed] == [
+        {"total": 4, "cleared": 3, "in_progress": 1, "blocked": 0, "needs_review": 0}
+    ]
+
+
+def test_each_caller_gets_the_totals_of_their_own_projects_only() -> None:
+    summaries = Summaries(
+        one=ClearanceSummary(total=4, cleared=3, in_progress=1, blocked=0, needs_review=0),
+        two=ClearanceSummary(total=9, cleared=0, in_progress=0, blocked=7, needs_review=2),
+    )
+    client = _live_with_totals(summaries)
+
+    alice = client.get("/api/projects", headers=_as("alice")).get_json()
+    bob = client.get("/api/projects", headers=_as("bob")).get_json()
+
+    assert alice[0]["clearance"]["cleared"] == 3
+    assert bob[0]["clearance"]["blocked"] == 7
+    assert summaries.asked == [["one"], ["two"]]
+
+
+def test_the_whole_list_costs_one_call_to_the_port() -> None:
+    """The point of the port: one call for the list, not one per row. Three
+    projects, one call, whatever the store does behind it."""
+    summaries = Summaries()
+    client = _live_with_totals(summaries)
+
+    client.get("/api/projects", headers=_as("alice"))
+
+    assert len(summaries.asked) == 1
+
+
+def test_a_visible_project_the_totals_store_has_never_heard_of_reports_zeroes() -> None:
+    client = _live_with_totals(Summaries())
+
+    listed = client.get("/api/projects", headers=_as("alice")).get_json()
+
+    assert listed[0]["clearance"] == ZEROES

@@ -251,3 +251,57 @@ def clearance_rollup(items: Iterable[TrackerItem]) -> ClearanceRollup:
     return ClearanceRollup(
         blocked=blocked, in_progress=in_progress, cleared=cleared, needs_review=needs_review
     )
+
+
+@dataclass(frozen=True, slots=True)
+class ClearanceSummary:
+    """The five headline numbers one project row shows: how many clearance
+    items it has, and how they split across the buckets a producer acts on.
+
+    Distinct from `ClearanceRollup` because the two answer different
+    questions. A rollup is asked how far along a project is, and its
+    `clearance_percent` is a weighted average that counts a half-done item as
+    half. A summary is asked what to draw: "12 Cleared / 4 Pending / 2
+    Flagged" beside a bar, where the bar is `cleared / total` and nothing is
+    worth half. Keeping them apart is what stops one screen quoting the
+    other's percentage as if it meant the same thing.
+
+    It carries no percentage of its own for the same reason: the client that
+    draws the bar divides, and a server-side percent would be a third
+    definition of "how cleared is this" for a reader to reconcile.
+
+    The field names are the ones `web/src/features/tracker/model.ts`
+    (`trackerStats`) already computes per project, so the number a producer
+    reads on the list is the number the tracker page shows when they open it.
+    """
+
+    total: int
+    cleared: int
+    in_progress: int
+    blocked: int
+    needs_review: int
+
+
+def clearance_summary(items: Iterable[TrackerItem]) -> ClearanceSummary:
+    """Bucket `items` the way `clearance_rollup` does, as the five numbers a
+    project row shows.
+
+    Delegates the counting rather than repeating it: "an item flagged
+    `needs_review` counts there ahead of its `state`" is one rule, and a
+    second copy of it is a second chance to disagree with the tracker page.
+    """
+    rollup = clearance_rollup(items)
+    return ClearanceSummary(
+        total=rollup.total,
+        cleared=rollup.cleared,
+        in_progress=rollup.in_progress,
+        blocked=rollup.blocked,
+        needs_review=rollup.needs_review,
+    )
+
+
+#: A project nobody has analysed yet. Zero everywhere rather than absent, so a
+#: caller reports "no clearance work" instead of inventing one.
+EMPTY_CLEARANCE_SUMMARY = ClearanceSummary(
+    total=0, cleared=0, in_progress=0, blocked=0, needs_review=0
+)
