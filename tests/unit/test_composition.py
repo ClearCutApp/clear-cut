@@ -48,6 +48,7 @@ from clearcut.adapters.demo.in_memory import (
     InMemorySceneExtractor,
     InMemoryScriptIngestion,
     InMemoryTrackerStore,
+    InMemoryWebGrounding,
 )
 from clearcut.adapters.gcp.document_ai import DocumentAIIngestion
 from clearcut.adapters.gcp.tracker import FirestoreTrackerStore
@@ -56,6 +57,7 @@ from clearcut.adapters.gemini.continuity import GeminiContinuityCheck
 from clearcut.adapters.gemini.extractor import GeminiSceneExtractor
 from clearcut.adapters.notify.webhook import WebhookNotifier
 from clearcut.adapters.parallel.research import ParallelRightsResearch
+from clearcut.adapters.parallel.search import ParallelWebSearch
 from clearcut.application.start_analysis import Work
 from clearcut.composition import (
     _GCP_LOCATION,
@@ -137,6 +139,7 @@ def test_build_mock_use_cases_wires_the_demo_adapters_by_type() -> None:
     assert isinstance(graph.list_tracker_items._tracker, InMemoryTrackerStore)
     assert isinstance(graph.resolve_finding._notifier, InMemoryNotifier)
     assert isinstance(graph.answer_project_question._lore, InMemoryLoreStore)
+    assert isinstance(graph.answer_project_question._web, InMemoryWebGrounding)
 
 
 def test_build_mock_use_cases_shares_one_tracker_store_across_use_cases() -> None:
@@ -434,6 +437,9 @@ def test_build_live_use_cases_wires_answer_project_question_to_the_live_collabor
     assert isinstance(graph.answer_project_question._lore, BigQueryLoreStore)
     assert isinstance(graph.answer_project_question._grounding, VertexSearchGrounding)
     assert isinstance(graph.answer_project_question._tracker, FirestoreTrackerStore)
+    # CP-062: the fourth collaborator, and the reason the submission's
+    # "Parallel (Task API, Search API)" row is true rather than aspirational.
+    assert isinstance(graph.answer_project_question._web, ParallelWebSearch)
 
 
 def test_build_live_use_cases_passes_each_env_read_value_to_its_adapter(
@@ -715,3 +721,29 @@ def test_an_unbound_call_across_a_thread_boundary_starts_its_own_trace(
     spans = {span.name: span for span in span_exporter.get_finished_spans()}
     assert spans["child"].context.trace_id != spans["parent"].context.trace_id
     assert spans["child"].parent is None
+
+
+def test_provider_budgets_keep_genai_units_and_embedding_region(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _clear_env(
+        monkeypatch,
+        CLEARCUT_MODE="live",
+        GOOGLE_APPLICATION_CREDENTIALS=_write_fake_adc(tmp_path),
+        **_LIVE_ENV_VALUES,
+    )
+    monkeypatch.setenv(
+        "CLEARCUT_PROVIDER_OPTIONS",
+        '{"genai_timeout":12.5,"search_timeout":9,"document_timeout":17}',
+    )
+    _forbid_sockets(monkeypatch)
+    graph = _build_live_use_cases(ch_client=_FakeChClient(), vector_store=_FakeVectorStore())
+    extractor = cast(Any, graph.analyze_script._extractor)
+    options = extractor.client._api_client._http_options
+    assert options.timeout == 12500 and options.retry_options.attempts == 1
+    embeddings = cast(Any, graph.analyze_script._lore)._embeddings
+    assert embeddings.client._api_client.location == "us-central1"
+    assert embeddings.client._api_client._http_options.timeout == 12500
+    assert embeddings.max_retries == 1
+    assert cast(Any, graph.answer_project_question)._web._timeout == 9
+    assert cast(Any, graph.analyze_script._ingestion)._timeout == 17

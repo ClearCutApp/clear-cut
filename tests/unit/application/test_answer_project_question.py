@@ -1,15 +1,16 @@
 """Unit tests for `AnswerProjectQuestion` (CP-027, CP-034).
 
-Hand-written fakes for all three ports (AGENT.md Section 5) — no
-`unittest.mock`, no network. `NoGroundedSource` is imported from its adapter
-module for realism only; that import is legal here because the layer guard
-(`tests/unit/test_layer_boundaries.py`) restricts `src/clearcut/application`,
-not `tests/`.
+Hand-written fakes for all four ports (AGENT.md Section 5) — no
+`unittest.mock`, no network. `NoGroundedSource` and `NoWebEvidence` are
+imported from their adapter modules for realism only; those imports are legal
+here because the layer guard (`tests/unit/test_layer_boundaries.py`) restricts
+`src/clearcut/application`, not `tests/`.
 """
 
 import pytest
 
 from clearcut.adapters.gcp.vertex_search import NoGroundedSource
+from clearcut.adapters.parallel.search import NoWebEvidence
 from clearcut.application.answer_project_question import (
     AnswerProjectQuestion,
     _names_legal_topic,
@@ -44,6 +45,37 @@ class _RaisingLegalGrounding:
 
     def ground(self, query: str, jurisdiction: Jurisdiction) -> GroundedAnswer:
         raise self._error
+
+
+class _RecordingWebGrounding:
+    """Records every call, so the cost guard can assert it ran zero times."""
+
+    def __init__(self, answer: GroundedAnswer) -> None:
+        self._answer = answer
+        self.calls: list[tuple[str, Jurisdiction]] = []
+
+    def search(self, question: str, jurisdiction: Jurisdiction) -> GroundedAnswer:
+        self.calls.append((question, jurisdiction))
+        return self._answer
+
+
+class _RaisingWebGrounding:
+    def __init__(self, error: Exception) -> None:
+        self._error = error
+
+    def search(self, question: str, jurisdiction: Jurisdiction) -> GroundedAnswer:
+        raise self._error
+
+
+def _silent_web() -> _RecordingWebGrounding:
+    """A `WebGrounding` that answers with nothing.
+
+    Every test written before the web fallback existed passes one of these:
+    the corpus tests that already return citations never reach it, and the
+    ones that do reach it get an empty answer, so their assertions still
+    describe the corpus path alone.
+    """
+    return _RecordingWebGrounding(GroundedAnswer(text="", citations=()))
 
 
 class _RecordingTrackerStore:
@@ -143,6 +175,7 @@ def test_retrieves_bible_facts_and_their_source_appears_in_the_answer() -> None:
         lore=lore,
         grounding=_RecordingLegalGrounding(GroundedAnswer(text="", citations=())),
         tracker=_RecordingTrackerStore([]),
+        web=_silent_web(),
     )
 
     answer = use_case.execute("proj-1", "Who painted the mural?", _MEXICO)
@@ -157,7 +190,10 @@ def test_a_legal_topic_question_grounds_and_carries_citations() -> None:
         GroundedAnswer(text="Mexican copyright law protects...", citations=(citation,))
     )
     use_case = AnswerProjectQuestion(
-        lore=FakeLoreStore(), grounding=grounding, tracker=_RecordingTrackerStore([])
+        lore=FakeLoreStore(),
+        grounding=grounding,
+        tracker=_RecordingTrackerStore([]),
+        web=_silent_web(),
     )
     question = "What does Mexican copyright law say about the mural?"
 
@@ -171,7 +207,10 @@ def test_a_legal_topic_question_grounds_and_carries_citations() -> None:
 def test_a_non_legal_question_never_calls_grounding() -> None:
     grounding = _RecordingLegalGrounding(GroundedAnswer(text="unused", citations=()))
     use_case = AnswerProjectQuestion(
-        lore=FakeLoreStore(), grounding=grounding, tracker=_RecordingTrackerStore([])
+        lore=FakeLoreStore(),
+        grounding=grounding,
+        tracker=_RecordingTrackerStore([]),
+        web=_silent_web(),
     )
 
     use_case.execute("proj-1", "Who appears in scene 4?", _MEXICO)
@@ -183,7 +222,10 @@ def test_a_scene_roster_question_never_calls_grounding() -> None:
     """D25: the widened vocabulary must not regress CP-027's zero-call case."""
     grounding = _RecordingLegalGrounding(GroundedAnswer(text="unused", citations=()))
     use_case = AnswerProjectQuestion(
-        lore=FakeLoreStore(), grounding=grounding, tracker=_RecordingTrackerStore([])
+        lore=FakeLoreStore(),
+        grounding=grounding,
+        tracker=_RecordingTrackerStore([]),
+        web=_silent_web(),
     )
 
     use_case.execute("proj-1", "Who is in scene 4?", _MEXICO)
@@ -195,7 +237,10 @@ def test_a_scene_count_question_never_calls_grounding() -> None:
     """D25: the widened vocabulary must not regress CP-027's zero-call case."""
     grounding = _RecordingLegalGrounding(GroundedAnswer(text="unused", citations=()))
     use_case = AnswerProjectQuestion(
-        lore=FakeLoreStore(), grounding=grounding, tracker=_RecordingTrackerStore([])
+        lore=FakeLoreStore(),
+        grounding=grounding,
+        tracker=_RecordingTrackerStore([]),
+        web=_silent_web(),
     )
 
     use_case.execute("proj-1", "How many scenes are there?", _MEXICO)
@@ -249,6 +294,7 @@ def test_a_territory_blocker_question_reads_tracker_and_names_blocked_items() ->
         lore=FakeLoreStore(),
         grounding=_RecordingLegalGrounding(GroundedAnswer(text="", citations=())),
         tracker=tracker,
+        web=_silent_web(),
     )
 
     answer = use_case.execute("proj-1", "What is still blocking release in Mexico?", _MEXICO)
@@ -268,6 +314,7 @@ def test_a_blocker_answer_names_the_jurisdiction_it_covers() -> None:
         lore=FakeLoreStore(),
         grounding=_RecordingLegalGrounding(GroundedAnswer(text="", citations=())),
         tracker=tracker,
+        web=_silent_web(),
     )
 
     answer = use_case.execute("proj-1", "What is still blocking release in Mexico?", _MEXICO)
@@ -284,6 +331,7 @@ def test_a_blocker_question_with_nothing_blocked_still_names_the_territory() -> 
         lore=FakeLoreStore(),
         grounding=_RecordingLegalGrounding(GroundedAnswer(text="", citations=())),
         tracker=tracker,
+        web=_silent_web(),
     )
 
     answer = use_case.execute("proj-1", "What is still blocking release in Mexico?", _MEXICO)
@@ -303,6 +351,7 @@ def test_a_blocker_question_with_no_tracker_rows_says_the_project_is_not_indexed
         lore=FakeLoreStore(),
         grounding=_RecordingLegalGrounding(GroundedAnswer(text="", citations=())),
         tracker=tracker,
+        web=_silent_web(),
     )
 
     answer = use_case.execute("proj-1", "What is still blocking release in Mexico?", _MEXICO)
@@ -320,11 +369,13 @@ def test_the_unindexed_and_nothing_blocked_answers_are_distinguishable() -> None
         lore=FakeLoreStore(),
         grounding=_RecordingLegalGrounding(GroundedAnswer(text="", citations=())),
         tracker=_RecordingTrackerStore([]),
+        web=_silent_web(),
     ).execute("proj-1", "What is still blocking release in Mexico?", _MEXICO)
     nothing_blocked = AnswerProjectQuestion(
         lore=FakeLoreStore(),
         grounding=_RecordingLegalGrounding(GroundedAnswer(text="", citations=())),
         tracker=_RecordingTrackerStore([_cleared_item()]),
+        web=_silent_web(),
     ).execute("proj-1", "What is still blocking release in Mexico?", _MEXICO)
 
     assert unindexed.text != nothing_blocked.text
@@ -356,6 +407,7 @@ def test_a_blocker_question_with_bible_facts_but_no_tracker_rows_names_the_track
         lore=lore,
         grounding=_RecordingLegalGrounding(GroundedAnswer(text="", citations=())),
         tracker=_RecordingTrackerStore([]),
+        web=_silent_web(),
     )
 
     answer = use_case.execute("proj-1", "What is still blocking release in Mexico?", _MEXICO)
@@ -375,6 +427,7 @@ def test_a_tracker_outage_propagates_instead_of_reading_as_clearance() -> None:
         lore=FakeLoreStore(),
         grounding=_RecordingLegalGrounding(GroundedAnswer(text="", citations=())),
         tracker=tracker,
+        web=_silent_web(),
     )
 
     with pytest.raises(SourceUnavailable):
@@ -387,6 +440,7 @@ def test_a_non_blocker_question_never_calls_tracker() -> None:
         lore=FakeLoreStore(),
         grounding=_RecordingLegalGrounding(GroundedAnswer(text="", citations=())),
         tracker=tracker,
+        web=_silent_web(),
     )
 
     use_case.execute("proj-1", "Who appears in scene 4?", _MEXICO)
@@ -399,6 +453,7 @@ def test_a_project_with_no_indexed_facts_says_so_with_zero_citations() -> None:
         lore=FakeLoreStore(),
         grounding=_RecordingLegalGrounding(GroundedAnswer(text="", citations=())),
         tracker=_RecordingTrackerStore([]),
+        web=_silent_web(),
     )
 
     answer = use_case.execute("proj-1", "Who appears in scene 4?", _MEXICO)
@@ -423,7 +478,10 @@ def test_no_grounded_source_degrades_to_a_bible_only_answer() -> None:
     question = "What does Mexican copyright law say about the mural?"
     grounding = _RaisingLegalGrounding(NoGroundedSource(question))
     use_case = AnswerProjectQuestion(
-        lore=lore, grounding=grounding, tracker=_RecordingTrackerStore([])
+        lore=lore,
+        grounding=grounding,
+        tracker=_RecordingTrackerStore([]),
+        web=_silent_web(),
     )
 
     answer = use_case.execute("proj-1", question, _MEXICO)
@@ -442,7 +500,10 @@ def test_a_grounding_bug_propagates_instead_of_degrading_silently() -> None:
     """
     grounding = _RaisingLegalGrounding(TypeError("boom"))
     use_case = AnswerProjectQuestion(
-        lore=FakeLoreStore(), grounding=grounding, tracker=_RecordingTrackerStore([])
+        lore=FakeLoreStore(),
+        grounding=grounding,
+        tracker=_RecordingTrackerStore([]),
+        web=_silent_web(),
     )
 
     with pytest.raises(TypeError):
@@ -467,6 +528,13 @@ class _PositionalOnlyLegalGrounding:
 
     def ground(self, a: str, b: Jurisdiction) -> GroundedAnswer:
         return GroundedAnswer(text="grounded", citations=())
+
+
+class _PositionalOnlyWebGrounding:
+    """Parameter names differ from `WebGrounding`'s, so a keyword call fails."""
+
+    def search(self, a: str, b: Jurisdiction) -> GroundedAnswer:
+        return GroundedAnswer(text="from the web", citations=())
 
 
 class _PositionalOnlyTrackerStore:
@@ -494,6 +562,7 @@ def test_port_methods_are_called_positionally() -> None:
         lore=_PositionalOnlyLoreStore(),
         grounding=_PositionalOnlyLegalGrounding(),
         tracker=_PositionalOnlyTrackerStore(),
+        web=_PositionalOnlyWebGrounding(),
     )
 
     answer = use_case.execute(
@@ -501,3 +570,173 @@ def test_port_methods_are_called_positionally() -> None:
     )
 
     assert "grounded" in answer.text
+    assert "from the web" in answer.text
+
+
+# --- CP-062: the live web fallback -------------------------------------------
+#
+# `LegalGrounding` answers from ten hand-curated corpus prefixes, and
+# `docs/plan/sdd.md` Section 9.2 records that six of the eight clearance
+# categories ground against nothing. A producer asking a question the corpus
+# never covered used to get bible facts and silence. These tests pin what it
+# gets instead, and -- just as importantly -- when it must not cost a search.
+
+
+_WEB_CITATION = Citation(
+    uri="https://www.argentina.gob.ar/normativa/nacional/ley-11723-42755/texto",
+    title="Ley 11.723",
+    snippet="Articulo 2. El derecho de propiedad de una obra artistica...",
+)
+_WEB_ANSWER = GroundedAnswer(
+    text="From a live web search, not ClearCut's licensed legal corpus.",
+    citations=(_WEB_CITATION,),
+)
+_LEGAL_QUESTION = "What does Mexican copyright law say about the mural?"
+
+
+def test_a_corpus_miss_falls_back_to_the_live_web_search() -> None:
+    web = _RecordingWebGrounding(_WEB_ANSWER)
+    use_case = AnswerProjectQuestion(
+        lore=FakeLoreStore(),
+        grounding=_RaisingLegalGrounding(NoGroundedSource(_LEGAL_QUESTION)),
+        tracker=_RecordingTrackerStore([]),
+        web=web,
+    )
+
+    answer = use_case.execute("proj-1", _LEGAL_QUESTION, _MEXICO)
+
+    assert web.calls == [(_LEGAL_QUESTION, _MEXICO)]
+    assert answer.citations == (_WEB_CITATION,)
+
+
+def test_a_corpus_answer_with_no_citations_also_falls_back_to_the_web() -> None:
+    """The condition is citations, not text.
+
+    `adapters/gcp/vertex_search.py` can return grounded prose with an empty
+    `groundingMetadata`, and `adapters/http/questions.py:26` says an answer
+    with no citation is one this API does not give -- so uncited prose is a
+    miss, however confident it reads.
+    """
+    web = _RecordingWebGrounding(_WEB_ANSWER)
+    use_case = AnswerProjectQuestion(
+        lore=FakeLoreStore(),
+        grounding=_RecordingLegalGrounding(
+            GroundedAnswer(text="Mexican law is broadly protective.", citations=())
+        ),
+        tracker=_RecordingTrackerStore([]),
+        web=web,
+    )
+
+    answer = use_case.execute("proj-1", _LEGAL_QUESTION, _MEXICO)
+
+    assert web.calls == [(_LEGAL_QUESTION, _MEXICO)]
+    assert answer.citations == (_WEB_CITATION,)
+
+
+def test_an_uncited_corpus_answer_is_appended_to_rather_than_replaced() -> None:
+    """The corpus said something; it just could not cite it. Dropping that
+    text would lose a sentence the licensed source produced."""
+    use_case = AnswerProjectQuestion(
+        lore=FakeLoreStore(),
+        grounding=_RecordingLegalGrounding(
+            GroundedAnswer(text="Mexican law is broadly protective.", citations=())
+        ),
+        tracker=_RecordingTrackerStore([]),
+        web=_RecordingWebGrounding(_WEB_ANSWER),
+    )
+
+    answer = use_case.execute("proj-1", _LEGAL_QUESTION, _MEXICO)
+
+    assert "Mexican law is broadly protective." in answer.text
+    assert _WEB_ANSWER.text in answer.text
+
+
+def test_a_cited_corpus_answer_never_spends_a_web_search() -> None:
+    """The cost guard. The corpus is the stronger source and it answered, so
+    the second network call buys nothing."""
+    web = _RecordingWebGrounding(_WEB_ANSWER)
+    corpus_citation = Citation(uri="https://law.example/mx", title="Ley Federal", snippet="...")
+    use_case = AnswerProjectQuestion(
+        lore=FakeLoreStore(),
+        grounding=_RecordingLegalGrounding(
+            GroundedAnswer(text="Mexican copyright law protects...", citations=(corpus_citation,))
+        ),
+        tracker=_RecordingTrackerStore([]),
+        web=web,
+    )
+
+    answer = use_case.execute("proj-1", _LEGAL_QUESTION, _MEXICO)
+
+    assert web.calls == []
+    assert answer.citations == (corpus_citation,)
+
+
+def test_a_non_legal_question_never_spends_a_web_search() -> None:
+    web = _RecordingWebGrounding(_WEB_ANSWER)
+    use_case = AnswerProjectQuestion(
+        lore=FakeLoreStore(),
+        grounding=_RecordingLegalGrounding(GroundedAnswer(text="", citations=())),
+        tracker=_RecordingTrackerStore([]),
+        web=web,
+    )
+
+    use_case.execute("proj-1", "Who appears in scene 4?", _MEXICO)
+
+    assert web.calls == []
+
+
+def test_no_web_evidence_degrades_to_the_bible_only_answer() -> None:
+    """`NoWebEvidence` is an `EnrichmentMissing`, the one type this layer
+    catches by name (D23), so a search that found nothing usable is the same
+    outcome as no search at all."""
+    lore = FakeLoreStore()
+    lore.index(
+        "proj-1",
+        [
+            BibleFact(
+                fact_id="F1",
+                kind=FactKind.LORE,
+                text="The mural was painted in 1990.",
+                source="Bible p. 12",
+            )
+        ],
+    )
+    use_case = AnswerProjectQuestion(
+        lore=lore,
+        grounding=_RaisingLegalGrounding(NoGroundedSource(_LEGAL_QUESTION)),
+        tracker=_RecordingTrackerStore([]),
+        web=_RaisingWebGrounding(NoWebEvidence(_LEGAL_QUESTION)),
+    )
+
+    answer = use_case.execute("proj-1", _LEGAL_QUESTION, _MEXICO)
+
+    assert "Bible p. 12" in answer.text
+    assert answer.citations == ()
+
+
+def test_a_web_search_outage_propagates_instead_of_degrading_silently() -> None:
+    """D23: `SourceUnavailable` is an outage, not a missing enrichment, and
+    the route maps it to 502. See the comment in `_web_answer` for why this
+    is deliberate rather than an oversight."""
+    use_case = AnswerProjectQuestion(
+        lore=FakeLoreStore(),
+        grounding=_RaisingLegalGrounding(NoGroundedSource(_LEGAL_QUESTION)),
+        tracker=_RecordingTrackerStore([]),
+        web=_RaisingWebGrounding(SourceUnavailable("Parallel Search API is down")),
+    )
+
+    with pytest.raises(SourceUnavailable):
+        use_case.execute("proj-1", _LEGAL_QUESTION, _MEXICO)
+
+
+def test_a_web_search_bug_propagates_instead_of_degrading_silently() -> None:
+    """The `EnrichmentMissing`-only catch, proved on the web port too."""
+    use_case = AnswerProjectQuestion(
+        lore=FakeLoreStore(),
+        grounding=_RaisingLegalGrounding(NoGroundedSource(_LEGAL_QUESTION)),
+        tracker=_RecordingTrackerStore([]),
+        web=_RaisingWebGrounding(TypeError("boom")),
+    )
+
+    with pytest.raises(TypeError):
+        use_case.execute("proj-1", _LEGAL_QUESTION, _MEXICO)

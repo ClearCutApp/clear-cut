@@ -702,8 +702,60 @@ paths:
           $ref: '#/components/responses/InternalError'
 
   /api/projects/{project_id}/questions:
+    parameters:
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    post:
+      tags:
+      - Questions
+      operationId: askProjectQuestion
+        projection for the committed revision. Local questions require recorded production-location
         evidence. Missing evidence and incomplete indexing are reported explicitly; research never grants
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuestionCreate'
+      responses:
+        '200':
+          description: The answer, the bible facts behind it, and its citations.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuestionAnswer'
+        '400':
+          description: '`question` is missing, blank, or whitespace only, or `jurisdiction_code` names
             no supported jurisdiction.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '502':
+          description: The grounding service or the web search could not answer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: The server failed for a reason it does not attribute. The body carries a message
+            and never a stack trace.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/projects/{project_id}/draft:
     get:
       tags:
@@ -884,6 +936,7 @@ paths:
   /api/projects/{project_id}/transcriptions:
     post:
       tags:
+      - Voice questions
       operationId: transcribeQuestion
       summary: Transcribe a recording for review
       parameters:
@@ -1668,11 +1721,195 @@ paths:
                   - null
 
   /api/projects/{project_id}/settings:
+    parameters:
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    get:
+      tags:
+      - Workspaces
+      operationId: getProjectSettings
+      summary: Read production settings and selected locations
+      responses:
+        '200':
+          description: Authorized result.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Invalid input.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Workspace permission required.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Expected version changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+      - Workspaces
+      operationId: saveProjectSettings
+      summary: Save expected-version production settings
+      responses:
+        '200':
+          description: Authorized result.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Invalid input.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Workspace permission required.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Expected version changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - title
+              - jurisdiction_code
+              - locations
+              properties:
+                  type: integer
+                  minimum: 1
+                title:
+                  type: string
+                  maxLength: 200
+                jurisdiction_code:
+                  type: string
+                  enum:
+                  - AR
+                  - MX
+                  - ES
+                  - CO
+                  - US
+                  - CA
+                locations:
+                  type: array
+                  maxItems: 30
+                  items:
+                    type: object
+                    required:
+                    - country
+                    - location
+                    properties:
+                      country:
+                        type: string
+                        minLength: 1
+                      location:
+                        type: string
+                        maxLength: 500
+
   /api/projects/{project_id}/local-research:
+    parameters:
+    - name: project_id
+      in: path
+      required: true
+      description: The project that owns the record.
+      schema:
+        type: string
+        minLength: 1
+    get:
+      tags:
       - Local research
+      operationId: listLocalResearch
       summary: Read the latest 50 saved location research records
+      responses:
+        '200':
           description: Dated research records.
+          content:
+            application/json:
+              schema:
+                type: object
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
       - Local research
+      operationId: researchProductionLocation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LocalResearchCreate'
+      responses:
+        '200':
+          description: Saved evidence or explicit coverage gap.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Invalid location or question.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No record at this path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Production settings changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '502':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/projects/{project_id}/notifications:
     parameters:
     - name: project_id
@@ -2067,6 +2304,39 @@ components:
           type: integer
         payload:
           type: object
+
+    LocalResearchCreate:
+      type: object
+      required:
+      - expected_settings_version
+      - location_index
+      - question
+      properties:
+        expected_settings_version:
+          type: integer
+          minimum: 1
+        location_index:
+          type: integer
+          minimum: 0
+        question:
+          type: string
+          minLength: 1
+          maxLength: 2000
+      additionalProperties: false
+
+    ProjectSearch:
+      type: object
+      required:
+      - query
+      additionalProperties: false
+      properties:
+        query:
+          type: string
+          minLength: 2
+          maxLength: 200
+        cursor:
+          type: string
+          maxLength: 512
 
     ScriptSummary:
       type: object

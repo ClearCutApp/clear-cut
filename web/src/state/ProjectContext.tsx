@@ -59,6 +59,7 @@ export interface ProjectContextValue {
   pendingItemIds: ReadonlySet<string>;
   selectedItemId: string | null;
   refreshTracker: () => Promise<void>;
+  refreshMetadata?: () => Promise<void>;
   runAnalysis: (request: ScriptCreate) => Promise<Outcome<Script>>;
   changeState: (itemId: string, state: TrackerState) => Promise<Outcome<TrackerItem>>;
   draftEmail: (itemId: string) => Promise<Outcome<TrackerItem>>;
@@ -256,6 +257,10 @@ export function ProjectProvider({
   }, [projectId]);
 
   const refreshTracker = useCallback(() => loadTracker(() => false), [loadTracker]);
+  const refreshMetadata = useCallback(async () => {
+    try { const found = await getProject(projectId); setProject(found); setProjectError(null); }
+    catch { setProjectError("Project details could not be refreshed."); }
+  }, [projectId]);
 
   /**
    * Queues the analysis, then polls the job the 202 handed back until it
@@ -403,6 +408,7 @@ export function ProjectProvider({
       pendingItemIds,
       selectedItemId,
       refreshTracker,
+      refreshMetadata,
       runAnalysis,
       uploadScript,
       changeState,
@@ -428,6 +434,7 @@ export function ProjectProvider({
       pendingItemIds,
       selectedItemId,
       refreshTracker,
+      refreshMetadata,
       runAnalysis,
       uploadScript,
       changeState,

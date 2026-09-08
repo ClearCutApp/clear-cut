@@ -82,6 +82,7 @@ from clearcut.adapters.demo.in_memory import (
     InMemoryScriptStorage,
     InMemoryScriptStore,
     InMemoryTrackerStore,
+    InMemoryWebGrounding,
 )
 from clearcut.adapters.documents.screenplay_export import screenplay_fdx, screenplay_pdf
 from clearcut.adapters.documents.screenplay_import import ScreenplayImporter
@@ -94,6 +95,7 @@ from clearcut.adapters.gcp.drafts import FirestoreDraftStore
 from clearcut.adapters.gcp.firebase_identity import FirebaseIdentityVerifier
 from clearcut.adapters.gcp.firestore_access import FirestoreProjectAccess
 from clearcut.adapters.gcp.job_launcher import CloudRunAnalysisLauncher
+from clearcut.adapters.gcp.local_research import FirestoreLocalResearch
 from clearcut.adapters.gcp.lore_projection import FirestoreLoreProjection
 from clearcut.adapters.gcp.notifications import FirestoreNotifications
 from clearcut.adapters.gcp.project_settings import FirestoreProjectSettings
@@ -110,6 +112,7 @@ from clearcut.adapters.http.bible import create_bible_blueprint
 from clearcut.adapters.http.documents import create_documents_blueprint
 from clearcut.adapters.http.drafts import create_drafts_blueprint
 from clearcut.adapters.http.identity import install_identity_boundary
+from clearcut.adapters.http.local_research import create_local_research_blueprint
 from clearcut.adapters.http.notifications import create_notifications_blueprint
 from clearcut.adapters.http.openapi import build_spec
 from clearcut.adapters.http.projects import create_projects_blueprint
@@ -122,11 +125,13 @@ from clearcut.adapters.http.voice import create_voice_blueprint
 from clearcut.adapters.http.workspaces import create_workspaces_blueprint
 from clearcut.adapters.notify.webhook import WebhookNotifier
 from clearcut.adapters.parallel.research import ParallelRightsResearch
+from clearcut.adapters.parallel.search import ParallelWebSearch
 from clearcut.application.activity_ports import ActivityStore
 from clearcut.application.add_bible_facts import AddBibleFacts
 from clearcut.application.analyze_script import AnalyzeScript
 from clearcut.application.answer_project_question import AnswerProjectQuestion
 from clearcut.application.create_project import CreateProject
+from clearcut.application.current_scene_lore import CurrentSceneLore
 from clearcut.application.dispatch_notifications import DispatchNotifications
 from clearcut.application.document_ports import ProjectDocuments
 from clearcut.application.draft_ports import DraftStore, ScreenplayContent
@@ -144,9 +149,12 @@ from clearcut.application.get_tracker_item import GetTrackerItem
 from clearcut.application.list_projects import ListProjects
 from clearcut.application.list_scripts import ListScripts
 from clearcut.application.list_tracker_items import ListTrackerItems
+from clearcut.application.local_research_answer import LocalResearchAnswer
+from clearcut.application.local_research_ports import LocalResearchStore
 from clearcut.application.notification_ports import ProjectNotifications
 from clearcut.application.project_activity import ProjectActivity
 from clearcut.application.project_analysis_lore import ProjectAnalysisLore
+from clearcut.application.research_production_location import ResearchProductionLocation
 from clearcut.application.resolve_finding import ResolveFinding
 from clearcut.application.run_durable_analysis import RunDurableAnalysis
 from clearcut.application.start_analysis import Runner, StartAnalysis, Work
@@ -178,6 +186,7 @@ _BIGQUERY_LORE_TABLE = "lore_vectors"
 _EMBEDDING_MODEL = "text-embedding-005"
 
 _MODE_ENV_VAR = "CLEARCUT_MODE"
+
 _MOCK_MODE = "mock"
 _LIVE_MODE = "live"
 
@@ -340,6 +349,8 @@ class _UseCaseGraph:
     confirmations: ClearanceConfirmation | None = None
     activity: ActivityStore | None = None
     notifications: ProjectNotifications | None = None
+    local_research: LocalResearchStore | None = None
+    research_location: ResearchProductionLocation | None = None
 
 
 def _build_mock_use_cases(runner: Runner) -> _UseCaseGraph:
@@ -350,6 +361,7 @@ def _build_mock_use_cases(runner: Runner) -> _UseCaseGraph:
     ingestion = InMemoryScriptIngestion()
     extractor = InMemorySceneExtractor()
     grounding = InMemoryLegalGrounding()
+    web_search = InMemoryWebGrounding()
     research = InMemoryRightsResearch()
     continuity = InMemoryContinuityCheck()
     lore = InMemoryLoreStore()
@@ -405,7 +417,7 @@ def _build_mock_use_cases(runner: Runner) -> _UseCaseGraph:
         resolve_finding=ResolveFinding(tracker, notifier, tracker),
         get_bible=GetBible(lore),
         add_bible_facts=AddBibleFacts(lore),
-        answer_project_question=AnswerProjectQuestion(lore, grounding, tracker),
+        answer_project_question=AnswerProjectQuestion(lore, grounding, tracker, web_search),
     )
 
 
@@ -628,6 +640,15 @@ def _build_live_use_cases(
         create_timeout=providers.research_create_timeout,
         result_timeout=providers.research_result_timeout,
     )
+    # The same key, a second Parallel surface (ADR 0003 as amended): the Task
+    # API researches a rights holder over minutes, the Search API answers the
+    # producer's on-camera question inside a second. No new `_required_env`
+    # call -- adding one would change the environment contract
+    # (`tests/unit/test_environment_contract.py`) for a credential that is
+    # already read.
+    web_search = ParallelWebSearch(
+        httpx.Client(), parallel_api_key, timeout=providers.search_timeout
+    )
     continuity = GeminiContinuityCheck(genai_client, gemini_model_lite)
     lore = BigQueryLoreStore(vector_store, embeddings)
     from datetime import UTC, datetime
@@ -733,7 +754,22 @@ def _build_live_use_cases(
         notifications=notifications,
         get_bible=GetBible(lore),
         add_bible_facts=AddBibleFacts(lore),
-        answer_project_question=AnswerProjectQuestion(lore, grounding, tracker),
+        answer_project_question=AnswerProjectQuestion(
+            lore,
+            grounding,
+            tracker,
+            web_search,
+            LocalResearchAnswer(
+                FirestoreProjectSettings(firestore_client), FirestoreLocalResearch(firestore_client)
+            ),
+            CurrentSceneLore(FirestoreLoreProjection(firestore_client), _scene_vectors(project)),
+        ),
+        local_research=FirestoreLocalResearch(firestore_client),
+        research_location=ResearchProductionLocation(
+            FirestoreProjectSettings(firestore_client),
+            FirestoreLocalResearch(firestore_client),
+            web_search,
+        ),
     )
 
 
@@ -893,6 +929,9 @@ def create_app(build_dir: Path | None = None, *, analysis_runner: Runner | None 
     )
     app.register_blueprint(create_activity_blueprint(use_cases.activity))
     app.register_blueprint(create_notifications_blueprint(use_cases.notifications))
+    app.register_blueprint(
+        create_local_research_blueprint(use_cases.local_research, use_cases.research_location)
+    )
     app.register_blueprint(
         create_workspaces_blueprint(
             FirestoreTeams(firestore.Client(project=_required_env("GOOGLE_CLOUD_PROJECT")))

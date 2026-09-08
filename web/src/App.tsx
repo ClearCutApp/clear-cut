@@ -17,6 +17,7 @@ import { NotificationsView } from "./views/NotificationsView";
 import { ActivityView } from "./views/ActivityView";
 import { TeamView } from "./views/TeamView";
 import { JoinWorkspaceView } from "./views/JoinWorkspaceView";
+import { ProjectSettingsView } from "./views/ProjectSettingsView";
 import { EditorView } from "./views/EditorView";
 import { ScriptView } from "./views/ScriptView";
 
@@ -43,6 +44,7 @@ export function App(): ReactElement {
           <Route path="documents" element={<DocumentsView />} />
           <Route path="activity" element={<ActivityView />} />
           <Route path="notifications" element={<NotificationsView />} />
+          <Route path="settings" element={<ProjectSettingsView />} />
           <Route path="editor" element={<EditorView />} />
           <Route path="script" element={<ScriptView />} />
           <Route path="ask" element={<AskView />} />
