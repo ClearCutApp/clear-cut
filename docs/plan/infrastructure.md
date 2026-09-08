@@ -294,6 +294,16 @@ echo -n "$VALUE" | gcloud secrets create PARALLEL_API_KEY --data-file=-
 # repeat per secret, then reference them in the deploy command below
 ```
 
+Optional current deployed acceptance variables (see [the acceptance guide](../recovery/deployed-acceptance.md)):
+
+| Variable | Purpose |
+| --- | --- |
+| `CLEARCUT_ACCEPTANCE_TARGET` | Deployed HTTPS origin for opt-in synthetic acceptance |
+| `CLEARCUT_ACCEPTANCE_ID_TOKEN` | Ephemeral Firebase ID token; inject via environment only, never commit a value |
+| `CLEARCUT_ACCEPTANCE_RUN_ID` | Unique synthetic run marker, preserved when resuming |
+| `CLEARCUT_ACCEPTANCE_DIRECTORY` | Private persistent receipt directory, preserved when resuming |
+| `CLEARCUT_ACCEPTANCE_ADVANCE` | Set to yes only to authorize the opt-in live test to mutate synthetic resources |
+
 ## 9. Hosting: one Cloud Run service
 
 One service hosts everything. The container build runs `npm run build` in

@@ -1,0 +1,29 @@
+{
+  "project": "your-project-id",
+  "region": "us-central1",
+  "image": "us-central1-docker.pkg.dev/your-project-id/your-repo/clearcut@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "job_prefix": "clearcut-recovery",
+  "accounts": {
+    "worker": "clearcut-worker@your-project-id.iam.gserviceaccount.com",
+    "analysis-dispatch": "clearcut-analysis-dispatch@your-project-id.iam.gserviceaccount.com",
+    "activity": "clearcut-activity@your-project-id.iam.gserviceaccount.com",
+    "lore": "clearcut-lore@your-project-id.iam.gserviceaccount.com",
+    "notifications": "clearcut-notifications@your-project-id.iam.gserviceaccount.com",
+    "scheduler": "clearcut-scheduler@your-project-id.iam.gserviceaccount.com"
+  },
+  "environment": {
+    "DOCAI_PROCESSOR_ID": "projects/REPLACE/locations/us/processors/REPLACE",
+    "GEMINI_MODEL": "REPLACE_WITH_VERIFIED_MODEL",
+    "GEMINI_MODEL_LITE": "REPLACE_WITH_VERIFIED_MODEL",
+    "VERTEX_SEARCH_DATA_STORE_ID": "REPLACE",
+    "SCRIPTS_INTAKE_BUCKET": "REPLACE"
+  },
+  "secret_versions": {
+    "PARALLEL_API_KEY": "replace-parallel-secret:1",
+    "CLICKHOUSE_PASSWORD": "replace-clickhouse-secret:1",
+    "NOTIFY_WEBHOOK_URL": "replace-notify-secret:1",
+    "CLICKHOUSE_HOST": "clickhouse-host:1",
+    "CLICKHOUSE_USER": "clickhouse-user:1",
+    "OTEL_EXPORTER_OTLP_ENDPOINT": "otel-endpoint:1"
+  }
+}

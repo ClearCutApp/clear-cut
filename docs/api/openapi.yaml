@@ -1266,6 +1266,7 @@ paths:
           minimum: 1
       responses:
         '200':
+          description: At most 50 events. Legacy replacing rows are not reconstructed history.
           content:
             application/json:
               schema:
@@ -2433,7 +2434,7 @@ paths:
               $ref: '#/components/schemas/ProjectSearch'
       responses:
         '200':
-          description: The answer, the bible facts behind it, and its citations.
+          description: At most 50 literal matches and a continuation cursor.
           content:
             application/json:
               schema:
@@ -2686,6 +2687,14 @@ components:
       - error
       - version
       properties:
+        revision_id:
+          type: string
+        stage:
+          type: string
+        attempt:
+          type: integer
+        cancel_requested:
+          type: boolean
         analysis_id:
           type: string
         project_id:
